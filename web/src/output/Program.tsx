@@ -9,17 +9,18 @@ import { holdFrame } from '../engine/evaluate';
 import { areaClip, zoneArea } from '../engine/zones';
 import type { Layer, PlayoutItem, Project, Template } from '../engine/types';
 import type { Live } from '../store';
+import { busItems } from '../engine/buses';
 
 /**
  * Composites every playout layer of a channel into a `width` × `height`
  * picture: the project format closest to that shape (16:9, 9:16…) is used
  * and letterboxed, like the Rust renderer does for SDI / ST 2110.
  */
-export const Program = memo(function Program({ project, live, width, height, maxFps }: { project: Project; live: Live | undefined; width: number; height: number; /** A monitor: at most this many frames a second (the HTML5 output: every frame). */ maxFps?: number }) {
+export const Program = memo(function Program({ project, live, width, height, maxFps, bus = 0 }: { project: Project; live: Live | undefined; width: number; height: number; /** A monitor: at most this many frames a second (the HTML5 output: every frame). */ maxFps?: number; /** The output shown (0: the antenne). */ bus?: number }) {
   const format = formatFor(project, width, height);
   // Templates laid out in that format, computed once per project change.
   const templates = useMemo(() => new Map<string, Template>(project.templates.map((t) => [t.id, inFormat(t, format.id)])), [project, format.id]);
-  const items = Object.entries(live?.state.layers ?? {}).sort(([a], [b]) => Number(a) - Number(b));
+  const items = busItems(live?.state.layers ?? {}, bus).sort(([a], [b]) => Number(a) - Number(b));
   // Redrawn on each frame while a timeline or a fade moves; the widgets that move by themselves (a ticker…) redraw alone.
   // A presence on air still gliding (« On air » nodes of the Logic, seen at the last frame): redrawn too.
   const [gliding, setGliding] = useState(false);

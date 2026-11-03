@@ -129,6 +129,15 @@ pub struct Rendition {
     /// The design shown while no project is loaded (see [`slate_style`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slate_style: Option<SlateStyle>,
+    /// An output of its own (an « Écran plateau »): it shows only the
+    /// playlists sent to it, on its zones (`cg_core::playout::BUS_STRIDE`);
+    /// 0: the antenne in another shape.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bus: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// One independent output channel (a studio, a control room…): its own
@@ -275,8 +284,18 @@ impl ChannelConfig {
         }
     }
 
-    /// Gives the destinations without one an id.
+    /// Gives the destinations without one an id, and each output of its own
+    /// a number no other output of the channel has.
     pub fn ensure_ids(&mut self) {
+        let mut buses = HashSet::new();
+        let mut next = self.renditions.iter().map(|r| r.bus).max().unwrap_or(0) + 1;
+        for r in &mut self.renditions {
+            if r.bus > 0 && !buses.insert(r.bus) {
+                r.bus = next;
+                buses.insert(next);
+                next += 1;
+            }
+        }
         let mut taken = HashSet::new();
         self.outputs.ensure_ids(&mut taken);
         for r in &mut self.renditions {

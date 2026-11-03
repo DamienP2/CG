@@ -1944,12 +1944,15 @@ async fn channel_command(
     State(s): State<Shared>,
     auth::Acting(me, actor): auth::Acting,
     Path(id): Path<String>,
-    Json(cmd): Json<Command>,
+    Json(cmd): Json<cg_core::playout::Routed>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
     sees_loaded(&s, &me, &id).await?;
-    s.command(&id, cmd, &actor).await.map(Json).map_err(locked)
+    s.command_on(&id, cmd.command, cmd.buses, &actor)
+        .await
+        .map(Json)
+        .map_err(locked)
 }
 
 /// A command refused: on a zone another operator holds (409), or wrong.
@@ -3484,8 +3487,8 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
             msg = rx.next() => match msg {
                 Some(Ok(Message::Text(text))) => {
                     let reply = match serde_json::from_str::<ClientMessage>(&text) {
-                        Ok(ClientMessage::Command { channel_id, command }) => match &viewer.user {
-                            Some(u) if u.can_operate(&channel_id) => s.command(&channel_id, command, &crate::antenna::Actor::user(u)).await.err(),
+                        Ok(ClientMessage::Command { channel_id, command, buses }) => match &viewer.user {
+                            Some(u) if u.can_operate(&channel_id) => s.command_on(&channel_id, command, buses, &crate::antenna::Actor::user(u)).await.err(),
                             _ => Some("you do not have the rights to operate this channel".into()),
                         },
                         Ok(ClientMessage::Presence { channel_id }) => {

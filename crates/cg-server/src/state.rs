@@ -165,6 +165,9 @@ pub enum ClientMessage {
     Command {
         channel_id: String,
         command: Command,
+        /// The outputs it goes to (none: as [`Shared::command`] says).
+        #[serde(default)]
+        buses: Vec<u32>,
     },
     /// The Operator of this channel is open here (`None`: closed).
     #[serde(rename_all = "camelCase")]
@@ -215,6 +218,13 @@ pub struct RenditionInfo {
     pub height: u32,
     pub slate: String,
     pub slate_style: SlateStyle,
+    /// An output of its own (> 0: shows only the playlists sent to it).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub bus: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 pub struct ChannelRt {
@@ -344,6 +354,7 @@ impl ChannelRt {
                     height: r.height,
                     slate: r.slate.clone(),
                     slate_style: slate_style(r.slate_style, &r.slate),
+                    bus: r.bus,
                 })
                 .collect(),
             slate: c.slate.clone(),
@@ -672,6 +683,18 @@ impl AppState {
         cmd: Command,
         actor: &crate::antenna::Actor,
     ) -> Result<ChannelState, String> {
+        self.command_on(channel_id, cmd, Vec::new(), actor).await
+    }
+
+    /// [`Self::command`] for some outputs of the channel (`buses`); none: a
+    /// take from a playlist goes to the playlist's outputs, the rest to the antenne.
+    pub async fn command_on(
+        &self,
+        channel_id: &str,
+        cmd: Command,
+        buses: Vec<u32>,
+        actor: &crate::antenna::Actor,
+    ) -> Result<ChannelState, String> {
         let ch = self.channel(channel_id).ok_or("no such channel")?;
         let pid = ch
             .project_id
@@ -684,6 +707,17 @@ impl AppState {
             .await
             .ok_or("the loaded project no longer exists")?;
         let store = self.data.store();
+        let all = channel_buses(&ch.config);
+        let mut buses: Vec<u32> = buses.into_iter().filter(|b| all.contains(b)).collect();
+        if buses.is_empty() {
+            if let Command::Take {
+                rundown_id: Some(rid),
+                ..
+            } = &cmd
+            {
+                buses = playlist_buses(&ch.config, &project, rid);
+            }
+        }
         let zone = crate::antenna::command_zone(&project, &cmd);
         if let Some(l) = zone.as_deref().and_then(|z| ch.ops.held_by_other(z, actor)) {
             return Err(format!("{} holds this zone", l.user_name));
@@ -717,7 +751,7 @@ impl AppState {
                         zone: Some(z.id.clone()),
                         layer: None,
                     };
-                    last = Box::pin(self.command(channel_id, one, actor)).await;
+                    last = Box::pin(self.command_on(channel_id, one, all.clone(), actor)).await;
                 }
                 return last;
             }
@@ -731,7 +765,12 @@ impl AppState {
             let old = zone
                 .as_deref()
                 .and_then(|z| project.zone(z))
-                .and_then(|z| before.layers.get(&z.layer))
+                .and_then(|z| {
+                    let bus = buses.first().copied().unwrap_or(0);
+                    before
+                        .layers
+                        .get(&(z.layer + bus * cg_core::playout::BUS_STRIDE))
+                })
                 .map(|it| it.data.clone())
                 .unwrap_or_default();
             if let Command::Update { data, .. }
@@ -792,7 +831,8 @@ impl AppState {
                     }
                 }
             }
-            st.apply(&project, cmd).map_err(|e| e.to_string())?;
+            st.apply_routed(&project, cmd, &buses)
+                .map_err(|e| e.to_string())?;
             bind_state(&project, &mut st, &store, None, taken.as_deref(), false);
             if actor.kind != crate::antenna::ActorKind::Auto {
                 ch.ops.push_undo(crate::antenna::UndoStep {
@@ -1107,9 +1147,69 @@ pub async fn until_true(mut rx: watch::Receiver<bool>) {
     }
 }
 
+/// The outputs of a channel: the antenne (0) and its own outputs.
+pub fn channel_buses(cfg: &crate::config::ChannelConfig) -> Vec<u32> {
+    std::iter::once(0)
+        .chain(cfg.renditions.iter().map(|r| r.bus).filter(|b| *b > 0))
+        .collect()
+}
+
+/// The outputs a rundown item's playlist sends its graphics to (ids of the
+/// channel's outputs; « main » or an unknown one: the antenne).
+pub fn playlist_buses(
+    cfg: &crate::config::ChannelConfig,
+    project: &Project,
+    rundown_id: &str,
+) -> Vec<u32> {
+    let Some(list) = project
+        .rundown
+        .iter()
+        .find(|r| r.id == rundown_id)
+        .and_then(|r| project.playlists.iter().find(|p| p.id == r.playlist))
+    else {
+        return Vec::new();
+    };
+    let mut out: Vec<u32> = list
+        .outputs
+        .iter()
+        .map(|o| {
+            cfg.renditions
+                .iter()
+                .find(|r| &r.id == o)
+                .map_or(0, |r| r.bus)
+        })
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A playlist sent to an output of its own: its takes go there (and to
+    /// the antenne too when it is ticked); unknown outputs are the antenne.
+    #[test]
+    fn a_playlist_goes_to_its_outputs() {
+        let mut cfg: crate::config::ChannelConfig = serde_json::from_str(
+            r#"{"id":"c","name":"C","width":1920,"height":1080,"frameRate":{"num":25,"den":1},
+            "renditions":[{"id":"v","name":"9:16","width":1080,"height":1920},
+                          {"id":"screen","name":"Écran","width":1920,"height":1080,"bus":1}]}"#,
+        )
+        .unwrap();
+        cfg.ensure_ids();
+        assert_eq!(channel_buses(&cfg), vec![0, 1]);
+        let mut p = cg_core::sample::demo_project();
+        let rid = p.rundown[0].id.clone();
+        let pl = p.rundown[0].playlist.clone();
+        let list = p.playlists.iter_mut().find(|x| x.id == pl).unwrap();
+        list.outputs = vec!["screen".into()];
+        assert_eq!(playlist_buses(&cfg, &p, &rid), vec![1]);
+        let list = p.playlists.iter_mut().find(|x| x.id == pl).unwrap();
+        list.outputs = vec!["main".into(), "screen".into(), "gone".into()];
+        assert_eq!(playlist_buses(&cfg, &p, &rid), vec![0, 1]);
+    }
 
     /// A save that changed one template is told as that template; clients
     /// applying it get the saved project.

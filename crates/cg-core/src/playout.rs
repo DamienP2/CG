@@ -827,6 +827,31 @@ pub struct ChannelState {
     pub layers: BTreeMap<u32, PlayoutItem>,
 }
 
+/// The outputs of a channel (the antenne, an « Écran plateau »…) each have
+/// their zones: a graphic is kept at `bus * BUS_STRIDE + zone layer`, the
+/// antenne being bus 0 (the zone layer itself).
+pub const BUS_STRIDE: u32 = 10_000;
+
+/// The output (bus) of a key of [`ChannelState::layers`].
+pub fn bus_of(key: u32) -> u32 {
+    key / BUS_STRIDE
+}
+
+/// The zone layer of a key of [`ChannelState::layers`].
+pub fn zone_layer(key: u32) -> u32 {
+    key % BUS_STRIDE
+}
+
+/// A command for the outputs (`buses`) it goes to; none: the antenne.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Routed {
+    #[serde(flatten)]
+    pub command: Command,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buses: Vec<u32>,
+}
+
 fn hold_target(template: &Template, from: f64) -> f64 {
     template.next_stop_after(from)
 }
@@ -1081,7 +1106,82 @@ fn widgets_react(project: &Project, item: &mut PlayoutItem, old: &crate::anim::D
 }
 
 impl ChannelState {
+    /// A command for the antenne.
     pub fn apply(&mut self, project: &Project, cmd: Command) -> Result<(), PlayoutError> {
+        self.apply_on(project, cmd, 0)
+    }
+
+    /// A command for each output it goes to (none: the antenne); an error
+    /// only when it did nothing anywhere (a graphic out on one output only).
+    pub fn apply_routed(
+        &mut self,
+        project: &Project,
+        cmd: Command,
+        buses: &[u32],
+    ) -> Result<(), PlayoutError> {
+        let buses: &[u32] = if buses.is_empty() { &[0] } else { buses };
+        // Once for the whole channel: a trigger, clearing everything.
+        let once = match &cmd {
+            Command::Trigger { .. } => true,
+            Command::Clear { zone, layer } => {
+                zone.as_deref().is_none_or(str::is_empty) && layer.is_none()
+            }
+            _ => false,
+        };
+        let mut failed = None;
+        let mut done = false;
+        for &bus in buses {
+            match self.apply_on(project, cmd.clone(), bus) {
+                Ok(()) => done = true,
+                Err(e) => {
+                    failed.get_or_insert(e);
+                }
+            }
+            if once {
+                break;
+            }
+        }
+        match failed {
+            Some(e) if !done => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// The graphics of one output, at their zone layers (what its pictures draw).
+    pub fn bus(&self, bus: u32) -> ChannelState {
+        let base = bus * BUS_STRIDE;
+        ChannelState {
+            layers: self
+                .layers
+                .range(base..base + BUS_STRIDE)
+                .map(|(k, v)| (k - base, v.clone()))
+                .collect(),
+        }
+    }
+
+    /// Some graphic is on an output other than the antenne.
+    pub fn routed(&self) -> bool {
+        self.layers
+            .keys()
+            .next_back()
+            .is_some_and(|k| *k >= BUS_STRIDE)
+    }
+
+    /// A command for the output `bus`: its zones are that output's.
+    pub fn apply_on(
+        &mut self,
+        project: &Project,
+        cmd: Command,
+        bus: u32,
+    ) -> Result<(), PlayoutError> {
+        // A zone (or a zone layer) of this output; a key as given otherwise.
+        let at = |l: u32| {
+            if l < BUS_STRIDE {
+                l + bus * BUS_STRIDE
+            } else {
+                l
+            }
+        };
         match cmd {
             Command::Take {
                 zone,
@@ -1096,13 +1196,13 @@ impl ChannelState {
                 if !t.playable() {
                     return Err(PlayoutError::EmptyTemplate(t.name.clone()));
                 }
-                let layer = match resolve(project, &zone, layer)? {
+                let layer = at(match resolve(project, &zone, layer)? {
                     Some(l) => l,
                     None => project
                         .zone(&t.zone)
                         .map(|z| z.layer)
                         .ok_or(PlayoutError::NoZone)?,
-                };
+                });
                 let mut merged = t.default_data();
                 merged.extend(data.unwrap_or_default());
                 let take = QueuedTake {
@@ -1116,7 +1216,11 @@ impl ChannelState {
                     let stale: Vec<u32> = self
                         .layers
                         .iter()
-                        .filter(|(l, it)| **l != layer && it.rundown_id.as_deref() == Some(&*rid))
+                        .filter(|(l, it)| {
+                            **l != layer
+                                && bus_of(**l) == bus
+                                && it.rundown_id.as_deref() == Some(&*rid)
+                        })
                         .map(|(l, _)| *l)
                         .collect();
                     for l in stale {
@@ -1128,7 +1232,7 @@ impl ChannelState {
                     }
                 }
                 let transition = project
-                    .zone_at(layer)
+                    .zone_at(zone_layer(layer))
                     .map_or(ZoneTransition::Sequential, |z| z.transition);
                 match self.layers.get_mut(&layer) {
                     // Zone busy: the graphic on air goes out first.
@@ -1157,7 +1261,7 @@ impl ChannelState {
                 }
             }
             Command::Continue { zone, layer } => {
-                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let layer = at(resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?);
                 let item = self
                     .layers
                     .get_mut(&layer)
@@ -1218,7 +1322,7 @@ impl ChannelState {
                 }
             }
             Command::TakeOut { zone, layer } => {
-                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let layer = at(resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?);
                 let item = self
                     .layers
                     .get_mut(&layer)
@@ -1235,7 +1339,7 @@ impl ChannelState {
                 data,
                 fade,
             } => {
-                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let layer = at(resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?);
                 let item = self
                     .layers
                     .get_mut(&layer)
@@ -1279,7 +1383,7 @@ impl ChannelState {
                 dataset,
                 row,
             } => {
-                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let layer = at(resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?);
                 let item = self
                     .layers
                     .get_mut(&layer)
@@ -1348,7 +1452,7 @@ impl ChannelState {
                 target,
                 control,
             } => {
-                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let layer = at(resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?);
                 let item = self
                     .layers
                     .get_mut(&layer)
@@ -1379,7 +1483,7 @@ impl ChannelState {
                 op,
                 args,
             } => {
-                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let layer = at(resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?);
                 let item = self
                     .layers
                     .get_mut(&layer)
@@ -1413,7 +1517,7 @@ impl ChannelState {
             }
             Command::Clear { zone, layer } => match resolve(project, &zone, layer)? {
                 Some(l) => {
-                    self.layers.remove(&l);
+                    self.layers.remove(&at(l));
                 }
                 None => self.layers.clear(),
             },
@@ -1594,7 +1698,7 @@ impl ChannelState {
                 .or(if list.looping { items.first() } else { None });
             let same_zone = next.is_some_and(|n| zone_of(n) == zone_of(r));
             if let Some(n) = next {
-                takes.push((*n).clone());
+                takes.push((bus_of(*layer), (*n).clone()));
             }
             if !r.hold && !same_zone {
                 outs.push(*layer);
@@ -1608,15 +1712,16 @@ impl ChannelState {
             }
         }
         let changed = !takes.is_empty() || !outs.is_empty();
-        let ids: Vec<String> = takes.iter().map(|n| n.id.clone()).collect();
-        for n in takes {
+        let ids: Vec<String> = takes.iter().map(|(_, n)| n.id.clone()).collect();
+        // On the output of the graphic it follows.
+        for (bus, n) in takes {
             let Some(t) = project.template(&n.template_id) else {
                 continue;
             };
             let mut data = t.default_data();
             data.extend(n.data.clone());
             let zone = zone_of(&n);
-            let _ = self.apply(
+            let _ = self.apply_on(
                 project,
                 Command::Take {
                     zone: (!zone.is_empty()).then_some(zone),
@@ -1625,6 +1730,7 @@ impl ChannelState {
                     data: Some(data),
                     rundown_id: Some(n.id.clone()),
                 },
+                bus,
             );
         }
         changed.then_some(ids)
@@ -1690,7 +1796,8 @@ impl ChannelState {
         let mut gone = Vec::new();
         let mut fires = Vec::new();
         let mut rows = Vec::new();
-        let mut takes: Vec<(String, bool)> = Vec::new();
+        // Another graphic in or out, on the output of the one whose Logic says so.
+        let mut takes: Vec<(String, bool, u32)> = Vec::new();
         let mut widgets: Vec<(u32, String, WidgetControl)> = Vec::new();
         for (layer, item) in self.layers.iter_mut() {
             if matches!(item.phase, Phase::Out) {
@@ -1793,8 +1900,8 @@ impl ChannelState {
                         value,
                         transition,
                     } => set_var(item, &name, &value, transition, fps),
-                    Act::Take(template) => takes.push((template, false)),
-                    Act::TakeOut(template) => takes.push((template, true)),
+                    Act::Take(template) => takes.push((template, false, bus_of(*layer))),
+                    Act::TakeOut(template) => takes.push((template, true, bus_of(*layer))),
                     Act::Widget { layer: l, control } => {
                         if let Ok(control) = serde_json::from_value::<WidgetControl>(
                             serde_json::Value::String(control),
@@ -1835,10 +1942,12 @@ impl ChannelState {
         for layer in gone {
             self.layers.remove(&layer);
         }
-        for (template, out) in takes {
+        for (template, out, bus) in takes {
             let cmd = if out {
-                match self.layers.iter().find(|(_, i)| {
-                    i.template_id == template && !matches!(i.phase, Phase::Out | Phase::OutHold)
+                match self.layers.iter().find(|(l, i)| {
+                    bus_of(**l) == bus
+                        && i.template_id == template
+                        && !matches!(i.phase, Phase::Out | Phase::OutHold)
                 }) {
                     Some((l, _)) => Command::TakeOut {
                         zone: None,
@@ -1855,7 +1964,7 @@ impl ChannelState {
                     rundown_id: None,
                 }
             };
-            if self.apply(project, cmd).is_ok() {
+            if self.apply_on(project, cmd, bus).is_ok() {
                 let name = project
                     .template(&template)
                     .map_or(template.clone(), |t| t.name.clone());
@@ -2092,6 +2201,7 @@ mod tests {
             name: "Show".into(),
             auto_next: true,
             looping: false,
+            outputs: vec![],
         });
         let item = |id: &str, t: &str, secs: Option<f64>, hold: bool| RundownItem {
             id: id.into(),
@@ -3366,5 +3476,128 @@ mod tests {
         assert!(ch.apply(&p, Command::take("top-right", "new")).is_err());
         p.publish("new");
         assert!(ch.apply(&p, Command::take("top-right", "new")).is_ok());
+    }
+
+    #[test]
+    fn each_output_has_its_zones() {
+        let p = project();
+        let mut ch = ChannelState::default();
+        // The same zone on the antenne and on output 2: both on air, apart.
+        ch.apply(&p, Command::take("z", "t")).unwrap();
+        ch.apply_routed(&p, Command::take("z", "t"), &[2]).unwrap();
+        assert_eq!(
+            ch.layers.keys().copied().collect::<Vec<_>>(),
+            vec![1, 2 * BUS_STRIDE + 1]
+        );
+        assert!(ch.routed());
+        // What output 2 draws: its graphic, at its zone layer.
+        assert_eq!(
+            ch.bus(2).layers.keys().copied().collect::<Vec<_>>(),
+            vec![1]
+        );
+        assert_eq!(ch.bus(1).layers.len(), 0);
+        // Out on output 2 only.
+        ch.apply_routed(
+            &p,
+            Command::TakeOut {
+                zone: Some("z".into()),
+                layer: None,
+            },
+            &[2],
+        )
+        .unwrap();
+        assert_eq!(ch.layers[&1].phase, Phase::Playing);
+        assert_eq!(ch.layers[&(2 * BUS_STRIDE + 1)].phase, Phase::Out);
+        // Everything out: every output.
+        ch.apply_routed(
+            &p,
+            Command::Clear {
+                zone: None,
+                layer: None,
+            },
+            &[0, 2],
+        )
+        .unwrap();
+        assert!(ch.layers.is_empty());
+    }
+
+    #[test]
+    fn a_take_for_several_outputs_goes_on_each() {
+        let p = project();
+        let mut ch = ChannelState::default();
+        let mut take = Command::take("z", "t");
+        if let Command::Take { rundown_id, .. } = &mut take {
+            *rundown_id = Some("r".into());
+        }
+        // The same rundown item on two outputs: neither takes the other out.
+        ch.apply_routed(&p, take, &[0, 3]).unwrap();
+        assert_eq!(ch.layers.len(), 2);
+        assert!(ch.layers.values().all(|i| i.phase == Phase::Playing));
+        // Out where it is not: an error only when it is nowhere.
+        assert!(ch
+            .apply_routed(
+                &p,
+                Command::TakeOut {
+                    zone: Some("z".into()),
+                    layer: None
+                },
+                &[3, 5]
+            )
+            .is_ok());
+        assert!(ch
+            .apply_routed(
+                &p,
+                Command::TakeOut {
+                    zone: Some("z".into()),
+                    layer: None
+                },
+                &[5]
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn auto_next_stays_on_its_output() {
+        use crate::model::{Playlist, RundownItem};
+        let mut p = project();
+        p.playlists.push(Playlist {
+            id: "pl".into(),
+            name: "Screen".into(),
+            auto_next: true,
+            looping: false,
+            outputs: vec!["screen".into()],
+        });
+        let item = |id: &str| RundownItem {
+            id: id.into(),
+            name: id.into(),
+            template_id: "t".into(),
+            zone: String::new(),
+            playlist: "pl".into(),
+            layer: 0,
+            data: Default::default(),
+            read: Default::default(),
+            auto_secs: Some(0.0),
+            hold: false,
+        };
+        p.rundown = vec![item("a"), item("b")];
+        // No pause before the on-air point.
+        p.templates[0].markers.retain(|m| m.kind == MarkerKind::Out);
+        let mut ch = ChannelState::default();
+        let mut take = Command::take("z", "t");
+        if let Command::Take { rundown_id, .. } = &mut take {
+            *rundown_id = Some("a".into());
+        }
+        ch.apply_routed(&p, take, &[2]).unwrap();
+        for _ in 0..90 {
+            ch.tick(1.0);
+            ch.auto_resume(&p);
+        }
+        assert!(ch.auto_next(&p));
+        // The next one comes on output 2, not on the antenne.
+        assert!(
+            ch.layers.keys().all(|k| bus_of(*k) == 2),
+            "{:?}",
+            ch.layers.keys()
+        );
     }
 }

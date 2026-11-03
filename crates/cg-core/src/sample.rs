@@ -1063,12 +1063,14 @@ pub fn demo_project() -> Project {
             name: "Show".into(),
             auto_next: Default::default(),
             looping: Default::default(),
+            outputs: Default::default(),
         },
         Playlist {
             id: "widgets".into(),
             name: "Widgets".into(),
             auto_next: Default::default(),
             looping: Default::default(),
+            outputs: Default::default(),
         },
     ];
     for r in &mut p.rundown {

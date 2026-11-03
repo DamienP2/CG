@@ -2072,6 +2072,10 @@ pub struct Playlist {
     /// After the last graphic, the first again.
     #[serde(default, rename = "loop", skip_serializing_if = "std::ops::Not::not")]
     pub looping: bool,
+    /// The outputs of the channel its graphics go to (ids of the channel's
+    /// outputs, « main » the antenne); none: the antenne.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outputs: Vec<String>,
 }
 
 /// What happens when a graphic is taken in a zone that is already on air.
@@ -2423,6 +2427,7 @@ impl Project {
                 name: "Principal".into(),
                 auto_next: Default::default(),
                 looping: Default::default(),
+                outputs: Default::default(),
             });
             changed = true;
         }

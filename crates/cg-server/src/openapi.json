@@ -5999,7 +5999,7 @@
     "required": [
      "action"
     ],
-    "description": "Target a zone by id (`zone`) or a raw playout layer (`layer`). A take without either plays in the template's zone; a clear without either clears everything. `trigger` (with `name`) applies to the whole channel.",
+    "description": "Target a zone by id (`zone`) or a raw playout layer (`layer`). A take without either plays in the template's zone; a clear without either clears everything. `trigger` (with `name`) applies to the whole channel. On a channel with outputs of its own (an « Écran plateau »: Output streams › + Output), `buses` says which outputs it goes to (0 = the antenne, else the output's `bus`); without it a take from a rundown item goes to its playlist's outputs (`outputs` of the playlist) and the rest to the antenne. Each output has its zones: on-air keys are `bus * 10000 + zone layer`.",
     "properties": {
      "action": {
       "type": "string",
@@ -6062,6 +6062,13 @@
      "fade": {
       "type": "boolean",
       "description": "update: the old values cross-fade out (½ s) instead of a cut"
+     },
+     "buses": {
+      "type": "array",
+      "items": {
+       "type": "integer"
+      },
+      "description": "The outputs it goes to (0: the antenne)."
      }
     },
     "example": {
@@ -6188,6 +6195,13 @@
      },
      "name": {
       "type": "string"
+     },
+     "outputs": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "Ids of the channel's outputs its graphics go to (`main`: the antenne); none: the antenne."
      }
     }
    },

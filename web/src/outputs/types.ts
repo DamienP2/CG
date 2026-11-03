@@ -143,6 +143,8 @@ export interface Rendition {
   /** Still picture (`/assets/…`) its outputs show while no project is loaded ("" = none). */
   slate?: string;
   slateStyle?: SlateStyle;
+  /** An output of its own (> 0): it shows only the playlists sent to it, on its zones. */
+  bus?: number;
 }
 
 export interface ChannelConfig {

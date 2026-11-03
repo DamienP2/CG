@@ -389,7 +389,10 @@ export const useApp = create<AppStore>((set, get) => {
 
     command(cmd, channelId = get().channelId ?? undefined) {
       if (!channelId) return;
-      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'command', channelId, command: cmd }));
+      if (socket?.readyState === WebSocket.OPEN) {
+        const { buses, ...command } = cmd;
+        socket.send(JSON.stringify({ type: 'command', channelId, command, buses }));
+      }
       else api('POST', `/api/channels/${encodeURIComponent(channelId)}/command`, cmd).catch((e) => get().toast(errText(e), 'error'));
     },
 

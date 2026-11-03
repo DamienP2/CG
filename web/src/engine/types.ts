@@ -570,6 +570,8 @@ export interface Playlist {
   autoNext?: boolean;
   /** After the last graphic, the first again. */
   loop?: boolean;
+  /** The outputs of the channel its graphics go to (« main »: the antenne); none: the antenne. */
+  outputs?: string[];
 }
 
 export type Phase = 'playing' | 'holding' | 'out' | 'outHold';
@@ -616,7 +618,7 @@ export interface ChannelState {
 /** Commands address a zone by id, or a raw playout layer. */
 type Target = { zone?: string; layer?: number };
 
-export type Command =
+export type Command = (
   | ({ action: 'take'; templateId: string; data?: Record<string, string>; rundownId?: string } & Target)
   | ({ action: 'continue' } & Target)
   | ({ action: 'takeOut' } & Target)
@@ -627,7 +629,11 @@ export type Command =
   /** Another row of a data set of the graphic on air (1 = first). */
   | ({ action: 'row'; dataset: string; row: number } & Target)
   | ({ action: 'clear' } & Target)
-  | { action: 'trigger'; name: string };
+  | { action: 'trigger'; name: string }
+) & {
+  /** The outputs of the channel it goes to (0: the antenne); none: the antenne, or a playlist's outputs for its take. */
+  buses?: number[];
+};
 
 export type Data = Record<string, string>;
 
@@ -657,7 +663,8 @@ export interface ChannelInfo {
   projectId: string | null;
   /** What the channel goes out to: "SDI · name", "NDI · name"… */
   outputs: string[];
-  renditions: { id: string; name: string; width: number; height: number; slate?: string; slateStyle?: string }[];
+  /** The other pictures: the antenne in another shape, or an output of its own (`bus` > 0: the playlists sent to it). */
+  renditions: { id: string; name: string; width: number; height: number; slate?: string; slateStyle?: string; bus?: number }[];
   /** Still picture the outputs show while no project is loaded ("" = none). */
   slate?: string;
   /** The design shown while no project is loaded ("custom": the still picture). */

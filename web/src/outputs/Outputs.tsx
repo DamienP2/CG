@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe } from 'lucide-react';
+import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe, MonitorPlay } from 'lucide-react';
 import { HexColorField } from '../ui/fields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
@@ -44,6 +44,8 @@ const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = 
 };
 
 const DEST_KINDS: DestKind[] = ['html5', 'ndi', 'stream', 'sdi', 'st2110'];
+/** An output of its own (an « Écran plateau »): its colour on the canvas. */
+const OUTPUT_COLOR = '#f59e0b';
 
 /** Live inputs placed as sources, by family (a stream is SRT, UDP, RTMP, HLS, RTSP or a URL). */
 type SrcFamily = 'sdi' | 'ndi' | 'st2110' | 'stream';
@@ -106,6 +108,8 @@ interface Picture {
   outputs: OutputsConfig;
   slate?: string;
   slateStyle?: SlateStyle;
+  /** An output of its own (> 0): the playlists sent to it, not the antenne. */
+  bus?: number;
 }
 
 const pictures = (ch: ChannelConfig): Picture[] => [{ id: 'main', name: t('Main format'), width: ch.width, height: ch.height, outputs: ch.outputs, slate: ch.slate, slateStyle: ch.slateStyle }, ...(ch.renditions ?? [])];
@@ -356,6 +360,11 @@ export function Outputs({ mode }: { mode: Mode }) {
   // ---- graph ----
   const pics = ch ? pictures(ch) : [];
   const allDests = [...pics.flatMap(dests), ...(ch ? dests(unwiredOf(ch)) : [])];
+  /** « #2 »: the rank of a destination among the channel's of its kind, when there are several. */
+  const sameKind = (d: Dest) => {
+    const all = allDests.filter((x) => x.kind === d.kind);
+    return all.length > 1 ? `#${all.findIndex((x) => x.value.id === d.value.id) + 1}` : undefined;
+  };
   const hw = hardwareOf(cfg);
   const usedHw = usedHardware(cfg);
   // Live inputs placed as sources (a column between the program and the formats).
@@ -493,10 +502,10 @@ export function Outputs({ mode }: { mode: Mode }) {
             extra: wired ? sourceChoices(id, c) : null,
           };
         }),
-        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: formatTitle(p, ch), sub: `${ratioOf(p.width, p.height)}${slateName(p) ? `\n${t('Without project: {name}', { name: slateName(p) })}` : ''}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
+        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, ...((p.bus ?? 0) > 0 ? { label: t('Output {n}', { n: (p.bus ?? 0) + 1 }), color: OUTPUT_COLOR, icon: MonitorPlay } : {}), title: formatTitle(p, ch), sub: `${ratioOf(p.width, p.height)}${slateName(p) ? `\n${t('Without project: {name}', { name: slateName(p) })}` : ''}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
         ...allDests.map((d) => {
           const st = destStatus(d);
-          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch, hw), tone: st.tone, status: st.text, raw: st.raw, badge: d.kind === 'stream' ? streamBadge(d.value as StreamOutput) : undefined, chip: d.kind === 'html5' || !d.picture ? undefined : rateChip(d.value.id), on: d.kind === 'html5' ? undefined : isOn(d), loose: !d.picture };
+          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch, hw), tone: st.tone, status: st.text, raw: st.raw, badge: d.kind === 'stream' ? streamBadge(d.value as StreamOutput) : sameKind(d),  chip: d.kind === 'html5' || !d.picture ? undefined : rateChip(d.value.id), on: d.kind === 'html5' ? undefined : isOn(d), loose: !d.picture };
         }),
       ]
     : [];
@@ -587,6 +596,15 @@ export function Outputs({ mode }: { mode: Mode }) {
     editCh((c) => void (c.renditions ??= []).push({ id, name: preset.name, width: preset.width, height: preset.height, outputs: { st2110: [], sdi: [], ndi: [], html5: [], streams: [] } }));
     setSel(`pic:${id}`);
     setMoreFormats(false);
+  };
+
+  /** An output of its own (an « Écran plateau »): the channel's size, the playlists sent to it. */
+  const addOutput = () => {
+    const taken = new Set(pics.map((p) => p.id));
+    const bus = Math.max(0, ...(ch?.renditions ?? []).map((r) => r.bus ?? 0)) + 1;
+    const id = unique(`output-${bus + 1}`, taken);
+    editCh((c) => void (c.renditions ??= []).push({ id, name: t('Output {n}', { n: bus + 1 }), width: c.width, height: c.height, bus, outputs: { st2110: [], sdi: [], ndi: [], html5: [], streams: [] } }));
+    setSel(`pic:${id}`);
   };
 
   /** Places a live input as a source (the first of that family not placed yet; a new NDI or stream input when there is none). */
@@ -930,6 +948,13 @@ export function Outputs({ mode }: { mode: Mode }) {
                         </div>
                       )}
                     </span>
+                  </div>
+                  <span className="oc-tool-sep" aria-hidden="true" />
+                  <div className="oc-tool-group" role="group" aria-label={t('Outputs')}>
+                    <span className="oc-tool-label">{t('Outputs')}</span>
+                    <button className="oc-tool" onClick={addOutput} title={t('Add an output of its own (a screen on set…): it shows the playlists sent to it')}>
+                      <Plus size={13} color={OUTPUT_COLOR} /> {t('Output')}
+                    </button>
                   </div>
                   <span className="oc-tool-sep" aria-hidden="true" />
                   <div className="oc-tool-group" role="group" aria-label={t('Sources')}>

@@ -288,6 +288,8 @@ struct Picture {
     renders: Vec<std::thread::JoinHandle<()>>,
     /// The frame clock of its first output that has one (a DeckLink card).
     card: Option<Arc<dyn FrameClock>>,
+    /// The output whose graphics it draws (0: the antenne).
+    bus: u32,
 }
 
 impl Picture {
@@ -491,11 +493,9 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
         if opened.is_empty() {
             continue;
         }
-        let name = cfg
-            .renditions
-            .iter()
-            .find(|r| r.id == id)
-            .map_or("Principal", |r| r.name.as_str());
+        let rendition = cfg.renditions.iter().find(|r| r.id == id);
+        let name = rendition.map_or("Principal", |r| r.name.as_str());
+        let bus = rendition.map_or(0, |r| r.bus);
         let stats = state.perf.picture(&cfg.id, id, name, width, height);
         let card = opened.iter().find_map(|o| o.sink.frame_clock());
         let outputs = opened
@@ -553,6 +553,7 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
             mixer,
             renders,
             card,
+            bus,
         });
     }
     pictures
@@ -755,7 +756,13 @@ fn clock(
             let shown_ms = shown
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0.0, |d| d.as_secs_f64() * 1000.0);
-            p.request((n, project.clone(), snapshot.clone(), shown_ms));
+            // Its output's graphics only (the antenne's when none is sent elsewhere).
+            let shown_state = if p.bus == 0 && !snapshot.routed() {
+                snapshot.clone()
+            } else {
+                snapshot.bus(p.bus)
+            };
+            p.request((n, project.clone(), shown_state, shown_ms));
         }
     }
     for p in pictures {
@@ -1232,6 +1239,7 @@ mod tests {
             mixer: None,
             renders: Vec::new(),
             card: None,
+            bus: 0,
         };
         // Frames of ticks 1, 2 and 4 (3 never came), each `width` wide = its tick.
         for t in [1u64, 2, 4] {

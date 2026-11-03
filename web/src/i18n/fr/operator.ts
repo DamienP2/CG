@@ -531,4 +531,10 @@ export const operator: Record<string, string> = {
   'Schedule a take…': 'Programmer une prise…',
   'Auto next…': 'Suivant automatique…',
   'Pause · waits for its Logic': 'Pause · attend sa Logique',
+  // Outputs of their own (a screen on set…)
+  'Antenna': 'Antenne',
+  'Goes to: {outputs}': 'Va vers : {outputs}',
+  'Send to': 'Envoyer vers',
+  'Output {n}': 'Sortie {n}',
+  'Add an output of its own (a screen on set…): it shows the playlists sent to it': 'Ajouter une sortie à part (un écran plateau…) : elle montre les playlists qu’on lui envoie',
 };

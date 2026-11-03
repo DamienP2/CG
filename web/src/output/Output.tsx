@@ -45,7 +45,7 @@ export function Output({ channelId: at, rendition: asked }: { channelId: string;
   return (
     <div style={{ position: 'fixed', inset: 0, background: bg, overflow: 'hidden' }}>
       <Viewport width={picture.width} height={picture.height} scale={scale}>
-        {project && <Program project={project} live={live[channelId]} width={picture.width} height={picture.height} />}
+        {project && <Program project={project} live={live[channelId]} width={picture.width} height={picture.height} bus={picture === channel ? 0 : ((picture as { bus?: number }).bus ?? 0)} />}
         {/* Filling the frame, as on the other outputs. */}
         {slate && <img src={slate} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
       </Viewport>

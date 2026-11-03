@@ -320,6 +320,7 @@ pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usi
             name,
             auto_next: Default::default(),
             looping: Default::default(),
+            outputs: Default::default(),
         }),
     }
     // Keep the position of the running order's items in the rundown.

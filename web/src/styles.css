@@ -22650,3 +22650,49 @@ textarea.tx-grow {
   font-size: 12px;
   line-height: 1;
 }
+
+/* ---- Operator: a playlist sent to other outputs of the channel ---- */
+.opx-pl-out {
+  flex: none;
+  max-width: 120px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 5px;
+  color: #17120a;
+  background: var(--warn, #f59e0b);
+}
+.opx-pl-out.many {
+  color: #0b0d14;
+  background: var(--accent);
+}
+.opx-pl-send {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.opx-check {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 3px;
+  border: 1.5px solid var(--line-2);
+  display: inline-grid;
+  place-items: center;
+}
+.opx-check.on {
+  border-color: var(--warn, #f59e0b);
+  background: var(--warn, #f59e0b);
+}
+.opx-check.on::after {
+  content: '';
+  width: 6px;
+  height: 3px;
+  border: 2px solid #17120a;
+  border-top: none;
+  border-right: none;
+  transform: translateY(-1px) rotate(-45deg);
+}

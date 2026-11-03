@@ -2,6 +2,7 @@ import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Eraser, Clock, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { busItems, busOf } from '../engine/buses';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -274,12 +275,15 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const allSources = useSources();
   const sourceName = (id: string) => allSources.find((s) => s.id === id)?.name ?? id;
   const liveState = useApp((s) => (channelId ? s.live[channelId] : undefined));
-  const channel = liveState?.state ?? { layers: {} };
+  const allLayers = liveState?.state.layers ?? {};
   // Editing the rundown needs the rights; going on air also needs an output.
   const canEdit = can.operate(auth?.user);
   const operate = canEdit && !!channelId;
-  const command: typeof send = (cmd) => {
+  const command: typeof send = (cmd0) => {
     if (!operate) return;
+    // On the output the controls show (a take: where its playlist says, on the server; clearing all: everywhere).
+    const everything = cmd0.action === 'clear' && !cmd0.zone && cmd0.layer == null;
+    const cmd = cmd0.buses || cmd0.action === 'take' || cmd0.action === 'trigger' || everything ? cmd0 : { ...cmd0, buses: [monitor] };
     const go = () => send(cmd, channelId!);
     // A new name on its way: saved first, so the action (and the as-run) has it.
     if (pending.current?.name !== undefined) void flush().then(go);
@@ -334,6 +338,28 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const playable = (id: string) => !!project?.templates.find((t) => t.id === id)?.layers.some((l) => l.visible !== false);
   const items = rundown.filter((r) => (r.playlist === activeList || !playlists.some((p) => p.id === r.playlist)) && playable(r.templateId));
   const activePl = playlists.find((p) => p.id === activeList);
+  // The outputs of the channel: the antenne and its own (Flux sorties); a playlist goes to some of them.
+  const outputs = useMemo(
+    () => [{ id: 'main', name: t('Antenna'), bus: 0 }, ...(channelInfo?.renditions ?? []).filter((r) => (r.bus ?? 0) > 0).map((r) => ({ id: r.id, name: r.name, bus: r.bus ?? 0 }))],
+    [channelInfo],
+  );
+  const busesOf = (pl?: Playlist) => {
+    const b = [...new Set((pl?.outputs ?? []).map((o) => outputs.find((x) => x.id === o)?.bus ?? 0))];
+    return b.length ? b : [0];
+  };
+  // The on-air controls drive the output of the playlist shown (its first).
+  const monitor = busesOf(activePl)[0];
+  const channel = useMemo(() => ({ layers: Object.fromEntries(busItems(allLayers, monitor)) }), [allLayers, monitor]);
+  // Showing another playlist: its output on the monitor.
+  useEffect(() => {
+    const ids = busesOf(activePl).map((b) => outputs.find((o) => o.bus === b)?.id ?? 'main');
+    setShown((cur) => (ids.every((id) => cur.includes(id)) && cur.every((id) => !outputs.some((o) => o.id === id && o.bus > 0) || ids.includes(id)) ? cur : [...cur.filter((id) => !outputs.some((o) => o.id === id)), ...ids]));
+  }, [activeList, outputs]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Where a rundown item is on air (its outputs), else where its playlist sends it. */
+  const itemBuses = (r: RundownItem | undefined) => {
+    const on = [...new Set(Object.entries(allLayers).filter(([, p]) => r && p.rundownId === r.id).map(([k]) => busOf(k)))];
+    return on.length ? on : busesOf(playlists.find((p) => p.id === r?.playlist) ?? activePl);
+  };
   const setPlaylist = (patch: Partial<Playlist>) =>
     project &&
     api(
@@ -408,9 +434,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
 
   const onAirByItem = useMemo(() => {
     const m = new Map<string, PlayoutItem>();
-    for (const p of Object.values(channel.layers)) if (p.rundownId) m.set(p.rundownId, p);
+    for (const p of Object.values(allLayers)) if (p.rundownId) m.set(p.rundownId, p);
     return m;
-  }, [channel]);
+  }, [allLayers]);
 
   const zoneOf = (r: RundownItem) => project?.zones.find((z) => z.id === r.zone) ?? project?.zones.find((z) => z.id === project.templates.find((t) => t.id === r.templateId)?.zone);
   const dataOf = (r: RundownItem) => {
@@ -466,10 +492,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
     continue: () => continueZone(selZone),
     continueAll: () => busy.forEach(continueZone),
     out: () => outZone(selZone),
-    outSelected: () => item && outZone(zoneOf(item)),
+    outSelected: () => item && command({ action: 'takeOut', zone: zoneOf(item)?.id, buses: itemBuses(item) }),
     clear: () => command({ action: 'clear' }),
     undo: requestUndo,
-    update: () => item && template && onAirByItem.get(item.id) && operate && !lockOf(item) && command({ action: 'update', zone: zoneOf(item)?.id, data: updateData(template, draftRef.current, readMode), fade: updateFade }),
+    update: () => item && template && onAirByItem.get(item.id) && operate && !lockOf(item) && command({ action: 'update', zone: zoneOf(item)?.id, data: updateData(template, draftRef.current, readMode), fade: updateFade, buses: itemBuses(item) }),
     select: (d) => {
       const i = items.findIndex((r) => r.id === cued) + d;
       if (i >= 0 && i < items.length) setCued(items[i].id);
@@ -485,7 +511,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Pictures of the output (main + renditions); the ones without a format in the project are off.
   const formats = projectFormats(project);
   const designed = (w: number, h: number) => formats.some((f) => Math.abs(Math.log(f.width / f.height) - Math.log(w / h)) < 0.01);
-  const pictures = channelInfo ? [{ id: 'main', name: `${channelInfo.width}×${channelInfo.height}`, width: channelInfo.width, height: channelInfo.height }, ...channelInfo.renditions] : formats.map((f) => ({ id: f.id, name: f.id === 'main' ? t('Main') : f.name, width: f.width, height: f.height }));
+  const pictures: { id: string; name: string; width: number; height: number; bus?: number }[] = channelInfo ? [{ id: 'main', name: outputs.length > 1 ? t('Antenna') : `${channelInfo.width}×${channelInfo.height}`, width: channelInfo.width, height: channelInfo.height }, ...channelInfo.renditions] : formats.map((f) => ({ id: f.id, name: f.id === 'main' ? t('Main') : f.name, width: f.width, height: f.height }));
   const visible = pictures.filter((p) => shown.includes(p.id) && designed(p.width, p.height));
   const programs = visible.length ? visible : pictures.slice(0, 1);
   const main = pictures[0];
@@ -542,7 +568,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
           <div className="opx-pltabs">
             <PlaylistTabs project={project} active={activeList} onSelect={setPlaylistId}>
               {playlists.map((p) => (
-                <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} />
+                <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} outputs={outputs} />
               ))}
             </PlaylistTabs>
             {canEdit && (
@@ -783,8 +809,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
                                   </div>
                                 ) : (
                                   <div key={ds.key} className="opx-ds opx-ds-stack">
-                                    <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} only={only.get(ds.key)} />
-                                    <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                                    <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={(c) => command({ ...c, buses: itemBuses(item ?? undefined) })} keys={ds === steppedDatasets(template)[0]} only={only.get(ds.key)} />
+                                    <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={(c) => command({ ...c, buses: itemBuses(item ?? undefined) })} />
                                   </div>
                                 ),
                               )}
@@ -850,7 +876,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     <div key={p.id} className="opx-monitor" style={{ flex: `${p.width / p.height} 1 0` }}>
                       <Screen width={p.width} height={p.height}>
                         {/* A monitor: 30 frames a second are enough (the HTML5 output runs at the display rate). */}
-                        <Program project={project} live={liveState} width={p.width} height={p.height} maxFps={MONITOR_FPS} />
+                        <Program project={project} live={liveState} width={p.width} height={p.height} maxFps={MONITOR_FPS} bus={p.bus ?? 0} />
                       </Screen>
                     </div>
                   ))
@@ -901,7 +927,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
       </button>
       <span className="opx-tsep" />
       <div className={`opx-upd ${updates && onAirNow && operateItem ? 'ready' : ''}`}>
-        <button className="opx-upd-go" disabled={!onAirNow || !operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
+        <button className="opx-upd-go" disabled={!onAirNow || !operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade, buses: itemBuses(item ?? undefined) })}>
           <RefreshCw size={16} /> Update{updates && onAirNow ? <span className="opx-upd-n">{updates}</span> : null} <KeyCap action="update" />
         </button>
         <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={false} />
@@ -911,7 +937,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
       <button className="opx-btn" disabled={!operate} onClick={requestUndo} title={actionLabel('undo')}>
         <Undo2 size={16} /> {t('Undo')} <KeyCap action="undo" />
       </button>
-      <button className="opx-btn ux1-clear" disabled={!operate || !Object.keys(channel.layers).length} onClick={() => command({ action: 'clear' })} title={actionLabel('clear')}>
+      <button className="opx-btn ux1-clear" disabled={!operate || !Object.keys(allLayers).length} onClick={() => command({ action: 'clear' })} title={actionLabel('clear')}>
         {t('Clear all')} <KeyCap action="clear" />
       </button>
       <button className="opx-btn ux1-help" title={t('Keyboard shortcuts')} aria-label={t('Keyboard shortcuts')} onClick={openShortcuts}>
@@ -1065,7 +1091,7 @@ function PlaylistTabs({ project, active, onSelect, children }: { project: Projec
 }
 
 // Not drawn again on each frame of the channel (only its props matter).
-const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, onSelect }: { project: Project; id: string; active: boolean; editable: boolean; onSelect: (id: string) => void }) {
+const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, onSelect, outputs }: { project: Project; id: string; active: boolean; editable: boolean; onSelect: (id: string) => void; /** The channel's outputs (the antenne first). */ outputs: { id: string; name: string; bus: number }[] }) {
   const toast = useApp((s) => s.toast);
   // The "…" menu: where it opens (under the button, kept in the window).
   const [menu, setMenu] = useState<{ left: number; top: number } | null>(null);
@@ -1098,10 +1124,39 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
     if (items.length) await useApp.getState().saveRundown([...project.rundown, ...items]);
     onSelect(copy.id);
   };
+  // Where its graphics go: the antenne unless sent elsewhere (outputs of this channel only).
+  const sent = (p.outputs ?? []).filter((o) => outputs.some((x) => x.id === o));
+  const goes = sent.length ? sent : ['main'];
+  const elsewhere = !(goes.length === 1 && goes[0] === 'main');
+  const sendTo = (out: string) => {
+    const next = goes.includes(out) ? goes.filter((o) => o !== out) : [...goes, out];
+    if (!next.length) return;
+    const outs = next.length === 1 && next[0] === 'main' ? undefined : outputs.filter((o) => next.includes(o.id)).map((o) => o.id);
+    save(project.playlists.map((x) => (x.id === id ? { ...x, outputs: outs } : x)));
+  };
   return (
-    <div className={`opx-pl ${active ? 'on' : ''}`} role="tab" aria-selected={active} tabIndex={0} title={tn(count, '{n} item', '{n} items')} onClick={() => onSelect(id)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSelect(id))}>
+    <div
+      className={`opx-pl ${active ? 'on' : ''}`}
+      role="tab"
+      aria-selected={active}
+      tabIndex={0}
+      title={tn(count, '{n} item', '{n} items')}
+      onClick={() => onSelect(id)}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSelect(id))}
+      onContextMenu={(e) => {
+        if (!editable) return;
+        e.preventDefault();
+        onSelect(id);
+        setMenu({ left: Math.max(8, Math.min(e.clientX, window.innerWidth - 228)), top: Math.min(e.clientY, window.innerHeight - 280) });
+      }}
+    >
       <span className="opx-name-cell">{p.name}</span>
       <span className="opx-pl-n">{count}</span>
+      {elsewhere && (
+        <span className={`opx-pl-out ${goes.length > 1 ? 'many' : ''}`} title={t('Goes to: {outputs}', { outputs: goes.map((o) => outputs.find((x) => x.id === o)?.name ?? o).join(', ') })}>
+          {goes.length > 1 ? tn(goes.length, '{n} output', '{n} outputs') : outputs.find((x) => x.id === goes[0])?.name}
+        </span>
+      )}
       {editable && (
         <button
           className={`opx-x opx-pl-more ${menu ? 'open' : ''}`}
@@ -1129,6 +1184,19 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
             <button onClick={run(duplicate)}>
               <Copy size={13} /> {t('Duplicate')}
             </button>
+            {outputs.length > 1 && (
+              <>
+                <div className="menu-sep" />
+                <div className="menu-label">{t('Send to')}</div>
+                {outputs.map((o) => (
+                  <button key={o.id} className="opx-pl-send" onClick={() => sendTo(o.id)} disabled={goes.length === 1 && goes[0] === o.id}>
+                    <span className={`opx-check ${goes.includes(o.id) ? 'on' : ''}`} />
+                    {o.name}
+                  </button>
+                ))}
+                <div className="menu-sep" />
+              </>
+            )}
             <button
               disabled={!count}
               onClick={run(async () => {
