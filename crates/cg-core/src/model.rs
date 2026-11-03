@@ -2311,6 +2311,7 @@ impl Project {
             changed |= t.normalize_markers();
             changed |= t.upgrade_layers();
             changed |= t.merge_triggers();
+            changed |= crate::logic::upgrade(&mut t.logic);
         }
         // "Hold anyway" is gone: those graphics now wait for the operator.
         for r in self.rundown.iter_mut().filter(|r| r.hold) {

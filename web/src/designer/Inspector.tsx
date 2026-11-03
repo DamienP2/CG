@@ -8,7 +8,7 @@ import { fieldUsed } from '../engine/settings';
 import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Sparkles, Unlink } from 'lucide-react';
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
-import { applyLogic, measureLayer } from '../engine/logic';
+import { applyLogic, drivenProps, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
 import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type GroupMask, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { useApp } from '../store';
@@ -210,7 +210,10 @@ export function TimelineButton({ layer, props }: { layer: Layer; props: Prop[] }
 
 /** Lit when a Logic relation drives one of the row's properties. */
 function LogicBadge({ layer, props }: { layer: Layer; props: Prop[] }) {
-  const driven = useDesigner((s) => s.template?.logic?.nodes.some((n) => n.type === 'target' && n.layer === layer.id && props.includes(n.prop as Prop)));
+  const driven = useDesigner((s) => {
+    const d = drivenProps(s.template?.logic, layer.id);
+    return props.some((p) => d.has(p));
+  });
   if (!driven) return null;
   return (
     <span className="logic-badge" title={t('Driven by a Logic relation (Logic button in the toolbar)')}>
@@ -271,8 +274,8 @@ function useDrivenValues(layer: Layer): Map<string, Value> {
   return useMemo(() => {
     const out = new Map<string, Value>();
     if (!template) return out;
-    const targets = template.logic?.nodes.filter((n): n is typeof n & { type: 'target' } => n.type === 'target' && n.layer === layer.id && !!template.logic?.edges.some((e) => e.to === n.id)) ?? [];
-    const driven = new Set<Prop>([...(Object.entries(layer.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...targets.map((t) => t.prop)]);
+    const fromLogic = [...drivenProps(template.logic, layer.id)].filter((k) => !k.includes('.')) as Prop[];
+    const driven = new Set<Prop>([...(Object.entries(layer.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...fromLogic]);
     if (!driven.size) return out;
     const data = { ...previewData, ...bound };
     const hold = holdFrame(template);

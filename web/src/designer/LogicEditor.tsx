@@ -1,375 +1,129 @@
-import { Ampersand, ArrowDown, ChevronsRight, Radio, Send, Variable, ArrowLeftRight, Calculator, Crosshair, Diamond, Hash, Link2, Pause, Play, Rows3, Split, Square, SquareStack, Target, TextCursorInput, Timer, Trash2, Type, Zap } from 'lucide-react';
+import { BoxSelect, ChevronDown, ChevronRight, ClipboardPaste, Copy, Link2, Plus, Search, Star, Trash2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
-import { INPUTS, measureLayer, nodeValues, type LVal } from '../engine/logic';
-import { COLOR_PROPS, PROPS, TEXT_LIKE, type Cmp, type Layer, type Logic, type LogicNode, type MathOp, type Prop, type Template, type TextMetric, type TriggerEvent } from '../engine/types';
+import { accepts, clockAt, fromPortOf, measureLayer, metricOf, nodeValues, portsOf, rowType, type LVal, type Port, type PortType } from '../engine/logic';
+import { exprError, names, parse } from '../engine/expr';
+import type { Layer, Logic, LogicEdge, LogicFrame, LogicNode, Template, TriggerEvent } from '../engine/types';
 import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
-import { NumberField, Segmented, TextInput } from '../ui/fields';
+import { HexColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { useApp } from '../store';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
-import { PROP_LABELS } from './Inspector';
 import { useDesigner } from './designerStore';
 import { t, tc } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
+import { entries, FAMS, kindOf, layerNode, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, type Entry, type Fam } from './logicNodes';
 
 /*
- * Relations editor (the Logic canvas): sources → operations → targets,
- * wired on a canvas. Values update live at the playhead with the preview
- * data, and the same graph runs in the Rust renderer.
+ * The Logic canvas. Every node has its inputs on the left and its outputs on the right; value
+ * wires take the colour of what they carry, flow wires ▶ are white. Nodes are gathered in
+ * dashed frames (one per function): switched off, folded, copied. The palette filters by name,
+ * by what serves in this template, by favourite and by the type of port; a wire dropped in the
+ * void offers the nodes that take it. Values update live at the playhead with the preview data;
+ * the same graph runs in the Rust renderer, and its flows on air in the server.
  */
 
 const NODE_W = 210;
-const HEAD = 30;
-const ROW = 24;
-
-/** Node kinds, by family (the palette's sections and the nodes' colors). An event node per event (`ev`). */
-type Cat = 'input' | 'op' | 'fn' | 'event' | 'trigger' | 'action' | 'var';
-/** What a template offers: a node shows in the palette only when it can serve. */
-type Has = { t: Template; others: number };
-export const KINDS: { type: LogicNode['type']; ev?: TriggerEvent['kind']; label: string; cat: Cat; icon: typeof Hash; can?: (h: Has) => boolean }[] = [
-  { type: 'layerProp', label: 'Layer property', cat: 'input', icon: Crosshair, can: (h) => h.t.layers.length > 0 },
-  { type: 'field', label: 'Data field', cat: 'input', icon: TextCursorInput, can: (h) => h.t.fields.length > 0 },
-  { type: 'constant', label: 'Number', cat: 'input', icon: Hash },
-  { type: 'text', label: 'Text', cat: 'input', icon: Type },
-  { type: 'onAir', label: 'On air', cat: 'input', icon: Radio, can: (h) => h.others > 0 },
-  { type: 'math', label: 'Math', cat: 'op', icon: Calculator },
-  { type: 'clamp', label: 'Clamp', cat: 'op', icon: Split },
-  { type: 'condition', label: 'Condition', cat: 'fn', icon: Split },
-  { type: 'bool', label: 'And / Or', cat: 'fn', icon: Ampersand },
-  { type: 'event', ev: 'scrollEnd', label: 'End of the scroll', cat: 'event', icon: ArrowLeftRight, can: (h) => h.t.layers.some(scrollLayer) },
-  { type: 'event', ev: 'timerZero', label: 'Timer', cat: 'event', icon: Timer, can: (h) => h.t.layers.some(timerLayer) },
-  { type: 'event', ev: 'videoEnd', label: 'End of the video', cat: 'event', icon: Play, can: (h) => h.t.layers.some(videoLayer) },
-  { type: 'event', ev: 'lastRow', label: 'Last row', cat: 'event', icon: Rows3, can: (h) => (h.t.datasets?.length ?? 0) > 0 },
-  { type: 'event', ev: 'dataChange', label: 'Value changes', cat: 'event', icon: Diamond, can: (h) => h.t.fields.length > 0 },
-  { type: 'event', ev: 'graphic', label: 'Another graphic', cat: 'event', icon: SquareStack, can: (h) => h.others > 0 },
-  { type: 'triggerIn', label: 'Trigger received', cat: 'trigger', icon: Zap },
-  { type: 'continue', label: 'Continue (F2)', cat: 'trigger', icon: ChevronsRight },
-  { type: 'target', label: 'Set property', cat: 'action', icon: Target, can: (h) => h.t.layers.length > 0 },
-  { type: 'out', label: 'Take out (OUT)', cat: 'action', icon: Square },
-  { type: 'resume', label: 'Resume the pause', cat: 'action', icon: Pause, can: (h) => h.t.markers.some((m) => m.kind === 'pause') },
-  { type: 'nextRow', label: 'Next row', cat: 'action', icon: ArrowDown, can: (h) => (h.t.datasets?.length ?? 0) > 0 },
-  { type: 'fire', label: 'Fire a trigger', cat: 'action', icon: Send },
-  // Made by the Data canvas (a calculation wired into a text).
-  { type: 'setField', label: 'Show in a text', cat: 'action', icon: Type, can: () => false },
-  { type: 'setVar', label: 'Set a variable', cat: 'var', icon: Variable },
-  { type: 'var', label: 'Read a variable', cat: 'var', icon: Variable },
-];
-/** The palette's sections, in order. */
-const CATS: { id: Cat; label: string }[] = [
-  { id: 'input', label: 'Inputs' },
-  { id: 'op', label: 'Operations' },
-  { id: 'fn', label: 'Functions' },
-  { id: 'event', label: 'Events' },
-  { id: 'trigger', label: 'Triggers' },
-  { id: 'action', label: 'Actions' },
-  { id: 'var', label: 'Variables' },
-];
-/** The event an event node's kind stands for (a timer at a time is the Timer node). */
-const evKind = (on: TriggerEvent) => (on.kind === 'timerAt' ? 'timerZero' : on.kind === 'dataIs' ? 'dataChange' : on.kind);
-/** A node's kind (a text measurement is a Layer property). */
-export const kindOf = (n: LogicNode) => KINDS.find((k) => k.type === (n.type === 'textSize' ? 'layerProp' : n.type) && (n.type !== 'event' || k.ev === evKind(n.on)))!;
-
-/** Layers an event can watch. */
-const timerLayer = (l: Layer) => l.type === 'clock' && !!((l as { timerMode?: string }).timerMode || ['countdown', 'stopwatch'].includes((l as { mode?: string }).mode ?? ''));
-const videoLayer = (l: Layer) => l.type === 'image' && !!((l as { video?: boolean }).video || ((l as { frames?: string[] }).frames?.length ?? 0) > 0);
-const scrollLayer = (l: Layer) => l.type === 'ticker' || l.type === 'credits';
-
-const MATH: { value: MathOp; label: string }[] = [
-  { value: 'add', label: 'A + B' },
-  { value: 'sub', label: 'A − B' },
-  { value: 'mul', label: 'A × B' },
-  { value: 'div', label: 'A ÷ B' },
-  { value: 'min', label: 'min(A, B)' },
-  { value: 'max', label: 'max(A, B)' },
-  { value: 'abs', label: '|A|' },
-  { value: 'round', label: 'round(A)' },
-  { value: 'floor', label: 'floor(A)' },
-  { value: 'ceil', label: 'ceil(A)' },
+const WIDE = new Set(['expr', 'if', 'lookup', 'layer']);
+const FRAME_COLORS = ['#8fa3ff', '#a78bfa', '#22d3ee', '#f59e0b', '#f472b6', '#4ade80', '#fb7185', '#facc15'];
+const CLIP_KEY = 'strata.logic.clipboard';
+const TYPES: { id: PortType; label: string }[] = [
+  { id: 'flow', label: 'Flow' },
+  { id: 'num', label: 'Number' },
+  { id: 'text', label: 'Text' },
+  { id: 'color', label: 'Colour' },
+  { id: 'bool', label: 'Yes / no' },
+  { id: 'img', label: 'Picture' },
+  { id: 'list', label: 'List' },
 ];
 
-const CMP: { value: Cmp; label: string }[] = [
-  { value: 'gt', label: 'A > B' },
-  { value: 'ge', label: 'A ≥ B' },
-  { value: 'lt', label: 'A < B' },
-  { value: 'le', label: 'A ≤ B' },
-  { value: 'eq', label: 'A = B' },
-  { value: 'ne', label: 'A ≠ B' },
-  { value: 'empty', label: 'A is empty' },
-  { value: 'notEmpty', label: 'A is not empty' },
-];
-
-/** Properties a layer of this type has (what a Layer property or Set property node offers). */
-export function propsOf(l: Layer | undefined, numeric: boolean): Prop[] {
-  if (!l) return [];
-  const has = (p: Prop) => {
-    if (p === 'fill') return l.type !== 'image';
-    if (p === 'stroke' || p === 'strokeWidth') return l.type !== 'image' && l.type !== 'qrCode';
-    if (p === 'cornerRadius') return l.type === 'rect' || l.type === 'group' || l.type === 'progress';
-    if (p === 'fontSize' || p === 'letterSpacing') return TEXT_LIKE.has(l.type);
-    if (p.startsWith('crop')) return l.type === 'image';
-    if (p === 'arcStart' || p === 'arcEnd' || p === 'innerRadius') return l.type === 'ellipse';
-    if (p === 'drawStart' || p === 'drawEnd') return l.type === 'pen';
-    if (p === 'cornerTl' || p === 'cornerTr' || p === 'cornerBr' || p === 'cornerBl') return l.type === 'rect';
-    if (p === 'fill2') return ['rect', 'ellipse', 'polygon', 'pen', 'text'].includes(l.type);
-    // The layer's drop shadow (a Text has its own).
-    if (p === 'shadowColor' || p === 'shadowX' || p === 'shadowY' || p === 'shadowBlur') return l.type !== 'text';
-    return true;
-  };
-  return PROPS.filter((p) => has(p) && (!numeric || !COLOR_PROPS.has(p)));
-}
-/** Property names in full, for the lists (the Inspector's labels are short: W, H). */
-const PROP_NAMES: Partial<Record<Prop, string>> = { x: 'X position', y: 'Y position', width: 'Width', height: 'Height', anchorX: 'Anchor X', anchorY: 'Anchor Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity', strokeWidth: 'Stroke width', cornerRadius: 'Corner radius', fontSize: 'Text size', letterSpacing: 'Letter spacing' };
-const propName = (p: Prop) => t(PROP_NAMES[p] ?? PROP_LABELS[p] ?? p);
-const METRICS: { value: TextMetric; label: string }[] = [
-  { value: 'width', label: 'Text width' },
-  { value: 'height', label: 'Text height' },
-  { value: 'lines', label: 'Lines' },
-  { value: 'chars', label: 'Characters' },
-];
-
-/** The variables a template sets (its « Set a variable » nodes). */
-export const varNames = (t: Template) => [...new Set((t.logic?.nodes ?? []).flatMap((n) => (n.type === 'setVar' && n.name.trim() ? [n.name.trim()] : [])))];
-
-export function makeNode(type: LogicNode['type'], t: Template, x: number, y: number, ev?: TriggerEvent['kind']): LogicNode {
-  const first = t.layers[0]?.id ?? '';
-  const text = t.layers.find((l) => l.type === 'text')?.id ?? first;
-  const base = { id: newId(), x, y };
-  switch (type) {
-    case 'layerProp':
-      return { ...base, type, layer: first, prop: 'width' };
-    case 'textSize':
-      return { ...base, type, layer: text, metric: 'width' };
-    case 'field':
-      return { ...base, type, key: t.fields[0]?.key ?? '' };
-    case 'constant':
-      return { ...base, type, value: 0 };
-    case 'math':
-      return { ...base, type, op: 'add' };
-    case 'clamp':
-      return { ...base, type, min: 0, max: 1920 };
-    case 'condition':
-      return { ...base, type, cmp: 'gt' };
-    case 'target':
-      return { ...base, type, layer: first, prop: 'width', mode: 'set' };
-    case 'text':
-      return { ...base, type, value: '' };
-    case 'bool':
-      return { ...base, type, op: 'or' };
-    case 'out':
-      return { ...base, type };
-    case 'resume':
-      return { ...base, type, marker: t.markers.find((m) => m.kind === 'pause')?.id ?? '' };
-    case 'fire':
-      return { ...base, type, name: '' };
-    case 'nextRow':
-      return { ...base, type, dataset: t.datasets?.[0]?.key ?? '' };
-    case 'onAir':
-      return { ...base, type, template: '', transition: 0.4, test: false };
-    case 'triggerIn':
-      return { ...base, type, name: '' };
-    case 'continue':
-      return { ...base, type };
-    case 'setVar':
-      return { ...base, type, name: varNames(t)[0] ?? 'var1', value: '1', transition: 0 };
-    case 'var':
-      return { ...base, type, name: varNames(t)[0] ?? '', test: 0 };
-    case 'setField':
-      return { ...base, type, key: `calc_${base.id}` };
-    case 'event': {
-      const of = (f: (l: Layer) => boolean) => t.layers.find(f)?.id ?? '';
-      const on: TriggerEvent =
-        ev === 'timerZero'
-          ? { kind: 'timerZero', layer: of(timerLayer) }
-          : ev === 'videoEnd'
-            ? { kind: 'videoEnd', layer: of(videoLayer) }
-            : ev === 'lastRow'
-              ? { kind: 'lastRow', dataset: t.datasets?.[0]?.key ?? '' }
-              : ev === 'dataChange'
-                ? { kind: 'dataChange', key: t.fields[0]?.key ?? '' }
-                : ev === 'graphic'
-                  ? { kind: 'graphic', template: '' }
-                  : { kind: 'scrollEnd', layer: of(scrollLayer), passes: 1 };
-      return { ...base, type, on };
-    }
-  }
+/** A port of a node on the canvas. */
+interface PortRef {
+  node: string;
+  port: string;
+  dir: 'in' | 'out';
+  type: PortType;
 }
 
-const portIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + INPUTS[n.type].indexOf(port) * ROW + ROW / 2 });
-const portOut = (n: LogicNode, w = NODE_W) => ({ x: n.x + w, y: n.y + HEAD / 2 });
-
-function curve(a: { x: number; y: number }, b: { x: number; y: number }) {
-  const dx = Math.max(40, Math.abs(b.x - a.x) / 2);
-  return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
+/** What is copied: nodes, the wires between them, their frames. */
+interface Clip {
+  v: 1;
+  nodes: LogicNode[];
+  edges: LogicEdge[];
+  frames: LogicFrame[];
+  /** The layers its Layer nodes stand for (to find them again in another template). */
+  layers: { id: string; name: string; type: string }[];
 }
 
 export const fmt = (v: LVal | undefined) => (v === undefined ? '' : typeof v === 'number' ? String(+v.toFixed(2)) : `“${v.length > 18 ? `${v.slice(0, 18)}…` : v}”`);
 
-/** Settings of a logic node (layer, property, operation…), shared by the Logic and Data editors. */
-export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template: Template; setNode: (id: string, patch: Partial<LogicNode>, key?: string) => void }) {
-  const layerOpts = template.layers.map((l) => ({ value: l.id, label: l.name, note: l.type }));
-  const layerOf = (id: string) => template.layers.find((l) => l.id === id);
-  const propOpts = (l: Layer | undefined, numeric: boolean) => propsOf(l, numeric).map((p) => ({ value: p as string, label: propName(p), group: t('Property') }));
-  const replace = (patch: Partial<LogicNode> & { type: LogicNode['type'] }) => setNode(n.id, patch as Partial<LogicNode>);
+const isHex = (v: LVal | undefined): v is string => typeof v === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v.trim());
 
-  switch (n.type) {
-    // One node reads a layer: its properties, and for a text its measured size.
-    case 'layerProp':
-    case 'textSize': {
-      const l = layerOf(n.layer);
-      const measured = l?.type === 'text';
-      const value = n.type === 'textSize' ? `m:${n.metric}` : n.prop;
-      const opts = [...propOpts(l, true), ...(measured ? METRICS.map((m) => ({ value: `m:${m.value}`, label: t(m.label), group: t('Measured text') })) : [])];
-      return (
-        <>
-          <Dropdown
-            value={n.layer}
-            options={layerOpts}
-            onChange={(id) => {
-              const nl = layerOf(id);
-              // A measurement needs a text: back to a property otherwise.
-              if (n.type === 'textSize' && nl?.type !== 'text') replace({ type: 'layerProp', layer: id, prop: 'width' } as never);
-              else setNode(n.id, { layer: id } as Partial<LogicNode>);
-            }}
-          />
-          <Dropdown
-            value={value}
-            options={opts}
-            onChange={(v) => (v.startsWith('m:') ? replace({ type: 'textSize', metric: v.slice(2) as TextMetric } as never) : replace({ type: 'layerProp', prop: v as Prop } as never))}
-          />
-        </>
-      );
+/** A value as a node shows it: a number, a swatch, a short text. */
+function Val({ v }: { v: LVal | undefined }) {
+  if (v === undefined) return null;
+  if (isHex(v)) return <span className="lx-sw" style={{ background: v }} title={v} />;
+  return <span className="lx-v">{fmt(v)}</span>;
+}
+
+/** The Triggers of an older template, joined to its Logic (one graph now; cg_core Template::merge_triggers). */
+function mergeTriggers(tpl: Template) {
+  const tr = tpl.triggers;
+  if (!tr?.nodes.length) return void delete tpl.triggers;
+  tpl.logic ??= { nodes: [], edges: [] };
+  const taken = new Set(tpl.logic.nodes.map((n) => n.id));
+  for (const n of tr.nodes) {
+    if (!taken.has(n.id)) continue;
+    const old = n.id;
+    n.id = `${old}-t`;
+    for (const e of tr.edges) {
+      if (e.from === old) e.from = n.id;
+      if (e.to === old) e.to = n.id;
     }
-    case 'field':
-      return (
-        <Dropdown
-          value={n.key}
-          placeholder={t('Choose a field')}
-          options={[...(template.fields.some((f) => f.key === n.key) || !n.key ? [] : [{ value: n.key, label: n.key }]), ...template.fields.map((f) => ({ value: f.key, label: f.label, note: t(f.kind) }))]}
-          onChange={(key) => setNode(n.id, { key })}
-        />
-      );
-    case 'constant':
-      return <NumberField value={n.value} onChange={(v) => setNode(n.id, { value: v }, `logic-v-${n.id}`)} />;
-    case 'onAir':
-      return <OnAirBody n={n} template={template} setNode={setNode} />;
-    case 'triggerIn':
-      return <TextInput value={n.name} placeholder={t('goal, next, line2…')} onChange={(v) => setNode(n.id, { name: v } as Partial<LogicNode>, `logic-v-${n.id}`)} />;
-    case 'continue':
-      return null;
-    case 'setField':
-      return <span className="ln-note">{`{{${n.key}}}`}</span>;
-    case 'setVar':
-      return (
-        <>
-          <label className="ln-row">
-            <span>{t('Variable')}</span>
-            <TextInput value={n.name} onChange={(v) => setNode(n.id, { name: v.replace(/\s+/g, '_') } as Partial<LogicNode>, `logic-v-${n.id}`)} />
-          </label>
-          <label className="ln-row">
-            <span>{t('Value')}</span>
-            <TextInput value={n.value} onChange={(v) => setNode(n.id, { value: v } as Partial<LogicNode>, `logic-vv-${n.id}`)} />
-          </label>
-          <label className="ln-row">
-            <span>{t('Transition')}</span>
-            <NumberField value={n.transition ?? 0} min={0} max={10} step={0.1} precision={1} suffix="s" onChange={(v) => setNode(n.id, { transition: Math.max(0, v) } as Partial<LogicNode>, `logic-vt-${n.id}`)} />
-          </label>
-        </>
-      );
-    case 'var': {
-      const names = varNames(template);
-      return (
-        <>
-          {names.length ? (
-            <Dropdown value={n.name} placeholder={t('Choose a variable')} options={[...(names.includes(n.name) || !n.name ? [] : [{ value: n.name, label: n.name }]), ...names.map((v) => ({ value: v, label: v }))]} onChange={(name) => setNode(n.id, { name } as Partial<LogicNode>)} />
-          ) : (
-            <TextInput value={n.name} placeholder={t('Variable')} onChange={(v) => setNode(n.id, { name: v.replace(/\s+/g, '_') } as Partial<LogicNode>, `logic-v-${n.id}`)} />
-          )}
-          <label className="ln-row">
-            <span>{tc('logic', 'Try')}</span>
-            <NumberField value={n.test ?? 0} step={1} onChange={(v) => setNode(n.id, { test: v } as Partial<LogicNode>, `logic-vt-${n.id}`)} />
-          </label>
-        </>
-      );
-    }
-    case 'math':
-      return <Dropdown value={n.op} options={MATH.map((o) => ({ ...o, label: t(o.label) }))} onChange={(op) => setNode(n.id, { op })} />;
-    case 'clamp':
-      return (
-        <div className="ln-pair">
-          <label>
-            <span>{t('Min')}</span>
-            <NumberField value={n.min} onChange={(v) => setNode(n.id, { min: v }, `logic-v-${n.id}`)} />
-          </label>
-          <label>
-            <span>{t('Max')}</span>
-            <NumberField value={n.max} onChange={(v) => setNode(n.id, { max: v }, `logic-v-${n.id}`)} />
-          </label>
-        </div>
-      );
-    case 'condition':
-      return <Dropdown value={n.cmp} options={CMP.map((o) => ({ ...o, label: t(o.label) }))} onChange={(cmp) => setNode(n.id, { cmp })} />;
-    case 'target': {
-      const l = layerOf(n.layer);
-      return (
-        <>
-          <Dropdown value={n.layer} options={layerOpts} onChange={(id) => setNode(n.id, { layer: id } as Partial<LogicNode>)} />
-          <Dropdown value={n.prop} options={propOpts(l, false)} onChange={(p) => setNode(n.id, { prop: p as Prop } as Partial<LogicNode>)} />
-          <Dropdown
-            value={n.mode}
-            options={[
-              { value: 'set', label: t('Set to') },
-              { value: 'add', label: t('Add to the animation') },
-              { value: 'multiply', label: t('Multiply the animation') },
-            ]}
-            onChange={(mode) => setNode(n.id, { mode: mode as 'set' })}
-          />
-        </>
-      );
-    }
-    case 'text':
-      return <TextInput value={n.value} onChange={(value) => setNode(n.id, { value }, `logic-v-${n.id}`)} />;
-    case 'bool':
-      return (
-        <Segmented
-          value={n.op}
-          onChange={(op) => setNode(n.id, { op })}
-          options={[
-            { value: 'and', label: t('And') },
-            { value: 'or', label: t('Or') },
-          ]}
-        />
-      );
-    case 'out':
-      return null;
-    case 'resume':
-      return <Dropdown value={n.marker} placeholder={t('Choose a pause')} options={template.markers.filter((m) => m.kind === 'pause').map((m) => ({ value: m.id, label: m.name || t('Pause') }))} onChange={(marker) => setNode(n.id, { marker })} />;
-    case 'event':
-      return <EventBody n={n} template={template} set={(on, key) => setNode(n.id, { on } as Partial<LogicNode>, key)} />;
-    case 'fire':
-      return <TextInput value={n.name} placeholder={t('goal, next, line2…')} onChange={(name) => setNode(n.id, { name }, `logic-v-${n.id}`)} />;
-    case 'nextRow':
-      return <Dropdown value={n.dataset} placeholder={t('Choose a data set')} options={(template.datasets ?? []).map((d) => ({ value: d.key, label: d.name }))} onChange={(dataset) => setNode(n.id, { dataset })} />;
   }
+  tpl.logic.nodes.push(...tr.nodes);
+  tpl.logic.edges.push(...tr.edges);
+  delete tpl.triggers;
+}
+
+/** An expression field: the error shows on it. */
+export function ExprInput({ value, onChange, placeholder, k }: { value: string; onChange: (v: string, key?: string) => void; placeholder?: string; k: string }) {
+  const err = value.trim() ? exprError(value) : undefined;
+  return (
+    <span className={`lx-expr ${err ? 'bad' : ''}`} title={err ? `${t('Error')} : ${err}` : undefined}>
+      <TextInput value={value} placeholder={placeholder} onChange={(v) => onChange(v, k)} />
+    </span>
+  );
+}
+
+/** A branch value: a colour gets a swatch next to the expression. */
+function BranchValue({ value, onChange, k }: { value: string; onChange: (v: string, key?: string) => void; k: string }) {
+  const m = /^\s*"(#[0-9a-f]{6}(?:[0-9a-f]{2})?)"\s*$/i.exec(value);
+  return (
+    <span className="lx-bval">
+      {m && <HexColorField compact value={m[1]} onChange={(hex) => onChange(`"${hex}"`, `${k}-c`)} />}
+      <ExprInput value={value} onChange={onChange} k={k} placeholder={t('value')} />
+    </span>
+  );
 }
 
 /** « On air »: the graphic watched, how long its presence glides (s), its value in the Designer. */
-function OnAirBody({ n, template, setNode }: { n: Extract<LogicNode, { type: 'onAir' }>; template: Template; setNode: (id: string, patch: Partial<LogicNode>, key?: string) => void }) {
+function OnAirBody({ n, template, set }: { n: Extract<LogicNode, { type: 'onAir' }>; template: Template; set: (patch: Partial<LogicNode>, key?: string) => void }) {
   const project = useApp((s) => s.project);
   return (
     <>
-      <Dropdown value={n.template} placeholder={t('Choose a graphic')} options={(project?.templates ?? []).filter((x) => x.id !== template.id).map((x) => ({ value: x.id, label: x.name }))} onChange={(id) => setNode(n.id, { template: id } as Partial<LogicNode>)} />
-      <label className="ln-row">
+      <Dropdown value={n.template} placeholder={t('Choose a graphic')} options={(project?.templates ?? []).filter((x) => x.id !== template.id).map((x) => ({ value: x.id, label: x.name }))} onChange={(id) => set({ template: id } as Partial<LogicNode>)} />
+      <label className="lx-field">
         <span>{t('Transition')}</span>
-        <NumberField value={n.transition ?? 0} min={0} max={10} step={0.1} precision={1} suffix="s" onChange={(v) => setNode(n.id, { transition: Math.max(0, v) } as Partial<LogicNode>, `logic-v-${n.id}`)} />
+        <NumberField value={n.transition ?? 0} min={0} max={10} step={0.1} precision={1} suffix="s" onChange={(v) => set({ transition: Math.max(0, v) } as Partial<LogicNode>, `lx-${n.id}-tr`)} />
       </label>
-      <label className="ln-row">
+      <label className="lx-field">
         <span>{tc('logic', 'Try')}</span>
         <Segmented
           value={n.test ? '1' : '0'}
-          onChange={(v) => setNode(n.id, { test: v === '1' } as Partial<LogicNode>)}
+          onChange={(v) => set({ test: v === '1' } as Partial<LogicNode>)}
           options={[
             { value: '0', label: t('No') },
             { value: '1', label: t('Yes') },
@@ -393,9 +147,9 @@ function EventBody({ n, template, set }: { n: Extract<LogicNode, { type: 'event'
         <>
           <Dropdown value={on.layer} placeholder={t('Choose a layer')} options={layers(scrollLayer)} onChange={(layer) => set({ ...on, layer, passes: template.layers.find((l) => l.id === layer)?.type === 'ticker' ? (on.passes ?? 1) : undefined })} />
           {ticker && (
-            <label className="ln-row">
+            <label className="lx-field">
               <span>{t('Passes')}</span>
-              <NumberField value={on.passes ?? 1} min={1} step={1} onChange={(v) => set({ ...on, passes: Math.max(1, Math.round(v)) }, `logic-v-${n.id}`)} />
+              <NumberField value={on.passes ?? 1} min={1} step={1} onChange={(v) => set({ ...on, passes: Math.max(1, Math.round(v)) }, `lx-${n.id}-p`)} />
             </label>
           )}
         </>
@@ -414,7 +168,7 @@ function EventBody({ n, template, set }: { n: Extract<LogicNode, { type: 'event'
               { value: 'timerAt', label: t('At a time') },
             ]}
           />
-          {on.kind === 'timerAt' && <NumberField value={on.seconds} min={0} step={1} suffix="s" onChange={(v) => set({ ...on, seconds: Math.max(0, v) }, `logic-v-${n.id}`)} />}
+          {on.kind === 'timerAt' && <NumberField value={on.seconds} min={0} step={1} suffix="s" onChange={(v) => set({ ...on, seconds: Math.max(0, v) }, `lx-${n.id}-s`)} />}
         </>
       );
     case 'videoEnd':
@@ -441,35 +195,52 @@ function EventBody({ n, template, set }: { n: Extract<LogicNode, { type: 'event'
   }
 }
 
-export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' || n.type === 'bool' ? port.toUpperCase() : port === 'when' ? 'When' : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port) ?? port);
+/** The next free input name of a Calculation or an If: a, b, c… */
+const nextName = (taken: string[]) => 'abcdefghijklmnopqrstuvwxyz'.split('').find((c) => !taken.includes(c)) ?? `v${taken.length + 1}`;
 
-/** The Triggers of an older template, joined to its Logic (one graph now; cg_core Template::merge_triggers). */
-function mergeTriggers(t: Template) {
-  const tr = t.triggers;
-  if (!tr?.nodes.length) return void delete t.triggers;
-  t.logic ??= { nodes: [], edges: [] };
-  const taken = new Set(t.logic.nodes.map((n) => n.id));
-  for (const n of tr.nodes) {
-    if (!taken.has(n.id)) continue;
-    const old = n.id;
-    n.id = `${old}-t`;
-    for (const e of tr.edges) {
-      if (e.from === old) e.from = n.id;
-      if (e.to === old) e.to = n.id;
-    }
-  }
-  t.logic.nodes.push(...tr.nodes);
-  t.logic.edges.push(...tr.edges);
-  delete t.triggers;
+/** What the ports of the nodes need from the canvas. */
+const PortCtx = createContext<{ wiredIn: Set<string>; wiredOut: Set<string>; startWire: (e: React.PointerEvent, ref: PortRef) => void }>({ wiredIn: new Set(), wiredOut: new Set(), startWire: () => {} });
+
+function PortDot({ n, p, dir }: { n: LogicNode; p: Port; dir: 'in' | 'out' }) {
+  const { wiredIn, wiredOut, startWire } = useContext(PortCtx);
+  return (
+    <span
+      className={`lx-port ${dir} t-${p.type} ${(dir === 'in' ? wiredIn : wiredOut).has(`${n.id}|${p.id}`) ? 'on' : ''}`}
+      data-pk={`${n.id}|${dir}|${p.id}`}
+      data-node={n.id}
+      data-port={p.id}
+      data-dir={dir}
+      data-type={p.type}
+      title={p.raw ? p.label : t(p.label)}
+      onPointerDown={(e) => startWire(e, { node: n.id, port: p.id, dir, type: p.type })}
+    />
+  );
+}
+
+/** A row of a node: an input on its left, an output on its right. */
+function Row({ n, inP, outP, children, className = '' }: { n: LogicNode; inP?: Port; outP?: Port; children?: React.ReactNode; className?: string }) {
+  return (
+    <div className={`lx-row ${className}`}>
+      {inP && <PortDot n={n} p={inP} dir="in" />}
+      {children}
+      {outP && <PortDot n={n} p={outP} dir="out" />}
+    </div>
+  );
+}
+
+/** Which entries take or give a port of this type (for the type filter and the menu of a dropped wire). */
+function fits(n: LogicNode, want: { type: PortType; side: 'in' | 'out' }): Port | undefined {
+  const { ins, outs } = portsOf(n);
+  const list = want.side === 'in' ? ins : outs;
+  const ok = (p: Port) => (want.side === 'in' ? accepts(want.type, p.type) : accepts(p.type, want.type));
+  return list.find((p) => p.type === want.type && ok(p)) ?? list.find(ok);
 }
 
 /** The Logic: what the graphic draws (values, conditions) and what happens on air (events, triggers, actions, variables), one graph. */
 export function LogicEditor({ onClose }: { onClose: () => void }) {
-  const graph = 'logic' as const;
   const { template, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
-  const cv = useCanvasView(`${graph}.${template?.id ?? ''}`, '.logic-node', { onArrange: () => arrange() });
-  // Node widths, kept for the user.
-  const sizesKey = `${graph}.sizes.${template?.id ?? ''}`;
+  const cv = useCanvasView(`logic.${template?.id ?? ''}`, '.lx-node, .lx-frame, .lx-pill', { onArrange: () => arrange() });
+  const sizesKey = `logic.sizes.${template?.id ?? ''}`;
   const [sizes, setSizesState] = useState<Record<string, number>>(() => displayPref(sizesKey, {}));
   const setSize = (id: string, w: number) =>
     setSizesState((cur) => {
@@ -477,15 +248,29 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
       setDisplayPref(sizesKey, next);
       return next;
     });
-  const widthOf = (n: LogicNode) => sizes[n.id] ?? NODE_W;
-  const [selected, setSelected] = useState<string | null>(null);
-  const [wire, setWire] = useState<{ from: string; x: number; y: number } | null>(null);
+  const widthOf = (n: LogicNode) => sizes[n.id] ?? (WIDE.has(n.type) ? (n.type === 'if' ? 300 : 240) : NODE_W);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [selFrame, setSelFrame] = useState<string | null>(null);
+  const [wire, setWire] = useState<{ from: PortRef; x: number; y: number } | null>(null);
+  const [quick, setQuick] = useState<{ sx: number; sy: number; wx: number; wy: number; from: PortRef } | null>(null);
+  const [band, setBand] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [pos, setPos] = useState<Record<string, { x: number; y: number }>>({});
+  // Palette filters.
+  const [search, setSearch] = useState('');
+  const [qSearch, setQSearch] = useState('');
+  const [scope, setScope] = useState<'here' | 'all' | 'fav'>(() => displayPref('logic.scope', 'here'));
+  const [typeFilter, setTypeFilter] = useState<PortType | null>(null);
+  const [favs, setFavs] = useState<string[]>(() => displayPref('logic.favs', []));
+  const [folded, setFolded] = useState<string[]>(() => displayPref('logic.folded', []));
+  const searchRef = useRef<HTMLInputElement>(null);
+  const spaceRef = useRef<HTMLDivElement>(null);
   const logic: Logic = template?.logic ?? { nodes: [], edges: [] };
+  const frames = logic.frames ?? [];
   const projectTemplates = useApp((s) => s.project?.templates.length ?? 0);
-  // An older template's Triggers join its Logic when it opens.
   const hasTriggers = !!template?.triggers?.nodes.length;
   useEffect(() => {
-    if (hasTriggers) update((t) => mergeTriggers(t));
+    if (hasTriggers) update((tpl) => mergeTriggers(tpl));
   }, [hasTriggers, update]);
 
   // Live values at the playhead.
@@ -493,140 +278,1095 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     if (!template) return new Map<string, LVal>();
     const hold = holdFrame(template);
     const resolved = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, previewData, hold)]));
-    return nodeValues(logic, resolved, previewData, measureLayer(template.layers, previewData, interpolateText));
-  }, [template, frame, previewData]);
+    return nodeValues(logic, resolved, previewData, measureLayer(template.layers, previewData, interpolateText), clockAt(frame));
+  }, [template, frame, previewData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const all = useMemo(() => (template ? entries(template) : []), [template]);
+  // The ports of each entry, for the type filter.
+  const entryPorts = useMemo(() => {
+    const m = new Map<string, Set<PortType>>();
+    if (!template) return m;
+    for (const e of all) {
+      const { ins, outs } = portsOf(e.make(template, 0, 0));
+      m.set(e.key, new Set([...ins, ...outs].map((p) => p.type)));
+    }
+    return m;
+  }, [all, template]);
+
+  // Where each port is on the canvas (measured after each render).
+  useLayoutEffect(() => {
+    const space = spaceRef.current;
+    if (!space) return;
+    const sr = space.getBoundingClientRect();
+    const z = cv.view.zoom || 1;
+    const next: Record<string, { x: number; y: number }> = {};
+    for (const el of space.querySelectorAll<HTMLElement>('[data-pk]')) {
+      const r = el.getBoundingClientRect();
+      next[el.dataset.pk!] = { x: Math.round((r.left + r.width / 2 - sr.left) / z), y: Math.round((r.top + r.height / 2 - sr.top) / z) };
+    }
+    if (JSON.stringify(next) !== JSON.stringify(pos)) setPos(next);
+  });
 
   if (!template) return null;
   const nodes = new Map(logic.nodes.map((n) => [n.id, n]));
+  const collapsedOf = (n: LogicNode | undefined) => (n?.frame ? frames.find((f) => f.id === n.frame && f.collapsed) : undefined);
+  const wiredIn = new Set(logic.edges.map((e) => `${e.to}|${e.port}`));
+  const wiredOut = new Set(logic.edges.map((e) => `${e.from}|${fromPortOf(e)}`));
+  const others = projectTemplates - 1;
+
   const edit = (fn: (l: Logic) => void, key?: string) =>
-    update((t) => {
-      const g = (t.logic ??= { nodes: [], edges: [] });
+    update((tpl) => {
+      const g = (tpl.logic ??= { nodes: [], edges: [] });
       fn(g);
-      if (!g.nodes.length) delete t.logic;
+      if (g.frames && !g.frames.length) delete g.frames;
+      if (!g.nodes.length && !g.frames?.length) delete tpl.logic;
     }, key);
   const setNode = (id: string, patch: Partial<LogicNode>, key?: string) =>
     edit((l) => {
       const n = l.nodes.find((x) => x.id === id);
       if (n) Object.assign(n, patch);
     }, key);
+  const mutate = (id: string, fn: (n: LogicNode) => void, key?: string) =>
+    edit((l) => {
+      const n = l.nodes.find((x) => x.id === id);
+      if (n) fn(n);
+    }, key);
+  const toWorld = cv.toWorld;
 
-  const canvasPoint = cv.toWorld;
+  /** The frame a node at this place falls in (the last one drawn, open). */
+  const frameAt = (fs: LogicFrame[], x: number, y: number) => [...fs].reverse().find((f) => !f.collapsed && x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h);
+  /** Puts nodes in the frame they are over (or out of any). */
+  const refit = (l: Logic, ids: Iterable<string>) => {
+    const fs = l.frames ?? [];
+    for (const id of ids) {
+      const n = l.nodes.find((x) => x.id === id);
+      if (!n) continue;
+      const f = frameAt(fs, n.x + widthOf(n) / 2, n.y + 16);
+      if (f) n.frame = f.id;
+      else delete n.frame;
+    }
+  };
 
-  /** Lays the nodes out from left to right (one step to undo): inputs left, the properties they set right. */
+  /** Lays the nodes out from left to right (one step to undo). */
   const arrange = () => {
     const size = measureNodes(cv.ref.current);
     const at = autoLayout(
-      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: ['target', 'out', 'resume', 'fire', 'nextRow', 'setVar'].includes(n.type) ? ('end' as const) : undefined })),
-      logic.edges,
+      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: portsOf(n).outs.every((p) => p.type === 'flow') && portsOf(n).ins.length ? ('end' as const) : undefined })),
+      logic.edges.map((e) => ({ from: e.from, to: e.to })),
       { tightSources: true },
     );
     useDesigner.setState({ lastCoalesce: null });
     edit((l) => {
       for (const n of l.nodes) if (at[n.id]) Object.assign(n, at[n.id]);
+      // The frames follow their nodes.
+      for (const f of l.frames ?? []) {
+        const ms = l.nodes.filter((n) => n.frame === f.id);
+        if (!ms.length) continue;
+        const x0 = Math.min(...ms.map((n) => n.x)) - 24;
+        const y0 = Math.min(...ms.map((n) => n.y)) - 40;
+        const x1 = Math.max(...ms.map((n) => n.x + (size[n.id]?.w ?? widthOf(n)))) + 24;
+        const y1 = Math.max(...ms.map((n) => n.y + (size[n.id]?.h ?? 120))) + 24;
+        Object.assign(f, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+      }
     });
   };
 
-  const add = (type: LogicNode['type'], ev?: TriggerEvent['kind']) => {
+  const place = () => {
     const v = cv.visible();
-    const x = Math.round(v.x + 60 + ((logic.nodes.length * 30) % 300));
-    const y = Math.round(v.y + 60 + ((logic.nodes.length * 40) % 360));
-    const at = freeSpot(document.querySelector('.logic-editor:not(.data-canvas) .logic-canvas'), { x, y });
-    const n = makeNode(type, template, at.x, at.y, ev);
-    edit((l) => void l.nodes.push(n));
-    setSelected(n.id);
+    const x = Math.round(v.x + 80 + ((logic.nodes.length * 30) % 300));
+    const y = Math.round(v.y + 70 + ((logic.nodes.length * 40) % 360));
+    return freeSpot(spaceRef.current, { x, y });
   };
 
-  const dragNode = (e: React.PointerEvent, n: LogicNode) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest('select, input, button, label, .port, .cv-resize')) return;
+  const addNode = (n: LogicNode) => {
+    edit((l) => {
+      l.nodes.push(n);
+      refit(l, [n.id]);
+    });
+    setSel(new Set([n.id]));
+    setSelFrame(null);
+  };
+  const addEntry = (e: Entry) => {
+    const at = place();
+    addNode(e.make(template, at.x, at.y));
+  };
+
+  const removeNodes = (ids: Set<string>) =>
+    edit((l) => {
+      l.nodes = l.nodes.filter((n) => !ids.has(n.id));
+      l.edges = l.edges.filter((x) => !ids.has(x.from) && !ids.has(x.to));
+    });
+
+  // ── Selection, moves ──────────────────────────────────────────────────
+  const dragNodes = (e: React.PointerEvent, n: LogicNode) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('select, input, textarea, button, label, .lx-port, .cv-resize, .dd-btn')) return;
     e.preventDefault();
-    setSelected(n.id);
-    const start = canvasPoint(e.clientX, e.clientY);
-    const base = { x: n.x, y: n.y };
+    e.stopPropagation();
+    let ids = sel;
+    if (e.shiftKey) {
+      ids = new Set(sel);
+      if (ids.has(n.id)) ids.delete(n.id);
+      else ids.add(n.id);
+      setSel(ids);
+      return;
+    }
+    if (!sel.has(n.id)) {
+      ids = new Set([n.id]);
+      setSel(ids);
+    }
+    setSelFrame(null);
+    const start = toWorld(e.clientX, e.clientY);
+    const base = new Map(logic.nodes.filter((x) => ids.has(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
     useDesigner.setState({ lastCoalesce: null });
+    const key = `lx-move-${newId()}`;
     const move = (ev: PointerEvent) => {
-      const p = canvasPoint(ev.clientX, ev.clientY);
-      setNode(n.id, { x: Math.round(base.x + p.x - start.x), y: Math.round(base.y + p.y - start.y) }, `logic-move-${n.id}`);
+      const p = toWorld(ev.clientX, ev.clientY);
+      edit((l) => {
+        for (const m of l.nodes) {
+          const b = base.get(m.id);
+          if (b) Object.assign(m, { x: Math.round(b.x + p.x - start.x), y: Math.round(b.y + p.y - start.y) });
+        }
+      }, key);
     };
     document.body.classList.add('cv-moving');
     const up = () => {
       document.body.classList.remove('cv-moving');
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      edit((l) => refit(l, base.keys()), key);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
 
-  const startWire = (e: React.PointerEvent, from: string) => {
+  const dragFrame = (e: React.PointerEvent, f: LogicFrame) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('input, button, .lx-ftoggle')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelFrame(f.id);
+    setSel(new Set());
+    const start = toWorld(e.clientX, e.clientY);
+    const fb = { x: f.x, y: f.y };
+    const base = new Map(logic.nodes.filter((n) => n.frame === f.id).map((n) => [n.id, { x: n.x, y: n.y }]));
+    useDesigner.setState({ lastCoalesce: null });
+    const key = `lx-frame-${newId()}`;
+    const move = (ev: PointerEvent) => {
+      const p = toWorld(ev.clientX, ev.clientY);
+      const dx = Math.round(p.x - start.x);
+      const dy = Math.round(p.y - start.y);
+      edit((l) => {
+        const ff = l.frames?.find((x) => x.id === f.id);
+        if (ff) Object.assign(ff, { x: fb.x + dx, y: fb.y + dy });
+        for (const n of l.nodes) {
+          const b = base.get(n.id);
+          if (b) Object.assign(n, { x: b.x + dx, y: b.y + dy });
+        }
+      }, key);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const resizeFrame = (e: React.PointerEvent, f: LogicFrame) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const start = toWorld(e.clientX, e.clientY);
+    const fb = { w: f.w, h: f.h };
+    useDesigner.setState({ lastCoalesce: null });
+    const key = `lx-fsize-${newId()}`;
+    const move = (ev: PointerEvent) => {
+      const p = toWorld(ev.clientX, ev.clientY);
+      edit((l) => {
+        const ff = l.frames?.find((x) => x.id === f.id);
+        if (ff) Object.assign(ff, { w: Math.max(160, Math.round(fb.w + p.x - start.x)), h: Math.max(90, Math.round(fb.h + p.y - start.y)) });
+      }, key);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      edit((l) => refit(l, l.nodes.map((n) => n.id)), key);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const setFrame = (id: string, patch: Partial<LogicFrame>, key?: string) =>
+    edit((l) => {
+      const f = l.frames?.find((x) => x.id === id);
+      if (f) Object.assign(f, patch);
+    }, key);
+
+  /** A frame around the selected nodes (or an empty one in view). */
+  const makeFrame = () => {
+    const ids = sel.size ? [...sel] : [];
+    let box = { x: 0, y: 0, w: 420, h: 260 };
+    if (ids.length) {
+      const els = ids.map((id) => spaceRef.current?.querySelector<HTMLElement>(`[data-node-id="${id}"]`)).filter((x): x is HTMLElement => !!x);
+      const x0 = Math.min(...els.map((el) => el.offsetLeft)) - 24;
+      const y0 = Math.min(...els.map((el) => el.offsetTop)) - 44;
+      const x1 = Math.max(...els.map((el) => el.offsetLeft + el.offsetWidth)) + 24;
+      const y1 = Math.max(...els.map((el) => el.offsetTop + el.offsetHeight)) + 24;
+      box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    } else {
+      const at = place();
+      box = { ...box, x: at.x, y: at.y };
+    }
+    const f: LogicFrame = { id: newId(), name: `${t('Function')} ${frames.length + 1}`, color: FRAME_COLORS[frames.length % FRAME_COLORS.length], ...box };
+    edit((l) => {
+      (l.frames ??= []).push(f);
+      for (const n of l.nodes) if (ids.includes(n.id)) n.frame = f.id;
+    });
+    setSelFrame(f.id);
+    setSel(new Set());
+    setRenaming(f.id);
+  };
+
+  const removeFrame = (id: string) =>
+    edit((l) => {
+      l.frames = (l.frames ?? []).filter((f) => f.id !== id);
+      for (const n of l.nodes) if (n.frame === id) delete n.frame;
+    });
+
+  // ── Copy / paste ──────────────────────────────────────────────────────
+  const clipOf = (ids: Set<string>, frameIds: Set<string>): Clip => {
+    const ns = logic.nodes.filter((n) => ids.has(n.id) || (n.frame && frameIds.has(n.frame)));
+    const keep = new Set(ns.map((n) => n.id));
+    const used = new Set(ns.flatMap((n) => (n.type === 'layer' || n.type === 'widget' ? [n.layer] : [])));
+    return {
+      v: 1,
+      nodes: structuredClone(ns),
+      edges: structuredClone(logic.edges.filter((e) => keep.has(e.from) && keep.has(e.to))),
+      frames: structuredClone(frames.filter((f) => frameIds.has(f.id) || ns.some((n) => n.frame === f.id))),
+      layers: template.layers.filter((l) => used.has(l.id)).map((l) => ({ id: l.id, name: l.name, type: l.type })),
+    };
+  };
+  const copy = () => {
+    const c = clipOf(sel, new Set(selFrame ? [selFrame] : []));
+    if (!c.nodes.length && !c.frames.length) return;
+    try {
+      localStorage.setItem(CLIP_KEY, JSON.stringify(c));
+    } catch {
+      /* private window */
+    }
+    navigator.clipboard?.writeText(JSON.stringify(c)).catch(() => {});
+  };
+  /** Puts a clip in this template: new ids, its layers found again here (same id, same name, same type). */
+  const insertClip = (c: Clip, at?: { x: number; y: number }) => {
+    const ids = new Map<string, string>();
+    for (const n of c.nodes) ids.set(n.id, newId());
+    for (const f of c.frames) ids.set(f.id, newId());
+    const mapLayer = (id: string) => {
+      if (template.layers.some((l) => l.id === id)) return id;
+      const was = c.layers.find((l) => l.id === id);
+      return (was && (template.layers.find((l) => l.name === was.name) ?? template.layers.find((l) => l.type === was.type))?.id) ?? id;
+    };
+    const xs = [...c.nodes.map((n) => n.x), ...c.frames.map((f) => f.x)];
+    const ys = [...c.nodes.map((n) => n.y), ...c.frames.map((f) => f.y)];
+    const o = at ? { x: at.x - Math.min(...xs), y: at.y - Math.min(...ys) } : { x: 40, y: 40 };
+    const ns: LogicNode[] = c.nodes.map((n) => {
+      const m = { ...structuredClone(n), id: ids.get(n.id)!, x: n.x + o.x, y: n.y + o.y } as LogicNode;
+      if (m.frame) m.frame = ids.get(m.frame);
+      if (!m.frame) delete m.frame;
+      if (m.type === 'layer' || m.type === 'widget') m.layer = mapLayer(m.layer);
+      return m;
+    });
+    const fs: LogicFrame[] = c.frames.map((f) => ({ ...f, id: ids.get(f.id)!, x: f.x + o.x, y: f.y + o.y }));
+    const es: LogicEdge[] = c.edges.map((e) => ({ ...e, from: ids.get(e.from)!, to: ids.get(e.to)! }));
+    edit((l) => {
+      l.nodes.push(...ns);
+      l.edges.push(...es);
+      if (fs.length) (l.frames ??= []).push(...fs);
+    });
+    setSel(new Set(ns.map((n) => n.id)));
+    setSelFrame(fs.length === 1 ? fs[0].id : null);
+  };
+  const clipboard = (): Clip | null => {
+    try {
+      const c = JSON.parse(localStorage.getItem(CLIP_KEY) ?? 'null') as Clip | null;
+      return c?.v === 1 ? c : null;
+    } catch {
+      return null;
+    }
+  };
+  const paste = () => {
+    const c = clipboard();
+    if (!c) return;
+    const v = cv.visible();
+    insertClip(c, { x: Math.round(v.x + 60), y: Math.round(v.y + 60) });
+  };
+
+  // ── Wires ─────────────────────────────────────────────────────────────
+  const portRef = (el: HTMLElement): PortRef => ({ node: el.dataset.node!, port: el.dataset.port!, dir: el.dataset.dir as 'in' | 'out', type: el.dataset.type as PortType });
+  const connect = (a: PortRef, b: PortRef) => {
+    const [from, to] = a.dir === 'out' ? [a, b] : [b, a];
+    if (from.dir !== 'out' || to.dir !== 'in' || from.node === to.node || !accepts(from.type, to.type)) return;
+    edit((l) => {
+      // An input takes one wire.
+      l.edges = l.edges.filter((x) => !(x.to === to.node && x.port === to.port));
+      l.edges.push({ from: from.node, ...(from.port !== 'out' ? { fromPort: from.port } : {}), to: to.node, port: to.port });
+    });
+  };
+  const startWire = (e: React.PointerEvent, ref: PortRef) => {
     e.stopPropagation();
     e.preventDefault();
-    const p = canvasPoint(e.clientX, e.clientY);
-    setWire({ from, ...p });
-    const move = (ev: PointerEvent) => setWire({ from, ...canvasPoint(ev.clientX, ev.clientY) });
+    let from = ref;
+    // Dragging from an input already wired picks its wire up.
+    if (ref.dir === 'in') {
+      const old = logic.edges.find((x) => x.to === ref.node && x.port === ref.port);
+      if (old) {
+        const src = nodes.get(old.from);
+        const sp = src && portsOf(src).outs.find((p) => p.id === fromPortOf(old));
+        edit((l) => void (l.edges = l.edges.filter((x) => x !== l.edges.find((y) => y.to === ref.node && y.port === ref.port))));
+        from = { node: old.from, port: fromPortOf(old), dir: 'out', type: sp?.type ?? 'any' };
+      }
+    }
+    setWire({ from, ...toWorld(e.clientX, e.clientY) });
+    const move = (ev: PointerEvent) => setWire({ from, ...toWorld(ev.clientX, ev.clientY) });
     const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setWire(null);
-      const target = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('.port.in');
-      const to = target?.dataset.node;
-      const port = target?.dataset.port;
-      if (to && port && to !== from) {
-        edit((l) => {
-          l.edges = l.edges.filter((x) => !(x.to === to && x.port === port));
-          l.edges.push({ from, to, port });
-        });
-      }
+      const hit = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('.lx-port');
+      if (hit) return connect(from, portRef(hit));
+      const over = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest('.lx-node, .lx-pal, .lx-quick');
+      if (over) return;
+      const vr = cv.ref.current?.getBoundingClientRect();
+      const w = toWorld(ev.clientX, ev.clientY);
+      setQSearch('');
+      if (vr) setQuick({ sx: ev.clientX - vr.left, sy: ev.clientY - vr.top, wx: Math.round(w.x), wy: Math.round(w.y), from });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
 
-  return (
-    <div className="logic-editor" onKeyDown={(e) => e.stopPropagation()}>
-      <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={template.name} onClose={onClose} />
-      <div className="logic-body">
-        <aside className="logic-palette">
-          {CATS.map((c) => ({ c, kinds: KINDS.filter((k) => k.cat === c.id && (!k.can || k.can({ t: template, others: projectTemplates - 1 }))) })).filter((x) => x.kinds.length).map(({ c, kinds }) => (
-            <div key={c.id} className="lp-group">
-              <div className="dc-pal-title">{t(c.label)}</div>
-              {kinds.map((k) => (
-                <button key={`${k.type}-${k.ev ?? ''}`} onClick={() => add(k.type, k.ev)} className={`cat-${k.cat}`}>
-                  <k.icon size={14} />
-                  <strong>{t(k.label)}</strong>
-                </button>
-              ))}
-            </div>
-          ))}
-        </aside>
-        <div
-          {...cv.viewport}
-          className={`logic-canvas ${cv.viewport.className}`}
-          tabIndex={0}
-          onPointerDown={(e) => {
-            setSelected(null);
-            cv.viewport.onPointerDown(e);
-          }}
-          onKeyDown={(e) => {
-            if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !(e.target as HTMLElement).closest('input, select')) {
+  /** From the menu of a dropped wire: the node, wired. */
+  const addWired = (make: (x: number, y: number) => LogicNode) => {
+    if (!quick) return;
+    const want = { type: quick.from.type, side: quick.from.dir === 'out' ? ('in' as const) : ('out' as const) };
+    const n = make(quick.from.dir === 'out' ? quick.wx + 20 : quick.wx - 240, quick.wy - 20);
+    const p = fits(n, want);
+    addNode(n);
+    if (p) connect(quick.from, { node: n.id, port: p.id, dir: want.side, type: p.type });
+    setQuick(null);
+  };
+
+  // ── Keys ──────────────────────────────────────────────────────────────
+  const onKey = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable]')) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (sel.size) removeNodes(sel);
+      else if (selFrame) removeFrame(selFrame);
+      setSel(new Set());
+      setSelFrame(null);
+    } else if (mod && e.key.toLowerCase() === 'c') copy();
+    else if (mod && e.key.toLowerCase() === 'v') paste();
+    else if (mod && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      if (sel.size || selFrame) insertClip(clipOf(sel, new Set(selFrame ? [selFrame] : [])));
+    } else if (mod && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      setSel(new Set(logic.nodes.map((n) => n.id)));
+    } else if (mod && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      searchRef.current?.focus();
+    } else if (!mod && e.key.toLowerCase() === 'f') makeFrame();
+    else if (e.key === 'Escape') {
+      setSel(new Set());
+      setSelFrame(null);
+      setQuick(null);
+    }
+  };
+
+  const onCanvasDown = (e: React.PointerEvent) => {
+    setQuick(null);
+    // The keys (Del, ⌘C, F…) go to the canvas.
+    if (!(e.target as HTMLElement).closest('input, textarea, select, button, [contenteditable]')) (e.currentTarget as HTMLElement).focus({ preventScroll: true });
+    const el = e.target as HTMLElement;
+    const onVoid = el === cv.ref.current || el.hasAttribute('data-canvas-void') || el instanceof SVGSVGElement;
+    if (onVoid) {
+      setSel(new Set());
+      setSelFrame(null);
+    }
+    // Shift + drag on the void: select the nodes in a box.
+    if (onVoid && e.shiftKey && e.button === 0) {
+      e.preventDefault();
+      const a = toWorld(e.clientX, e.clientY);
+      setBand({ x0: a.x, y0: a.y, x1: a.x, y1: a.y });
+      const move = (ev: PointerEvent) => {
+        const b = toWorld(ev.clientX, ev.clientY);
+        setBand({ x0: a.x, y0: a.y, x1: b.x, y1: b.y });
+      };
+      const up = (ev: PointerEvent) => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        const b = toWorld(ev.clientX, ev.clientY);
+        const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
+        const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
+        setSel(new Set(logic.nodes.filter((n) => !collapsedOf(n) && n.x < x1 && n.x + widthOf(n) > x0 && n.y < y1 && n.y + 60 > y0).map((n) => n.id)));
+        setBand(null);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      return;
+    }
+    cv.viewport.onPointerDown(e);
+  };
+
+  // ── Rendering ─────────────────────────────────────────────────────────
+  const pk = (node: string, dir: 'in' | 'out', port: string) => `${node}|${dir}|${port}`;
+  /** Where a wire ends: its port, or the folded frame its node is in. */
+  const at = (node: string, dir: 'in' | 'out', port: string) => {
+    const f = collapsedOf(nodes.get(node));
+    return f ? pos[`frame:${f.id}|${dir}`] : pos[pk(node, dir, port)];
+  };
+  const curve = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const dx = Math.max(40, Math.abs(b.x - a.x) / 2);
+    return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
+  };
+  const typeOfOut = (e: LogicEdge): PortType => {
+    const n = nodes.get(e.from);
+    return (n && portsOf(n).outs.find((p) => p.id === fromPortOf(e))?.type) ?? 'any';
+  };
+
+  const pIn = (n: LogicNode, id: string) => portsOf(n).ins.find((p) => p.id === id);
+  const pOut = (n: LogicNode, id: string) => portsOf(n).outs.find((p) => p.id === id);
+  const v = (n: LogicNode, port: string) => values.get(`${n.id}|${port}`);
+
+  /** Named inputs of a Calculation or an If: rename, remove, add. */
+  const inputRows = (n: LogicNode & { inputs: string[] }, used: string[]) => (
+    <>
+      {n.inputs.map((name, i) => (
+        <Row key={`i-${i}`} n={n} inP={pIn(n, name)}>
+          <input
+            className="lx-name"
+            value={name}
+            onChange={(e) => {
+              const nn = e.target.value.replace(/[^\p{L}\p{N}_]/gu, '').slice(0, 16);
+              if (!nn || n.inputs.includes(nn)) return;
               edit((l) => {
-                l.nodes = l.nodes.filter((n) => n.id !== selected);
-                l.edges = l.edges.filter((x) => x.from !== selected && x.to !== selected);
-              });
-              setSelected(null);
-            }
-          }}
-        >
-          <div className="logic-space" data-canvas-void style={cv.spaceStyle}>
+                const m = l.nodes.find((x) => x.id === n.id) as typeof n | undefined;
+                if (!m) return;
+                m.inputs = m.inputs.map((x) => (x === name ? nn : x));
+                for (const ed of l.edges) if (ed.to === n.id && ed.port === name) ed.port = nn;
+              }, `lx-${n.id}-in-${i}`);
+            }}
+          />
+          <Val v={v(n, `in:${name}`)} />
+          {!used.includes(name) && n.inputs.length > 1 && (
+            <button
+              className="lx-x"
+              title={t('Remove')}
+              onClick={() =>
+                edit((l) => {
+                  const m = l.nodes.find((x) => x.id === n.id) as typeof n | undefined;
+                  if (m) m.inputs = m.inputs.filter((x) => x !== name);
+                  l.edges = l.edges.filter((ed) => !(ed.to === n.id && ed.port === name));
+                })
+              }
+            >
+              <X size={10} />
+            </button>
+          )}
+        </Row>
+      ))}
+      <button className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).inputs.push(nextName((m as typeof n).inputs)))}>
+        <Plus size={11} /> {t('input')}
+      </button>
+    </>
+  );
+
+  const body = (n: LogicNode) => {
+    const ins = portsOf(n).ins;
+    const outs = portsOf(n).outs;
+    const run = ins.find((p) => p.type === 'flow' && p.id === 'run');
+    const next = outs.find((p) => p.id === 'next');
+    const flowRows = (children?: React.ReactNode) => (
+      <>
+        {run && (
+          <Row n={n} inP={run} outP={next}>
+            <span className="lx-lab">{t('Run')}</span>
+            {next && <span className="lx-lab right">{t('Then')}</span>}
+          </Row>
+        )}
+        {children && <div className="lx-body">{children}</div>}
+      </>
+    );
+    const set = (patch: Partial<LogicNode>, key?: string) => setNode(n.id, patch, key);
+    switch (n.type) {
+      case 'layer': {
+        const l = template.layers.find((x) => x.id === n.layer);
+        const have = new Set(n.rows.map((r) => r.key));
+        const options = rowsFor(l)
+          .filter((r) => !have.has(r.key))
+          .map((r) => ({ value: r.key, label: rowLabel(r.key), group: t(r.group) }));
+        return (
+          <>
+            {n.rows.map((r) => {
+              const inP = metricOf(r.key) ? undefined : pIn(n, r.key);
+              const outP = r.key.startsWith('content.') ? undefined : pOut(n, r.key);
+              const wired = wiredIn.has(`${n.id}|${r.key}`);
+              const shown = wired ? v(n, `in:${r.key}`) : v(n, r.key);
+              return (
+                <Row key={r.key} n={n} inP={inP} outP={outP} className={wired ? 'set' : ''}>
+                  <span className="lx-lab">{rowLabel(r.key)}</span>
+                  {wired && rowType(r.key) === 'num' && (
+                    <button
+                      className="lx-mode"
+                      title={t('How the value is set: replaced, added to the animation, or multiplying it')}
+                      onClick={() =>
+                        mutate(n.id, (m) => {
+                          const row = (m as typeof n).rows.find((x) => x.key === r.key);
+                          if (row) row.mode = row.mode === 'add' ? 'multiply' : row.mode === 'multiply' ? undefined : 'add';
+                          if (row && !row.mode) delete row.mode;
+                        })
+                      }
+                    >
+                      {r.mode === 'add' ? '+' : r.mode === 'multiply' ? '×' : '='}
+                    </button>
+                  )}
+                  <Val v={shown} />
+                  <button className="lx-x" title={t('Remove')} onClick={() => edit((ll) => {
+                    const m = ll.nodes.find((x) => x.id === n.id) as typeof n | undefined;
+                    if (m) m.rows = m.rows.filter((x) => x.key !== r.key);
+                    ll.edges = ll.edges.filter((ed) => !((ed.to === n.id && ed.port === r.key) || (ed.from === n.id && fromPortOf(ed) === r.key)));
+                  })}>
+                    <X size={10} />
+                  </button>
+                </Row>
+              );
+            })}
+            {options.length > 0 && (
+              <div className="lx-body">
+                <Dropdown className="lx-addrow" value={'' as string} placeholder={`+ ${t('property')}`} options={options} onChange={(key) => mutate(n.id, (m) => void (m as typeof n).rows.push({ key }))} />
+              </div>
+            )}
+          </>
+        );
+      }
+      case 'field':
+        return (
+          <Row n={n} outP={pOut(n, 'out')}>
+            <Dropdown
+              value={n.key}
+              placeholder={t('Choose a field')}
+              options={[...(template.fields.some((f) => f.key === n.key) || !n.key ? [] : [{ value: n.key, label: n.key }]), ...template.fields.map((f) => ({ value: f.key, label: f.label, note: t(f.kind) }))]}
+              onChange={(key) => set({ key } as Partial<LogicNode>)}
+            />
+          </Row>
+        );
+      case 'constant':
+        return (
+          <Row n={n} outP={pOut(n, 'out')}>
+            <NumberField value={n.value} onChange={(x) => set({ value: x } as Partial<LogicNode>, `lx-${n.id}-v`)} />
+          </Row>
+        );
+      case 'text':
+        return (
+          <Row n={n} outP={pOut(n, 'out')}>
+            <TextInput value={n.value} onChange={(x) => set({ value: x } as Partial<LogicNode>, `lx-${n.id}-v`)} />
+          </Row>
+        );
+      case 'color':
+        return (
+          <Row n={n} outP={pOut(n, 'out')}>
+            <HexColorField value={n.value} onChange={(x) => set({ value: x } as Partial<LogicNode>, `lx-${n.id}-v`)} />
+          </Row>
+        );
+      case 'flag':
+        return (
+          <Row n={n} outP={pOut(n, 'out')}>
+            <Segmented
+              value={n.value ? '1' : '0'}
+              onChange={(x) => set({ value: x === '1' } as Partial<LogicNode>)}
+              options={[
+                { value: '1', label: t('Yes') },
+                { value: '0', label: t('No') },
+              ]}
+            />
+          </Row>
+        );
+      case 'expr': {
+        const used = names(parse(n.expr));
+        return (
+          <>
+            {inputRows(n, used)}
+            <div className="lx-body">
+              <ExprInput value={n.expr} k={`lx-${n.id}-e`} onChange={(x, key) => set({ expr: x } as Partial<LogicNode>, key)} placeholder="a + b" />
+            </div>
+            <Row n={n} outP={pOut(n, 'out')}>
+              <span className="lx-lab right">{t('Result')}</span>
+              <Val v={v(n, 'out')} />
+            </Row>
+          </>
+        );
+      }
+      case 'if': {
+        const used = [...new Set([...n.branches.flatMap((b) => [...names(parse(b.when)), ...names(parse(b.value))]), ...names(parse(n.otherwise))])];
+        const chosen = values.get(`${n.id}|chosen`) as number | undefined;
+        const setBranch = (i: number, patch: Partial<{ when: string; value: string }>, key?: string) => mutate(n.id, (m) => Object.assign((m as typeof n).branches[i], patch), key);
+        return (
+          <>
+            <Row n={n} inP={pIn(n, 'run')}>
+              <span className="lx-lab">{t('When')}</span>
+            </Row>
+            {inputRows(n, used)}
+            {n.branches.map((b, i) => (
+              <Row key={`b-${i}`} n={n} outP={pOut(n, `b${i}`)} className={`lx-branch ${chosen === i ? 'chosen' : ''}`}>
+                <span className="lx-kw">{i ? t('Else if') : t('If')}</span>
+                <ExprInput value={b.when} k={`lx-${n.id}-w${i}`} onChange={(x, key) => setBranch(i, { when: x }, key)} placeholder="a > b" />
+                <span className="lx-then">{t('then')}</span>
+                <BranchValue value={b.value} k={`lx-${n.id}-v${i}`} onChange={(x, key) => setBranch(i, { value: x }, key)} />
+                {n.branches.length > 1 && (
+                  <button
+                    className="lx-x"
+                    title={t('Remove')}
+                    onClick={() =>
+                      edit((l) => {
+                        const m = l.nodes.find((x) => x.id === n.id) as typeof n | undefined;
+                        if (!m) return;
+                        m.branches.splice(i, 1);
+                        // The wires of the branches after it move up one.
+                        l.edges = l.edges.filter((ed) => !(ed.from === n.id && fromPortOf(ed) === `b${i}`));
+                        for (const ed of l.edges) {
+                          const k = ed.from === n.id ? /^b(\d+)$/.exec(fromPortOf(ed)) : null;
+                          if (k && +k[1] > i) ed.fromPort = `b${+k[1] - 1}`;
+                        }
+                      })
+                    }
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </Row>
+            ))}
+            <button className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).branches.push({ when: '', value: '' }))}>
+              <Plus size={11} /> {t('else if')}
+            </button>
+            <Row n={n} outP={pOut(n, 'else')} className={`lx-branch ${chosen === -1 ? 'chosen' : ''}`}>
+              <span className="lx-kw">{t('Else')}</span>
+              <span className="lx-then">{t('then')}</span>
+              <BranchValue value={n.otherwise} k={`lx-${n.id}-o`} onChange={(x, key) => set({ otherwise: x } as Partial<LogicNode>, key)} />
+            </Row>
+            <Row n={n} outP={pOut(n, 'out')} className="sep">
+              <span className="lx-lab right">{t('Result')}</span>
+              <Val v={v(n, 'out')} />
+            </Row>
+          </>
+        );
+      }
+      case 'lookup':
+        return (
+          <>
+            <Row n={n} inP={pIn(n, 'in')}>
+              <span className="lx-lab">{t('Key')}</span>
+              <Val v={v(n, 'in:in')} />
+            </Row>
+            <div className="lx-body lx-table">
+              {n.rows.map((r, i) => (
+                <div key={i} className="lx-trow">
+                  <TextInput value={r.key} placeholder={t('key name')} onChange={(x) => mutate(n.id, (m) => void ((m as typeof n).rows[i].key = x), `lx-${n.id}-k${i}`)} />
+                  <span>→</span>
+                  <TextInput value={r.value} placeholder={t('value')} onChange={(x) => mutate(n.id, (m) => void ((m as typeof n).rows[i].value = x), `lx-${n.id}-r${i}`)} />
+                  <button className="lx-x" title={t('Remove')} onClick={() => mutate(n.id, (m) => void (m as typeof n).rows.splice(i, 1))}>
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+              <button className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).rows.push({ key: '', value: '' }))}>
+                <Plus size={11} /> {t('row')}
+              </button>
+              <label className="lx-field">
+                <span>{t('Else')}</span>
+                <TextInput value={n.otherwise} onChange={(x) => set({ otherwise: x } as Partial<LogicNode>, `lx-${n.id}-o`)} />
+              </label>
+              <label className="lx-field">
+                <span>{t('Match')}</span>
+                <Segmented
+                  value={n.contains ? 'in' : 'eq'}
+                  onChange={(x) => set({ contains: x === 'in' || undefined } as Partial<LogicNode>)}
+                  options={[
+                    { value: 'eq', label: t('Equal') },
+                    { value: 'in', label: t('Contains') },
+                  ]}
+                />
+              </label>
+            </div>
+            <Row n={n} outP={pOut(n, 'out')}>
+              <span className="lx-lab right">{t('Value')}</span>
+              <Val v={v(n, 'out')} />
+            </Row>
+          </>
+        );
+      case 'onAir':
+        return (
+          <>
+            <div className="lx-body">
+              <OnAirBody n={n} template={template} set={set} />
+            </div>
+            <Row n={n} outP={pOut(n, 'out')}>
+              <span className="lx-lab right">{t('On air')}</span>
+              <Val v={v(n, 'out')} />
+            </Row>
+          </>
+        );
+      case 'var': {
+        const names_ = varNames(template);
+        return (
+          <>
+            <div className="lx-body">
+              {names_.length ? (
+                <Dropdown value={n.name} placeholder={t('Choose a variable')} options={[...(names_.includes(n.name) || !n.name ? [] : [{ value: n.name, label: n.name }]), ...names_.map((x) => ({ value: x, label: x }))]} onChange={(name) => set({ name } as Partial<LogicNode>)} />
+              ) : (
+                <TextInput value={n.name} placeholder={t('Variable')} onChange={(x) => set({ name: x.replace(/\s+/g, '_') } as Partial<LogicNode>, `lx-${n.id}-n`)} />
+              )}
+              <label className="lx-field">
+                <span>{tc('logic', 'Try')}</span>
+                <NumberField value={n.test ?? 0} step={1} onChange={(x) => set({ test: x } as Partial<LogicNode>, `lx-${n.id}-t`)} />
+              </label>
+            </div>
+            <Row n={n} outP={pOut(n, 'out')}>
+              <span className="lx-lab right">{t('Value')}</span>
+              <Val v={v(n, 'out')} />
+            </Row>
+          </>
+        );
+      }
+      case 'setField':
+        return (
+          <Row n={n} inP={pIn(n, 'in')}>
+            <span className="lx-note">{`{{${n.key}}}`}</span>
+          </Row>
+        );
+      case 'event':
+        return (
+          <>
+            <div className="lx-body">
+              <EventBody n={n} template={template} set={(on, key) => set({ on } as Partial<LogicNode>, key)} />
+            </div>
+            <Row n={n} outP={pOut(n, 'out')}>
+              <span className="lx-lab right">{t('When')}</span>
+            </Row>
+          </>
+        );
+      case 'triggerIn':
+        return (
+          <>
+            <div className="lx-body">
+              <TextInput value={n.name} placeholder={t('goal, next, line2…')} onChange={(x) => set({ name: x } as Partial<LogicNode>, `lx-${n.id}-n`)} />
+            </div>
+            <Row n={n} outP={pOut(n, 'out')}>
+              <span className="lx-lab right">{t('When')}</span>
+            </Row>
+          </>
+        );
+      case 'continue':
+      case 'start':
+        return (
+          <Row n={n} outP={pOut(n, 'out')}>
+            <span className="lx-lab right">{t('When')}</span>
+          </Row>
+        );
+      case 'every':
+        return (
+          <Row n={n} outP={pOut(n, 'out')}>
+            <NumberField value={n.seconds} min={0.1} step={1} precision={1} suffix="s" onChange={(x) => set({ seconds: Math.max(0.1, x) } as Partial<LogicNode>, `lx-${n.id}-s`)} />
+          </Row>
+        );
+      case 'wait':
+        return (
+          <>
+            {flowRows()}
+            <Row n={n} inP={pIn(n, 'seconds')}>
+              <span className="lx-lab">{t('Seconds')}</span>
+              {wiredIn.has(`${n.id}|seconds`) ? <Val v={v(n, 'in:seconds')} /> : <NumberField value={n.seconds} min={0} step={0.5} precision={1} suffix="s" onChange={(x) => set({ seconds: Math.max(0, x) } as Partial<LogicNode>, `lx-${n.id}-s`)} />}
+            </Row>
+          </>
+        );
+      case 'counter':
+        return (
+          <>
+            {flowRows()}
+            <Row n={n} inP={pIn(n, 'reset')} outP={pOut(n, 'out')}>
+              <span className="lx-lab">{t('Reset')}</span>
+              <span className="lx-lab right">{t('Counted')}</span>
+              <Val v={v(n, 'out')} />
+            </Row>
+            <div className="lx-body lx-pair">
+              <label className="lx-field">
+                <span>{t('Start')}</span>
+                <NumberField value={n.start} onChange={(x) => set({ start: x } as Partial<LogicNode>, `lx-${n.id}-a`)} />
+              </label>
+              <label className="lx-field">
+                <span>{t('Increment')}</span>
+                <NumberField value={n.step} onChange={(x) => set({ step: x } as Partial<LogicNode>, `lx-${n.id}-b`)} />
+              </label>
+            </div>
+          </>
+        );
+      case 'once':
+        return (
+          <>
+            {flowRows()}
+            <Row n={n} inP={pIn(n, 'reset')}>
+              <span className="lx-lab">{t('Reset')}</span>
+            </Row>
+          </>
+        );
+      case 'out':
+        return flowRows();
+      case 'resume':
+        return flowRows(<Dropdown value={n.marker} placeholder={t('Choose a pause')} options={template.markers.filter((m) => m.kind === 'pause').map((m) => ({ value: m.id, label: m.name || t('Pause') }))} onChange={(marker) => set({ marker } as Partial<LogicNode>)} />);
+      case 'fire':
+        return flowRows(<TextInput value={n.name} placeholder={t('goal, next, line2…')} onChange={(x) => set({ name: x } as Partial<LogicNode>, `lx-${n.id}-n`)} />);
+      case 'nextRow':
+        return flowRows(<Dropdown value={n.dataset} placeholder={t('Choose a data set')} options={(template.datasets ?? []).map((d) => ({ value: d.key, label: d.name }))} onChange={(dataset) => set({ dataset } as Partial<LogicNode>)} />);
+      case 'take':
+        return flowRows(<TakeBody n={n} template={template} set={set} />);
+      case 'widget':
+        return flowRows(
+          <>
+            <Dropdown value={n.layer} placeholder={t('Choose a layer')} options={template.layers.filter(timedLayer).map((l) => ({ value: l.id, label: l.name }))} onChange={(layer) => set({ layer } as Partial<LogicNode>)} />
+            <Dropdown
+              value={n.control}
+              options={[
+                { value: 'start', label: t('Start it') },
+                { value: 'pause', label: t('Pause') },
+                { value: 'toggle', label: t('Start / pause') },
+                { value: 'reset', label: t('Reset') },
+                { value: 'restart', label: t('Restart') },
+              ]}
+              onChange={(control) => set({ control } as Partial<LogicNode>)}
+            />
+          </>,
+        );
+      case 'setVar':
+        return (
+          <>
+            {flowRows(
+              <>
+                <label className="lx-field">
+                  <span>{t('Variable')}</span>
+                  <TextInput value={n.name} onChange={(x) => set({ name: x.replace(/\s+/g, '_') } as Partial<LogicNode>, `lx-${n.id}-n`)} />
+                </label>
+                <label className="lx-field">
+                  <span>{t('Transition')}</span>
+                  <NumberField value={n.transition ?? 0} min={0} max={10} step={0.1} precision={1} suffix="s" onChange={(x) => set({ transition: Math.max(0, x) } as Partial<LogicNode>, `lx-${n.id}-t`)} />
+                </label>
+              </>,
+            )}
+            <Row n={n} inP={pIn(n, 'value')}>
+              <span className="lx-lab">{t('Value')}</span>
+              {wiredIn.has(`${n.id}|value`) ? <Val v={v(n, 'in:value')} /> : <TextInput value={n.value} onChange={(x) => set({ value: x } as Partial<LogicNode>, `lx-${n.id}-v`)} />}
+            </Row>
+          </>
+        );
+    }
+    return null;
+  };
+
+  /** The value a node shows in its header (its main output). */
+  const headValue = (n: LogicNode) => {
+    if (n.type === 'layer' || n.type === 'if' || n.type === 'expr' || n.type === 'lookup' || n.type === 'var' || n.type === 'onAir' || n.type === 'counter') return undefined;
+    const out = portsOf(n).outs.find((p) => p.type !== 'flow');
+    return out ? values.get(`${n.id}|${out.id}`) : undefined;
+  };
+
+  // ── Palette ───────────────────────────────────────────────────────────
+  const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const q = fold(search.trim());
+  const shown = all.filter((e) => {
+    if (scope === 'here' && e.can && !e.can({ t: template, others })) return false;
+    if (scope === 'fav' && !favs.includes(e.key)) return false;
+    if (typeFilter) {
+      const types = entryPorts.get(e.key);
+      if (!types || !(types.has(typeFilter) || (typeFilter !== 'flow' && types.has('any')))) return false;
+    }
+    if (q && !fold(`${t(e.label)} ${e.label} ${e.note ?? ''} ${t(FAMS.find((f) => f.id === e.fam)!.label)}`).includes(q)) return false;
+    return true;
+  });
+  const placed = new Set(logic.nodes.flatMap((n) => (n.type === 'layer' ? [`layer:${n.layer}`] : [])));
+  const toggleFav = (key: string) => {
+    const next = favs.includes(key) ? favs.filter((x) => x !== key) : [...favs, key];
+    setFavs(next);
+    setDisplayPref('logic.favs', next);
+  };
+  const toggleFold = (fam: string) => {
+    const next = folded.includes(fam) ? folded.filter((x) => x !== fam) : [...folded, fam];
+    setFolded(next);
+    setDisplayPref('logic.folded', next);
+  };
+
+  // The menu of a dropped wire: the nodes that take it.
+  const quickList = (() => {
+    if (!quick) return [];
+    const want = { type: quick.from.type, side: quick.from.dir === 'out' ? ('in' as const) : ('out' as const) };
+    const out: { key: string; label: string; fam: Fam; note?: string; make: (x: number, y: number) => LogicNode }[] = [];
+    for (const e of all) {
+      if (e.can && !e.can({ t: template, others })) continue;
+      if (e.fam === 'layer') {
+        const l = template.layers.find((x) => `layer:${x.id}` === e.key);
+        if (!l) continue;
+        const make = (x: number, y: number) => layerNode(l, x, y, want);
+        if (!fits(make(0, 0), want)) continue;
+        out.push({ key: e.key, label: e.label, fam: e.fam, note: e.note, make });
+        continue;
+      }
+      const make = (x: number, y: number) => e.make(template, x, y);
+      if (!fits(make(0, 0), want)) continue;
+      out.push({ key: e.key, label: t(e.label), fam: e.fam, make });
+    }
+    const qq = fold(qSearch.trim());
+    return out.filter((o) => !qq || fold(o.label).includes(qq));
+  })();
+
+  // ── Minimap ───────────────────────────────────────────────────────────
+  const boxes = [...frames.map((f) => ({ x: f.x, y: f.y, w: f.collapsed ? 220 : f.w, h: f.collapsed ? 40 : f.h, c: f.color, frame: true })), ...logic.nodes.filter((n) => !collapsedOf(n)).map((n) => ({ x: n.x, y: n.y, w: widthOf(n), h: 80, c: '', frame: false }))];
+  const mini = (() => {
+    if (boxes.length < 2) return null;
+    const x0 = Math.min(...boxes.map((b) => b.x)) - 40;
+    const y0 = Math.min(...boxes.map((b) => b.y)) - 40;
+    const x1 = Math.max(...boxes.map((b) => b.x + b.w)) + 40;
+    const y1 = Math.max(...boxes.map((b) => b.y + b.h)) + 40;
+    const k = Math.min(160 / (x1 - x0), 100 / (y1 - y0));
+    const vis = cv.visible();
+    return { x0, y0, k, w: (x1 - x0) * k, h: (y1 - y0) * k, vis };
+  })();
+
+  const canPaste = !!clipboard();
+
+  return (
+    <PortCtx.Provider value={{ wiredIn, wiredOut, startWire }}>
+    <div className="logic-editor lx" onKeyDown={(e) => e.stopPropagation()}>
+      <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={template.name} onClose={onClose}>
+        <button className="lx-tool" onClick={makeFrame} title={t('Frame the selected nodes (F)')}>
+          <BoxSelect size={13} /> {t('Frame')} <kbd>F</kbd>
+        </button>
+        <button className="lx-tool" onClick={copy} disabled={!sel.size && !selFrame} title={t('Copy (⌘C)')}>
+          <Copy size={13} /> {t('Copy')}
+        </button>
+        <button className="lx-tool" onClick={paste} disabled={!canPaste} title={t('Paste (⌘V)')}>
+          <ClipboardPaste size={13} /> {t('Paste')}
+        </button>
+      </CanvasHeader>
+      <div className="logic-body">
+        <aside className="lx-pal">
+          <div className="lx-search">
+            <Search size={13} />
+            <input ref={searchRef} value={search} placeholder={t('Search')} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setSearch('')} />
+            <kbd>⌘K</kbd>
+          </div>
+          <Segmented
+            value={scope}
+            onChange={(s) => {
+              setScope(s);
+              setDisplayPref('logic.scope', s);
+            }}
+            options={[
+              { value: 'here', label: t('Useful here') },
+              { value: 'all', label: t('All') },
+              { value: 'fav', label: '★' },
+            ]}
+          />
+          <div className="lx-types">
+            {TYPES.map((ty) => (
+              <button key={ty.id} className={`lx-ty t-${ty.id} ${typeFilter === ty.id ? 'on' : ''}`} onClick={() => setTypeFilter(typeFilter === ty.id ? null : ty.id)}>
+                <i />
+                {t(ty.label)}
+              </button>
+            ))}
+          </div>
+          {FAMS.map((f) => {
+            const list = shown.filter((e) => e.fam === f.id);
+            const total = all.filter((e) => e.fam === f.id).length;
+            if (!list.length) return null;
+            const open = !folded.includes(f.id) || !!q;
+            return (
+              <div key={f.id} className={`lx-fam fam-${f.id}`}>
+                <button className="lx-famhead" onClick={() => toggleFold(f.id)}>
+                  {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                  <i />
+                  {t(f.label)}
+                  <em>{list.length === total ? total : `${list.length} / ${total}`}</em>
+                </button>
+                {open &&
+                  list.map((e) => (
+                    <div key={e.key} className={`lx-entry ${placed.has(e.key) ? 'placed' : ''}`}>
+                      <button onClick={() => addEntry(e)} title={t('Add')}>
+                        <e.icon size={13} />
+                        <strong>{e.fam === 'layer' ? e.label : t(e.label)}</strong>
+                        {placed.has(e.key) ? <em>{t('placed')}</em> : e.note ? <em>{e.note}</em> : null}
+                      </button>
+                      <button className={`lx-star ${favs.includes(e.key) ? 'on' : ''}`} title={t('Favourite')} onClick={() => toggleFav(e.key)}>
+                        <Star size={11} />
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            );
+          })}
+          {!shown.length && <div className="lx-none">{t('No node')}</div>}
+        </aside>
+        <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`} tabIndex={0} onPointerDown={onCanvasDown} onKeyDown={onKey}>
+          <div className="logic-space" ref={spaceRef} data-canvas-void style={cv.spaceStyle}>
+            {frames.map((f) =>
+              f.collapsed ? (
+                <div key={f.id} className={`lx-pill ${f.off ? 'off' : ''} ${selFrame === f.id ? 'sel' : ''}`} style={{ left: f.x, top: f.y, ['--fc' as string]: f.color }} onPointerDown={(e) => dragFrame(e, f)}>
+                  <span className="lx-pport in" data-pk={`frame:${f.id}|in`} />
+                  <i />
+                  <strong>{f.name}</strong>
+                  <em>{t('{n} nodes', { n: logic.nodes.filter((n) => n.frame === f.id).length })}</em>
+                  <button title={t('Unfold')} onClick={() => setFrame(f.id, { collapsed: undefined })}>
+                    <ChevronRight size={12} />
+                  </button>
+                  <span className="lx-pport out" data-pk={`frame:${f.id}|out`} />
+                </div>
+              ) : (
+                <div key={f.id} className={`lx-frame ${f.off ? 'off' : ''} ${selFrame === f.id ? 'sel' : ''}`} style={{ left: f.x, top: f.y, width: f.w, height: f.h, ['--fc' as string]: f.color }}>
+                  <div className="lx-fhead" onPointerDown={(e) => dragFrame(e, f)} onDoubleClick={() => setRenaming(f.id)}>
+                    <button className="lx-fdot" title={t('Colour')} onClick={() => setFrame(f.id, { color: FRAME_COLORS[(FRAME_COLORS.indexOf(f.color) + 1) % FRAME_COLORS.length] })} />
+                    {renaming === f.id ? (
+                      <input autoFocus defaultValue={f.name} onBlur={(e) => (setFrame(f.id, { name: e.target.value.trim() || f.name }), setRenaming(null))} onKeyDown={(e) => (e.key === 'Enter' || e.key === 'Escape') && (e.target as HTMLInputElement).blur()} />
+                    ) : (
+                      <strong>{f.name}</strong>
+                    )}
+                    <button className={`lx-ftoggle ${f.off ? '' : 'on'}`} title={f.off ? t('Switched off: its nodes do nothing') : t('Switch off')} onClick={() => setFrame(f.id, { off: f.off ? undefined : true })} />
+                    <button title={t('Fold')} onClick={() => setFrame(f.id, { collapsed: true })}>
+                      <ChevronDown size={12} />
+                    </button>
+                  </div>
+                  {selFrame === f.id && (
+                    <div className="lx-fbar" onPointerDown={(e) => e.stopPropagation()}>
+                      <button onClick={copy}>
+                        <Copy size={11} /> {t('Copy')}
+                      </button>
+                      <button onClick={() => insertClip(clipOf(new Set(), new Set([f.id])))}>{t('Duplicate')}</button>
+                      <button onClick={() => (removeFrame(f.id), setSelFrame(null))} title={t('Remove the frame (its nodes stay)')}>
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  )}
+                  <span className="cv-resize" onPointerDown={(e) => resizeFrame(e, f)} />
+                </div>
+              ),
+            )}
             <svg className="logic-wires">
               {logic.edges.map((e, i) => {
-                const a = nodes.get(e.from);
-                const b = nodes.get(e.to);
+                const a = at(e.from, 'out', fromPortOf(e));
+                const b = at(e.to, 'in', e.port);
                 if (!a || !b) return null;
+                const fa = collapsedOf(nodes.get(e.from));
+                if (fa && fa === collapsedOf(nodes.get(e.to))) return null;
+                const ty = typeOfOut(e);
                 return (
                   <path
                     key={i}
-                    d={curve(portOut(a, widthOf(a)), portIn(b, e.port))}
-                    className="wire"
+                    d={curve(a, b)}
+                    className={`wire t-${ty} ${sel.has(e.from) || sel.has(e.to) ? 'hot' : ''}`}
                     onPointerDown={(ev) => {
                       ev.stopPropagation();
                       edit((l) => void (l.edges = l.edges.filter((x) => x !== l.edges[i])));
@@ -636,49 +1376,99 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                   </path>
                 );
               })}
-              {wire && nodes.get(wire.from) && <path d={curve(portOut(nodes.get(wire.from)!, widthOf(nodes.get(wire.from)!)), wire)} className="wire live" />}
+              {wire && at(wire.from.node, wire.from.dir, wire.from.port) && (
+                <path d={wire.from.dir === 'out' ? curve(at(wire.from.node, 'out', wire.from.port)!, wire) : curve(wire, at(wire.from.node, 'in', wire.from.port)!)} className={`wire live t-${wire.from.type}`} />
+              )}
             </svg>
             {logic.nodes.map((n) => {
-              const k = kindOf(n);
+              if (collapsedOf(n)) return null;
+              const k = kindOf(n, template);
+              const off = !!n.frame && frames.some((f) => f.id === n.frame && f.off);
               return (
-                <div key={n.id} data-node-id={n.id} className={`logic-node kind-${n.type} cat-${k.cat} ${selected === n.id ? 'sel' : ''}`} style={{ left: n.x, top: n.y, width: widthOf(n) }} onPointerDown={(e) => (e.stopPropagation(), dragNode(e, n))}>
-                  <div className="ln-head" style={{ height: HEAD }}>
+                <div key={n.id} data-node-id={n.id} className={`lx-node fam-${k.fam} ${sel.has(n.id) ? 'sel' : ''} ${off ? 'off' : ''}`} style={{ left: n.x, top: n.y, width: widthOf(n) }} onPointerDown={(e) => dragNodes(e, n)}>
+                  <div className="lx-head">
                     <k.icon size={12} />
-                    <span>{t(k.label)}</span>
-                    <span className="ln-value">{fmt(values.get(n.id))}</span>
-                    <button
-                      className="ln-del"
-                      title={t('Delete (Del)')}
-                      onClick={() =>
-                        edit((l) => {
-                          l.nodes = l.nodes.filter((x) => x.id !== n.id);
-                          l.edges = l.edges.filter((x) => x.from !== n.id && x.to !== n.id);
-                        })
-                      }
-                    >
+                    <span className="lx-title">{k.label}</span>
+                    {n.type === 'layer' && <small>{t('layer')}</small>}
+                    <span className="lx-hv">
+                      <Val v={headValue(n)} />
+                    </span>
+                    <button className="lx-del" title={t('Delete (Del)')} onClick={() => removeNodes(new Set([n.id]))}>
                       <Trash2 size={11} />
                     </button>
-                    {!['target', 'out', 'resume', 'fire', 'nextRow'].includes(n.type) && <span className="port out" title={t('Drag to an input')} onPointerDown={(e) => startWire(e, n.id)} />}
                   </div>
-                  {INPUTS[n.type].map((port) => (
-                    <div key={port} className="ln-input" style={{ height: ROW }}>
-                      <span className="port in" data-node={n.id} data-port={port} />
-                      <span>{inputLabel(n, port)}</span>
-                    </div>
-                  ))}
-                  <div className="ln-body">
-                    <LogicNodeBody n={n} template={template} setNode={setNode} />
-                  </div>
+                  {body(n)}
                   <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setSize(n.id, w))} />
                 </div>
               );
             })}
+            {band && <div className="lx-band" style={{ left: Math.min(band.x0, band.x1), top: Math.min(band.y0, band.y1), width: Math.abs(band.x1 - band.x0), height: Math.abs(band.y1 - band.y0) }} />}
           </div>
-          {/* Nothing yet: a small icon and a word, centred (as in the Operator). */}
-          {!logic.nodes.length && <CanvasVoid icon={Link2} text={t('No relation')} />}
+          {quick && (
+            <div className="lx-quick" style={{ left: quick.sx, top: quick.sy }} onPointerDown={(e) => e.stopPropagation()}>
+              <div className="lx-search">
+                <Search size={12} />
+                <input autoFocus value={qSearch} placeholder={t('Search')} onChange={(e) => setQSearch(e.target.value)} onKeyDown={(e) => (e.key === 'Escape' ? setQuick(null) : e.key === 'Enter' && quickList[0] ? addWired(quickList[0].make) : undefined)} />
+              </div>
+              <div className="lx-qh">
+                <i className={`t-${quick.from.type}`} />
+                {quick.from.dir === 'out' ? t('Takes {what}', { what: t(TYPES.find((x) => x.id === quick.from.type)?.label ?? 'a value') }) : t('Gives {what}', { what: t(TYPES.find((x) => x.id === quick.from.type)?.label ?? 'a value') })}
+              </div>
+              <div className="lx-qlist">
+                {quickList.slice(0, 40).map((o) => (
+                  <button key={o.key} className={`fam-${o.fam}`} onClick={() => addWired(o.make)}>
+                    <i />
+                    {o.label}
+                    <em>{o.note ?? t(FAMS.find((f) => f.id === o.fam)!.label)}</em>
+                  </button>
+                ))}
+                {!quickList.length && <div className="lx-none">{t('No node')}</div>}
+              </div>
+            </div>
+          )}
+          {mini && (
+            <div
+              className="lx-mini"
+              style={{ width: mini.w, height: mini.h }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const wx = mini.x0 + (e.clientX - r.left) / mini.k;
+                const wy = mini.y0 + (e.clientY - r.top) / mini.k;
+                const vr = cv.ref.current?.getBoundingClientRect();
+                if (vr) cv.setView({ ...cv.view, x: vr.width / 2 - wx * cv.view.zoom, y: vr.height / 2 - wy * cv.view.zoom });
+              }}
+            >
+              {boxes.map((b, i) => (
+                <div key={i} className={b.frame ? 'f' : 'n'} style={{ left: (b.x - mini.x0) * mini.k, top: (b.y - mini.y0) * mini.k, width: b.w * mini.k, height: b.h * mini.k, ['--fc' as string]: b.c }} />
+              ))}
+              <div className="v" style={{ left: (mini.vis.x - mini.x0) * mini.k, top: (mini.vis.y - mini.y0) * mini.k, width: mini.vis.w * mini.k, height: mini.vis.h * mini.k }} />
+            </div>
+          )}
+          {!logic.nodes.length && !frames.length && <CanvasVoid icon={Link2} text={t('No relation')} />}
           {cv.controls}
         </div>
       </div>
     </div>
+    </PortCtx.Provider>
   );
 }
+
+/** « Take another graphic »: which one, in or out. */
+function TakeBody({ n, template, set }: { n: Extract<LogicNode, { type: 'take' }>; template: Template; set: (patch: Partial<LogicNode>) => void }) {
+  const project = useApp((s) => s.project);
+  return (
+    <>
+      <Dropdown value={n.template} placeholder={t('Choose a graphic')} options={(project?.templates ?? []).filter((x) => x.id !== template.id).map((x) => ({ value: x.id, label: x.name }))} onChange={(id) => set({ template: id } as Partial<LogicNode>)} />
+      <Segmented
+        value={n.out ? 'out' : 'in'}
+        onChange={(x) => set({ out: x === 'out' || undefined } as Partial<LogicNode>)}
+        options={[
+          { value: 'in', label: t('Take') },
+          { value: 'out', label: t('Take out') },
+        ]}
+      />
+    </>
+  );
+}
+

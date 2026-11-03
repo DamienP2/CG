@@ -21541,3 +21541,801 @@ textarea.tx-grow {
 .wk-row:has(> .wk-ctl > .wk-content > .wk-content-tools) > :not(.prop-label):not(.wk-ctl) {
   margin-top: 5px;
 }
+
+/* ---------- Logic v2 (LogicEditor) ---------- */
+.lx {
+  --t-flow: var(--text);
+  --t-num: #60a5fa;
+  --t-text: #f472b6;
+  --t-color: #fb923c;
+  --t-bool: #4ade80;
+  --t-img: #a78bfa;
+  --t-list: #94a3b8;
+  --t-any: var(--text-2);
+}
+.lx .fam-layer { --fam: #8fa3ff; }
+.lx .fam-input { --fam: #38bdf8; }
+.lx .fam-math { --fam: #f59e0b; }
+.lx .fam-text { --fam: #f472b6; }
+.lx .fam-cond { --fam: #a78bfa; }
+.lx .fam-time { --fam: #22d3ee; }
+.lx .fam-event { --fam: #fb7185; }
+.lx .fam-trigger { --fam: #facc15; }
+.lx .fam-action { --fam: #ef4444; }
+.lx .fam-var { --fam: #2dd4bf; }
+.lx .t-flow { --tc: var(--t-flow); }
+.lx .t-num { --tc: var(--t-num); }
+.lx .t-text { --tc: var(--t-text); }
+.lx .t-color { --tc: var(--t-color); }
+.lx .t-bool { --tc: var(--t-bool); }
+.lx .t-img { --tc: var(--t-img); }
+.lx .t-list { --tc: var(--t-list); }
+.lx .t-any { --tc: var(--t-any); }
+.lx-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lx-tool:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.lx-tool:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.lx-tool kbd,
+.lx-search kbd {
+  font: 600 10px var(--mono);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--text-3);
+}
+/* Palette */
+.lx-pal {
+  width: 236px;
+  flex: none;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  overflow-y: auto;
+}
+.lx-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text-3);
+}
+.lx-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  outline: none;
+  font-size: 12.5px;
+}
+.lx-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lx-ty {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 5px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.lx-ty i,
+.lx-qh i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tc);
+}
+.lx-ty.t-flow i,
+.lx-qh i.t-flow {
+  border-radius: 0;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.lx-ty.on {
+  border-color: var(--tc);
+  color: var(--text);
+  background: var(--panel-2);
+}
+.lx-fam {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lx-famhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.lx-famhead i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--fam);
+}
+.lx-famhead em {
+  margin-left: auto;
+  font-style: normal;
+  letter-spacing: 0;
+}
+.lx-entry {
+  position: relative;
+  display: flex;
+}
+.lx-entry > button:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 26px 6px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--fam);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.lx-entry > button:first-child:hover {
+  border-color: var(--fam);
+}
+.lx-entry > button:first-child > svg {
+  color: var(--fam);
+  flex: none;
+}
+.lx-entry strong {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lx-entry em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.lx-entry.placed > button:first-child {
+  opacity: 0.6;
+}
+.lx-star {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  color: var(--text-3);
+  padding: 3px;
+  cursor: pointer;
+  opacity: 0;
+}
+.lx-entry:hover .lx-star,
+.lx-star.on {
+  opacity: 1;
+}
+.lx-star.on {
+  color: #facc15;
+}
+.lx-star.on svg {
+  fill: currentColor;
+}
+.lx-none {
+  color: var(--text-3);
+  font-size: 12px;
+  padding: 6px 2px;
+}
+/* Frames */
+.lx-frame {
+  position: absolute;
+  z-index: 0;
+  border: 1.5px dashed color-mix(in srgb, var(--fc) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fc) 5%, transparent);
+}
+.lx-frame.sel {
+  border-style: solid;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fc) 25%, transparent);
+}
+.lx-frame.off {
+  opacity: 0.5;
+}
+.lx-fhead {
+  position: absolute;
+  top: -14px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--fc) 60%, transparent);
+  border-radius: 7px;
+  background: var(--bg);
+  cursor: grab;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.lx-fhead strong {
+  font-weight: 700;
+}
+.lx-fhead input {
+  width: 160px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  outline: none;
+}
+.lx-fhead > button {
+  display: inline-flex;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  padding: 2px;
+  cursor: pointer;
+}
+.lx-fdot {
+  width: 10px !important;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fc) !important;
+  padding: 0 !important;
+}
+.lx-ftoggle {
+  position: relative;
+  width: 24px;
+  height: 13px;
+  border-radius: 8px;
+  background: var(--line-2) !important;
+}
+.lx-ftoggle::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+.lx-ftoggle.on {
+  background: var(--fc) !important;
+}
+.lx-ftoggle.on::after {
+  left: 13px;
+}
+.lx-fbar {
+  position: absolute;
+  top: -15px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+}
+.lx-fbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lx-frame .cv-resize {
+  display: block;
+}
+.lx-pill {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 12px;
+  border: 1.5px dashed color-mix(in srgb, var(--fc) 70%, transparent);
+  border-radius: 10px;
+  background: var(--panel-2);
+  font-size: 12px;
+  cursor: grab;
+  white-space: nowrap;
+}
+.lx-pill.off {
+  opacity: 0.5;
+}
+.lx-pill.sel {
+  border-style: solid;
+}
+.lx-pill > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--fc);
+}
+.lx-pill em {
+  font-style: normal;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.lx-pill button {
+  display: inline-flex;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 2px;
+}
+.lx-pport {
+  position: absolute;
+  top: 50%;
+  width: 1px;
+  height: 1px;
+}
+.lx-pport.in {
+  left: 0;
+}
+.lx-pport.out {
+  right: 0;
+}
+/* Nodes */
+.lx-node {
+  position: absolute;
+  z-index: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  user-select: none;
+}
+.lx-node.sel {
+  z-index: 3;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.lx-node.off {
+  opacity: 0.55;
+}
+.lx-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px 0 10px;
+  border-top: 3px solid var(--fam);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-weight: 700;
+  cursor: grab;
+}
+.lx-head > svg {
+  color: var(--fam);
+  flex: none;
+}
+.lx-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lx-head small {
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lx-hv {
+  margin-left: auto;
+  display: inline-flex;
+}
+.lx-del {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 2px;
+  display: none;
+}
+.lx-node:hover .lx-del {
+  display: inline-flex;
+}
+.lx-del:hover {
+  color: var(--live);
+}
+.lx-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 2px 12px;
+  color: var(--text-2);
+}
+.lx-row.sep {
+  border-top: 1px solid var(--line);
+}
+.lx-row.set .lx-lab {
+  color: var(--text);
+}
+.lx-row > .dd-btn,
+.lx-row > .num-field,
+.lx-row > input:not(.lx-name),
+.lx-row > .text-input,
+.lx-row > .segmented {
+  flex: 1;
+  min-width: 0;
+}
+.lx-lab {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lx-lab.right {
+  margin-left: auto;
+}
+.lx-v {
+  margin-left: auto;
+  font: 500 11px var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+.lx-sw {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.lx-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px 12px 6px;
+}
+.lx-body > * {
+  min-width: 0;
+}
+.lx-pair {
+  flex-direction: row;
+}
+.lx-pair > * {
+  flex: 1;
+}
+.lx-field {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+.lx-pair .lx-field {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.lx-name {
+  width: 34px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: 600 11px var(--mono);
+  padding: 2px 5px;
+}
+.lx-x {
+  display: inline-flex;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  padding: 2px;
+  cursor: pointer;
+  opacity: 0;
+}
+.lx-row:hover .lx-x,
+.lx-trow:hover .lx-x {
+  opacity: 1;
+}
+.lx-x:hover {
+  color: var(--live);
+}
+.lx-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 12px 2px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.lx-mode {
+  width: 20px;
+  height: 18px;
+  flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--accent);
+  font: 700 11px var(--mono);
+  cursor: pointer;
+  padding: 0;
+}
+.lx-expr {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.lx-expr > * {
+  flex: 1;
+  min-width: 0;
+}
+.lx-expr input {
+  font-family: var(--mono) !important;
+  font-size: 11.5px !important;
+}
+.lx-expr.bad input {
+  border-color: var(--live) !important;
+  color: var(--live);
+}
+.lx-kw {
+  min-width: 48px;
+  flex: none;
+  font-weight: 700;
+  font-size: 11px;
+  color: #a78bfa;
+}
+.lx-then {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.lx-bval {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 38%;
+  min-width: 0;
+}
+.lx-branch.chosen .lx-kw {
+  color: var(--pvw);
+}
+.lx-branch.chosen {
+  background: color-mix(in srgb, var(--pvw) 8%, transparent);
+}
+.lx-table {
+  gap: 4px;
+}
+.lx-trow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+}
+.lx-table .lx-add {
+  margin: 0;
+}
+.lx-note {
+  font: 11px var(--mono);
+  color: var(--text-3);
+}
+.lx-addrow .dd-btn,
+.lx-body > .dd-btn.lx-addrow {
+  color: var(--accent);
+  border-style: dashed;
+}
+/* Ports */
+.lx-port {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  border: 2px solid var(--tc);
+  background: var(--panel);
+  cursor: crosshair;
+  z-index: 2;
+}
+.lx-port.in {
+  left: -6px;
+}
+.lx-port.out {
+  right: -6px;
+}
+.lx-port.on {
+  background: var(--tc);
+}
+.lx-port.t-flow {
+  border: none;
+  border-radius: 0;
+  width: 11px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--tc);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  opacity: 0.55;
+}
+.lx-port.t-flow.on,
+.lx-port.t-flow:hover {
+  opacity: 1;
+  box-shadow: none;
+}
+.lx-port.t-flow.in {
+  left: -5px;
+}
+.lx-port.t-flow.out {
+  right: -5px;
+}
+.lx-port:hover {
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+/* Wires */
+.lx .logic-wires .wire {
+  stroke: var(--tc);
+  stroke-width: 2;
+  opacity: 0.85;
+}
+.lx .logic-wires .wire.t-flow {
+  stroke-width: 2.6;
+}
+.lx .logic-wires .wire.hot {
+  opacity: 1;
+  stroke-width: 3;
+}
+.lx .logic-wires .wire:hover {
+  stroke: var(--live);
+  stroke-width: 4;
+}
+.lx-band {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  pointer-events: none;
+}
+/* The menu of a dropped wire */
+.lx-quick {
+  position: absolute;
+  z-index: 20;
+  width: 240px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+.lx-qh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.lx-qlist {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.lx-qlist button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.lx-qlist button:hover,
+.lx-qlist button:first-child {
+  background: var(--panel-2);
+}
+.lx-qlist button i {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--fam);
+}
+.lx-qlist button em {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--text-3);
+  font-size: 11px;
+}
+/* Minimap */
+.lx-mini {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  cursor: pointer;
+  overflow: hidden;
+}
+.lx-mini > div {
+  position: absolute;
+}
+.lx-mini .f {
+  border: 1px dashed var(--fc);
+  border-radius: 3px;
+}
+.lx-mini .n {
+  background: var(--line-2);
+  border-radius: 2px;
+}
+.lx-mini .v {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.lx .logic-wires {
+  pointer-events: none;
+}
+.lx .logic-wires .wire:not(.live) {
+  pointer-events: stroke;
+}

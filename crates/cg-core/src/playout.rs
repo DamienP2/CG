@@ -260,6 +260,11 @@ fn trigger_flag(name: &str) -> String {
     format!("trigger:{}", name.trim().to_lowercase())
 }
 
+/// The Logic asked the graphic to go out (once its in animation is over).
+const WANT_OUT: &str = "fl:want:out";
+/// The Logic asked a pause to play on (followed by its marker id).
+const WANT_RESUME: &str = "fl:want:resume:";
+
 /// A received trigger or Continue: true for one tick.
 fn is_pulse(k: &str) -> bool {
     k == CONTINUE_FLAG || k.starts_with("trigger:")
@@ -1672,7 +1677,6 @@ impl ChannelState {
         default_tz: &str,
         m: &mut dyn TextWidth,
     ) -> Vec<String> {
-        use crate::logic::AirAction;
         let now = now_ms();
         let fps = project.frame_rate.as_f64().max(1.0);
         // The graphics on air (another one's in / out).
@@ -1686,6 +1690,8 @@ impl ChannelState {
         let mut gone = Vec::new();
         let mut fires = Vec::new();
         let mut rows = Vec::new();
+        let mut takes: Vec<(String, bool)> = Vec::new();
+        let mut widgets: Vec<(u32, String, WidgetControl)> = Vec::new();
         for (layer, item) in self.layers.iter_mut() {
             if matches!(item.phase, Phase::Out) {
                 continue;
@@ -1714,11 +1720,12 @@ impl ChannelState {
             // One graph: the Logic (and the Triggers of a template not saved since).
             let merged;
             let graph = if t.triggers.nodes.is_empty() {
-                &t.logic
+                crate::logic::current(&t.logic)
             } else {
                 merged = crate::logic::merged(&t.logic, &t.triggers);
-                &merged
+                crate::logic::current(&merged)
             };
+            let graph = &*graph;
             if !crate::logic::drives_air(graph) {
                 item.watch.retain(|k, _| !is_pulse(k));
                 continue;
@@ -1754,79 +1761,121 @@ impl ChannelState {
                 }
             }
             let data = shown_data(item).into_owned();
-            let actions = crate::logic::air_actions(graph, &data, &mut |id, _| {
-                data.get(&crate::logic::event_key(id))
-                    .is_some_and(|v| v == "1")
-            });
+            let mut watch = std::mem::take(&mut item.watch);
+            let mut vals = std::mem::take(&mut item.vals);
+            let acts = crate::logic::flow::run(
+                graph,
+                &crate::logic::flow::Tick {
+                    data: &data,
+                    secs: item.age / fps,
+                    now_ms: now,
+                },
+                &mut watch,
+                &mut vals,
+            );
+            item.watch = watch;
+            item.vals = vals;
             // Received once: gone after this tick.
             item.watch.retain(|k, _| !is_pulse(k));
-            // Once each time their input becomes true.
-            let once = |item: &mut PlayoutItem, node: &str| {
-                let key = format!("act:{node}");
-                let first = item.watch.get(&key).is_none_or(|v| v != "1");
-                item.watch.insert(key, "1".into());
-                first
-            };
-            let asked: std::collections::HashSet<String> = actions
-                .iter()
-                .filter_map(|a| match a {
-                    AirAction::Fire { node, .. }
-                    | AirAction::NextRow { node, .. }
-                    | AirAction::SetVar { node, .. } => Some(format!("act:{node}")),
-                    _ => None,
-                })
-                .collect();
-            item.watch
-                .iter_mut()
-                .filter(|(k, _)| k.starts_with("act:") && !asked.contains(*k))
-                .for_each(|(_, v)| *v = "0".into());
-            for a in &actions {
+            for a in acts {
+                use crate::logic::flow::Act;
                 match a {
-                    AirAction::Fire { node, name } if once(item, node) => fires.push(name.clone()),
-                    AirAction::NextRow { node, dataset } if once(item, node) => {
-                        rows.push((*layer, dataset.clone()))
+                    Act::Out => {
+                        item.watch.insert(WANT_OUT.into(), "1".into());
                     }
-                    AirAction::SetVar {
-                        node,
+                    Act::Resume(m) => {
+                        item.watch.insert(format!("{WANT_RESUME}{m}"), "1".into());
+                    }
+                    Act::Fire(name) => fires.push(name),
+                    Act::NextRow(dataset) => rows.push((*layer, dataset)),
+                    Act::SetVar {
                         name,
                         value,
                         transition,
-                    } if once(item, node) => set_var(item, name, value, *transition, fps),
-                    _ => {}
+                    } => set_var(item, &name, &value, transition, fps),
+                    Act::Take(template) => takes.push((template, false)),
+                    Act::TakeOut(template) => takes.push((template, true)),
+                    Act::Widget { layer: l, control } => {
+                        if let Ok(control) = serde_json::from_value::<WidgetControl>(
+                            serde_json::Value::String(control),
+                        ) {
+                            widgets.push((*layer, l, control));
+                        }
+                    }
                 }
             }
-            // A pause or the on-air point set to « Déclencheurs ».
-            if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
-                continue;
-            }
-            let on_point = item.phase == Phase::Holding && item.frame >= t.hold_frame() - 1e-6;
-            let waits = if on_point {
-                t.markers.iter().find(|m| m.kind == MarkerKind::Out)
-            } else {
-                t.pause_at(item.frame)
-            };
-            let Some(marker) = waits.filter(|w| w.resume == Resume::Triggers) else {
-                continue;
-            };
-            let go = if on_point {
-                actions.contains(&AirAction::Out)
-            } else {
-                actions.contains(&AirAction::Resume(marker.id.clone()))
-            };
-            if !go {
-                continue;
-            }
-            done.push(t.name.clone());
-            if on_point {
-                if !begin_out(project, item) {
-                    gone.push(*layer);
+            // Asked to go out: once the in animation is over.
+            if item.watch.contains_key(WANT_OUT) {
+                match item.phase {
+                    Phase::Playing => {}
+                    Phase::Holding => {
+                        item.watch.remove(WANT_OUT);
+                        done.push(t.name.clone());
+                        if !begin_out(project, item) {
+                            gone.push(*layer);
+                        }
+                        continue;
+                    }
+                    Phase::Out | Phase::OutHold => {
+                        item.watch.remove(WANT_OUT);
+                    }
                 }
-            } else {
-                resume(t, item);
+            }
+            // Asked to play on from a pause: once holding on it.
+            if matches!(item.phase, Phase::Holding | Phase::OutHold) {
+                if let Some(m) = t.pause_at(item.frame) {
+                    let k = format!("{WANT_RESUME}{}", m.id);
+                    if item.watch.remove(&k).is_some() {
+                        done.push(t.name.clone());
+                        resume(t, item);
+                    }
+                }
             }
         }
         for layer in gone {
             self.layers.remove(&layer);
+        }
+        for (template, out) in takes {
+            let cmd = if out {
+                match self.layers.iter().find(|(_, i)| {
+                    i.template_id == template && !matches!(i.phase, Phase::Out | Phase::OutHold)
+                }) {
+                    Some((l, _)) => Command::TakeOut {
+                        zone: None,
+                        layer: Some(*l),
+                    },
+                    None => continue,
+                }
+            } else {
+                Command::Take {
+                    zone: None,
+                    layer: None,
+                    template_id: template.clone(),
+                    data: None,
+                    rundown_id: None,
+                }
+            };
+            if self.apply(project, cmd).is_ok() {
+                let name = project
+                    .template(&template)
+                    .map_or(template.clone(), |t| t.name.clone());
+                done.push(if out {
+                    format!("{name} ↓")
+                } else {
+                    format!("{name} ↑")
+                });
+            }
+        }
+        for (layer, target, control) in widgets {
+            let _ = self.apply(
+                project,
+                Command::Widget {
+                    zone: None,
+                    layer: Some(layer),
+                    target,
+                    control,
+                },
+            );
         }
         for name in fires {
             if self
@@ -2406,16 +2455,20 @@ mod tests {
                     kind,
                     x: 0.0,
                     y: 0.0,
+                    frame: None,
+                    title: None,
                 })
                 .collect(),
             edges: edges
                 .iter()
                 .map(|(f, t, p)| crate::logic::Edge {
                     from: (*f).into(),
+                    from_port: "out".into(),
                     to: (*t).into(),
                     port: (*p).into(),
                 })
                 .collect(),
+            frames: Vec::new(),
         }
     }
 
@@ -2604,7 +2657,7 @@ mod tests {
     }
 
     #[test]
-    fn without_logic_on_the_marker_the_graph_does_nothing() {
+    fn the_logic_takes_out_whatever_the_marker_says() {
         use crate::logic::NodeKind;
         let mut p = project();
         let t = &mut p.templates[0];
@@ -2623,7 +2676,7 @@ mod tests {
             ch.tick(1.0);
             ch.event_resumes(&p, "UTC", &mut w);
         }
-        assert_eq!(ch.layers[&1].phase, Phase::Holding);
+        assert_eq!(ch.layers[&1].phase, Phase::Out);
     }
 
     #[test]

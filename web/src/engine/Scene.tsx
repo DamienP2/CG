@@ -12,7 +12,8 @@ import { TimeContext, useLayerTime, type Motion } from './LiveTime';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, GroupMask, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
-import { applyLogic, measureLayer, withOutputs } from './logic';
+import { applyLogic, clockAt, targeted, logicUsesTime, measureLayer, patchedLayers, wiredLayers, withOutputs } from './logic';
+import type { Clock } from './expr';
 import { fitText, type Fitted } from './textFit';
 import { applyMotion } from './motion';
 import { useFonts } from './fonts';
@@ -529,7 +530,7 @@ function LottiePlaceholder() {
 const FramedContext = createContext<ReadonlySet<string>>(new Set());
 
 function framedLayers(layers: Layer[], childrenOf: Map<string | null, Layer[]>, logic: Template['logic']): Set<string> {
-  const targets = new Set(logic?.nodes.flatMap((n) => (n.type === 'target' ? [n.layer] : [])) ?? []);
+  const targets = wiredLayers(logic);
   const out = new Set<string>();
   const seen = new Set<string>();
   const visit = (l: Layer): boolean => {
@@ -558,12 +559,25 @@ export function childrenMap(layers: Layer[], includeHidden = false): Map<string 
 }
 
 /** Renders a template at native resolution (the caller scales it). */
-export const Scene = memo(function Scene({ template, frame, data, interactive }: SceneProps) {
+export const Scene = memo(function Scene(props: SceneProps) {
+  // A graph reading the time (temps(), clignoter()…) follows the clock; the others the playhead only.
+  return logicUsesTime(props.template.logic) ? <TimedScene {...props} /> : <SceneBody {...props} clock={clockAt(props.frame)} />;
+});
+
+function TimedScene(props: SceneProps) {
+  const time = useContext(TimeContext);
+  return <SceneBody {...props} clock={{ secs: time.ageSecs, nowMs: time.nowMs }} />;
+}
+
+function SceneBody({ template, frame, data, interactive, clock }: SceneProps & { clock: Clock }) {
   // Settings exposed to the Operator, set from the data.
   template = withSettings(template, data);
-  // The results of the calculations its Logic shows in texts ({{calc_…}}).
-  const computed = useMemo(() => withOutputs(template, frame, data, holdFrame(template), resolveLayer), [template, frame, data]);
+  const holdAt = holdFrame(template);
+  // The results of the calculations its Logic shows in texts ({{calc_…}}), the contents it sets.
+  const computed = useMemo(() => withOutputs(template, frame, data, holdAt, resolveLayer, clock), [template, frame, data, clock.secs]); // eslint-disable-line react-hooks/exhaustive-deps
   data = computed;
+  const patched = useMemo(() => patchedLayers(template, frame, data, holdAt, resolveLayer, clock), [template, frame, data, clock.secs]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (patched !== template.layers) template = { ...template, layers: patched };
   // Kept from one frame to the next: the layers that do not change are not drawn again.
   const childrenOf = useMemo(() => childrenMap(template.layers), [template.layers]);
   const framed = useMemo(() => framedLayers(template.layers, childrenOf, template.logic), [template.layers, childrenOf, template.logic]);
@@ -575,10 +589,10 @@ export const Scene = memo(function Scene({ template, frame, data, interactive }:
     if (!template.logic?.nodes.length) return NO_LOGIC;
     const out = new Map<string, Resolved>();
     const values = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
-    applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText));
-    for (const n of template.logic.nodes) if (n.type === 'target' && values.has(n.layer)) out.set(n.layer, values.get(n.layer)!);
+    applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText), clock);
+    for (const id of targeted(template.logic)) if (values.has(id)) out.set(id, values.get(id)!);
     return out;
-  }, [template, frame, data, hold, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [template, frame, data, hold, fontsReady, clock.secs]); // eslint-disable-line react-hooks/exhaustive-deps
   const rich = useMemo(() => typedKeys(template), [template.fields]);
   return (
     <RichKeys.Provider value={rich}>
@@ -594,7 +608,7 @@ export const Scene = memo(function Scene({ template, frame, data, interactive }:
       </SceneLayers.Provider>
     </RichKeys.Provider>
   );
-});
+}
 
 /** Fixed-size canvas scaled to fit its container. */
 export function Viewport({ width, height, scale, children, className, style }: { width: number; height: number; scale: number; children: React.ReactNode; className?: string; style?: CSSProperties }) {

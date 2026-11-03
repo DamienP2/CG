@@ -291,8 +291,9 @@ fn with_calculations<'a>(
     data: std::borrow::Cow<'a, cg_core::anim::Data>,
     t: &Template,
     frame: f64,
+    clock: cg_core::logic::Clock,
 ) -> std::borrow::Cow<'a, cg_core::anim::Data> {
-    match cg_core::logic::with_outputs(t, frame, &data) {
+    match cg_core::logic::with_outputs(t, frame, &data, clock) {
         Some(d) => std::borrow::Cow::Owned(d),
         None => data,
     }
@@ -347,9 +348,15 @@ fn item_key(item: &cg_core::PlayoutItem) -> u64 {
 }
 
 /// `t` laid out for `format`, with the settings in `data`.
-fn prepared<'p>(t: &'p Template, format: &str, data: &Data) -> std::borrow::Cow<'p, Template> {
+fn prepared<'p>(
+    t: &'p Template,
+    format: &str,
+    data: &Data,
+    frame: f64,
+    clock: cg_core::logic::Clock,
+) -> std::borrow::Cow<'p, Template> {
     use std::borrow::Cow;
-    match t.in_format(format) {
+    let set = match t.in_format(format) {
         Cow::Borrowed(t) => t.with_settings(data),
         Cow::Owned(laid) => {
             let set = match laid.with_settings(data) {
@@ -358,6 +365,11 @@ fn prepared<'p>(t: &'p Template, format: &str, data: &Data) -> std::borrow::Cow<
             };
             Cow::Owned(set.unwrap_or(laid))
         }
+    };
+    // The contents its Logic sets.
+    match cg_core::logic::patched(&set, frame, data, clock) {
+        Some(p) => Cow::Owned(p),
+        None => set,
     }
 }
 
@@ -610,7 +622,13 @@ impl Renderer {
     }
 
     /// Runs the template's logic graph; returns the layers it changed.
-    fn logic_values(&mut self, t: &Template, frame: f64, data: &Data) -> Logic {
+    fn logic_values(
+        &mut self,
+        t: &Template,
+        frame: f64,
+        data: &Data,
+        clock: cg_core::logic::Clock,
+    ) -> Logic {
         if t.logic.is_empty() {
             return HashMap::new();
         }
@@ -666,16 +684,9 @@ impl Renderer {
                 },
             }
         };
-        cg_core::logic::apply(&t.logic, &mut values, data, &mut measure);
-        let targeted: std::collections::HashSet<&str> = t
-            .logic
-            .nodes
-            .iter()
-            .filter_map(|n| match &n.kind {
-                cg_core::logic::NodeKind::Target { layer, .. } => Some(layer.as_str()),
-                _ => None,
-            })
-            .collect();
+        cg_core::logic::apply(&t.logic, &mut values, data, &mut measure, clock);
+        let logic = cg_core::logic::current(&t.logic);
+        let targeted = cg_core::logic::targeted(&logic);
         values.retain(|k, _| targeted.contains(k.as_str()));
         values
     }
@@ -842,6 +853,10 @@ impl Renderer {
                         ),
                         t,
                         item.frame,
+                        cg_core::logic::Clock {
+                            secs: item.age / fps,
+                            now_ms: now,
+                        },
                     ),
                 })
             })
@@ -850,11 +865,17 @@ impl Renderer {
         macro_rules! ctx {
             ($i:expr) => {{
                 let a = &on_air[$i];
-                let t = a.set.get_or_init(|| prepared(a.template, format, &a.data));
+                let clock = cg_core::logic::Clock {
+                    secs: a.item.age / fps,
+                    now_ms: now,
+                };
+                let t = a
+                    .set
+                    .get_or_init(|| prepared(a.template, format, &a.data, a.item.frame, clock));
                 let logic = match a.logic.get() {
                     Some(l) => l,
                     None => {
-                        let l = self.logic_values(t, a.item.frame, &a.data);
+                        let l = self.logic_values(t, a.item.frame, &a.data, clock);
                         a.logic.get_or_init(|| l)
                     }
                 };
@@ -1073,8 +1094,12 @@ impl Renderer {
                 for c in &turning {
                     old_data.insert(c.key.clone(), c.from.clone());
                 }
-                let t_old = prepared(on_air[i].template, format, &old_data);
-                let logic = self.logic_values(&t_old, item.frame, &old_data);
+                let clock = cg_core::logic::Clock {
+                    secs: item.age / fps,
+                    now_ms: now,
+                };
+                let t_old = prepared(on_air[i].template, format, &old_data, item.frame, clock);
+                let logic = self.logic_values(&t_old, item.frame, &old_data, clock);
                 let old_ctx = Ctx {
                     template: &t_old,
                     data: &old_data,
@@ -1101,8 +1126,12 @@ impl Renderer {
                     let (w, h) = (pm.width(), pm.height());
                     let mut new = Pixmap::new(w, h).expect("valid size");
                     self.draw_children(&mut new, ctx, None, root, 1.0, zone_mask.as_ref());
-                    let t_old = prepared(on_air[i].template, format, old_data);
-                    let logic = self.logic_values(&t_old, item.frame, old_data);
+                    let clock = cg_core::logic::Clock {
+                        secs: item.age / fps,
+                        now_ms: now,
+                    };
+                    let t_old = prepared(on_air[i].template, format, old_data, item.frame, clock);
+                    let logic = self.logic_values(&t_old, item.frame, old_data, clock);
                     let old_ctx = Ctx {
                         template: &t_old,
                         data: old_data,
@@ -1237,10 +1266,16 @@ impl Renderer {
             default_tz: "",
             fps: project.frame_rate.as_f64().max(1.0),
         };
-        // The results of the calculations its Logic shows in texts.
-        let computed = cg_core::logic::with_outputs(template, frame, data);
+        // The results of the calculations its Logic shows in texts, the contents it sets.
+        let clock = cg_core::logic::Clock {
+            secs: time.age_secs,
+            now_ms: time.now_ms,
+        };
+        let computed = cg_core::logic::with_outputs(template, frame, data, clock);
         let data = computed.as_ref().unwrap_or(data);
-        let logic = self.logic_values(template, frame, data);
+        let patched = cg_core::logic::patched(template, frame, data, clock);
+        let template = patched.as_ref().unwrap_or(template);
+        let logic = self.logic_values(template, frame, data, clock);
         let ctx = Ctx {
             template,
             frame,

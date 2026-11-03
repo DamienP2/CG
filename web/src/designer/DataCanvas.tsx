@@ -6,7 +6,8 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
-import { applyLogic, INPUTS, measureLayer, nodeValues, withOutputs } from '../engine/logic';
+import { applyLogic, clockAt, fromPortOf, measureLayer, nodeValues, withOutputs } from '../engine/logic';
+import { names, parse } from '../engine/expr';
 import { api, useApp } from '../store';
 import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type LiveChange, type Logic, type LogicNode, type Prop, type Template, type ValueChange } from '../engine/types';
 import { isTimed } from '../engine/widgets';
@@ -17,7 +18,7 @@ import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
 import { layerIcon } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
-import { fmt, inputLabel, LogicNodeBody, makeNode } from './LogicEditor';
+import { ExprInput, fmt } from './LogicEditor';
 import { BuildCard, TableNodeInfo } from './TableBuild';
 import { unexposeRows } from '../widgets/table-rows';
 import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
@@ -495,6 +496,9 @@ export function unfeedTable(t: Template, l: Layer) {
   });
 }
 
+/** The title of the Layer nodes this canvas makes in the Logic (they go when unwired). */
+const DC_MADE = 'Data canvas';
+
 export function DataCanvas() {
   const { open, set: setOpen } = useDataCanvas();
   const template = useDesigner((s) => s.template);
@@ -567,14 +571,15 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     return m;
   }, [template, frame, values]);
   // The Calculate nodes (the Logic's math): their results at the playhead.
-  const calcs = (template.logic?.nodes ?? []).filter((n) => n.type === 'math');
-  const logicValues = useMemo(() => nodeValues(template.logic ?? { nodes: [], edges: [] }, resolved, values, measureLayer(template.layers, values, interpolateText)), [template.logic, template.layers, resolved, values]);
-  /** Properties a Calculate node sets (through the Logic's Set property). */
+  const calcs = (template.logic?.nodes ?? []).filter((n): n is LogicNode & { type: 'expr' } => n.type === 'expr');
+  const logicValues = useMemo(() => nodeValues(template.logic ?? { nodes: [], edges: [] }, resolved, values, measureLayer(template.layers, values, interpolateText), clockAt(frame)), [template.logic, template.layers, resolved, values, frame]);
+  /** Properties a Calculate node sets (a wire into a row of a Layer node of the Logic). */
   const calcTargets = (l: Layer): string[] => {
     const lg = template.logic;
     if (!lg) return [];
     const ids = new Set(calcs.map((n) => n.id));
-    return lg.nodes.filter((n): n is LogicNode & { type: 'target' } => n.type === 'target' && n.layer === l.id && lg.edges.some((e) => e.to === n.id && ids.has(e.from))).map((n) => n.prop);
+    const layerNodes = new Set(lg.nodes.filter((n) => n.type === 'layer' && n.layer === l.id).map((n) => n.id));
+    return lg.edges.filter((e) => layerNodes.has(e.to) && ids.has(e.from) && !e.port.includes('.')).map((e) => e.port);
   };
 
   // ---- What the canvas shows and where.
@@ -657,15 +662,17 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     return spot(`i:l:${l.id}:${port}`, { x: p.x, y: p.y + top + ROW / 2 });
   };
   const logicOut = (n: LogicNode) => ({ x: n.x + widthOf(n.id, W.logic), y: n.y + HEAD / 2 });
-  const logicIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + INPUTS[n.type].indexOf(port) * ROW + ROW / 2 });
+  const logicIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + (n.type === 'expr' ? n.inputs.indexOf(port) : 0) * ROW + ROW / 2 });
 
   // ---- Editing the template.
   const editLogic = (fn: (l: Logic) => void, key?: string) =>
     update((t) => {
       t.logic ??= { nodes: [], edges: [] };
       fn(t.logic);
-      // Field and set-property nodes only exist through their wires.
-      t.logic.nodes = t.logic.nodes.filter((n) => (n.type === 'field' ? t.logic!.edges.some((e) => e.from === n.id) : n.type === 'target' ? t.logic!.edges.some((e) => e.to === n.id) : true));
+      // Field nodes, and the Layer nodes made here, only exist through their wires.
+      const lg = t.logic;
+      for (const n of lg.nodes) if (n.type === 'layer' && n.title === DC_MADE) n.rows = n.rows.filter((r) => lg.edges.some((e) => e.to === n.id && e.port === r.key));
+      lg.nodes = lg.nodes.filter((n) => (n.type === 'field' ? lg.edges.some((e) => e.from === n.id) : n.type === 'layer' && n.title === DC_MADE ? n.rows.length > 0 : true));
       if (!t.logic.nodes.length) delete t.logic;
     }, key);
   const setNode = (id: string, patch: Partial<LogicNode>, key?: string) =>
@@ -768,13 +775,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   logic.edges.forEach((e, i) => {
     const a = nodes.get(e.from);
     const b = nodes.get(e.to);
-    if (!a || !b || (a.type !== 'math' && b.type !== 'math')) return;
-    const from = a.type === 'field' ? keyOut(a.key) : a.type === 'math' ? logicOut(a) : null;
+    if (!a || !b || (a.type !== 'expr' && b.type !== 'expr') || fromPortOf(e) !== 'out') return;
+    const from = a.type === 'field' ? keyOut(a.key) : a.type === 'expr' ? logicOut(a) : null;
     let to: Pt | null = null;
-    if (b.type === 'target') {
+    if (b.type === 'layer') {
       const l = template.layers.find((x) => x.id === b.layer);
-      to = l ? layerIn(l, b.prop) : null;
-    } else if (b.type === 'math') to = logicIn(b, e.port);
+      to = l && !e.port.includes('.') ? layerIn(l, e.port) : null;
+    } else if (b.type === 'expr') to = logicIn(b, e.port);
     if (!from || !to) return;
     wires.push({ d: curve(from, to), title: t('Click to remove'), onClick: () => editLogic((l) => void l.edges.splice(i, 1)) });
   });
@@ -918,14 +925,19 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       });
     } else if (w.kind === 'logic' && !contentOf(findLayer(template, layerId)!).includes(p)) {
       editLogic((l) => {
-        let to = l.nodes.find((n) => n.type === 'target' && n.layer === layerId && n.prop === p)?.id;
-        if (!to) {
-          to = newId();
+        // A row of a Layer node of the Logic for that layer (one made here).
+        let node = l.nodes.find((n): n is LogicNode & { type: 'layer' } => n.type === 'layer' && n.layer === layerId && n.title === DC_MADE);
+        if (!node) {
           const lp = nodePos.get(`l:${layerId}`)!;
-          l.nodes.push({ id: to, type: 'target', layer: layerId, prop: p as Prop, mode: 'set', x: lp.x, y: lp.y });
+          node = { id: newId(), type: 'layer', layer: layerId, rows: [], title: DC_MADE, x: lp.x, y: lp.y };
+          l.nodes.push(node);
         }
-        l.edges = l.edges.filter((e) => !(e.to === to && e.port === 'in'));
-        l.edges.push({ from: w.id, to, port: 'in' });
+        if (!node.rows.some((r) => r.key === p)) node.rows.push({ key: p });
+        const to = node.id;
+        // One wire into a property, whichever Layer node it goes into.
+        const same = new Set(l.nodes.filter((n) => n.type === 'layer' && n.layer === layerId).map((n) => n.id));
+        l.edges = l.edges.filter((e) => !(same.has(e.to) && e.port === p));
+        l.edges.push({ from: w.id, to, port: p });
       });
     }
   };
@@ -1147,7 +1159,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           })}
 
           <div className="dc-pal-title">{t('Operations')}</div>
-          <button className="kind-math" onPointerDown={(e) => fromPalette(e, t('Math'), (at) => editLogic((l) => void l.nodes.push(makeNode('math', template, at.x, at.y))), W.logic)}>
+          <button className="kind-math" onPointerDown={(e) => fromPalette(e, t('Math'), (at) => editLogic((l) => void l.nodes.push({ id: newId(), type: 'expr', expr: 'a + b', inputs: ['a', 'b'], x: at.x, y: at.y })), W.logic)}>
             <Calculator size={14} />
             <span>
               <strong>{t('Math')}</strong>
@@ -1319,7 +1331,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                 <div className="ln-head" style={{ height: HEAD }}>
                   <Calculator size={12} />
                   <span>{t('Math')}</span>
-                  <span className="ln-value">{fmt(logicValues.get(n.id))}</span>
+                  <span className="ln-value">{fmt(logicValues.get(`${n.id}|out`))}</span>
                   <button
                     className="ln-del"
                     title={t('Delete')}
@@ -1334,14 +1346,19 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                   </button>
                   <span className="port out" title={t("Drag to a layer's value or to another calculation")} onPointerDown={(e) => startWire(e, { kind: 'logic', id: n.id })} />
                 </div>
-                {INPUTS[n.type].map((port) => (
+                {n.inputs.map((port) => (
                   <div key={port} className="ln-input" style={{ height: ROW }}>
                     <span className="port in" data-logic={n.id} data-port={port} />
-                    <span>{inputLabel(n, port)}</span>
+                    <span>{port}</span>
                   </div>
                 ))}
                 <div className="ln-body">
-                  <LogicNodeBody n={n} template={template} setNode={setNode} />
+                  <ExprInput value={n.expr} k={`dc-${n.id}-e`} placeholder="a + b" onChange={(x, key) => setNode(n.id, { expr: x } as Partial<LogicNode>, key)} />
+                  {names(parse(n.expr)).some((x) => !n.inputs.includes(x)) && (
+                    <button className="dc-addfilter" onClick={() => setNode(n.id, { inputs: [...n.inputs, ...names(parse(n.expr)).filter((x) => !n.inputs.includes(x))] } as Partial<LogicNode>)}>
+                      + {names(parse(n.expr)).filter((x) => !n.inputs.includes(x)).join(', ')}
+                    </button>
+                  )}
                 </div>
                 {resizer(n.id, false)}
               </div>

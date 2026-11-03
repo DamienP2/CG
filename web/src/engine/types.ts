@@ -361,51 +361,87 @@ export interface Template {
 }
 
 export type TextMetric = 'width' | 'height' | 'lines' | 'chars';
-export type MathOp = 'add' | 'sub' | 'mul' | 'div' | 'min' | 'max' | 'abs' | 'round' | 'floor' | 'ceil';
-export type Cmp = 'gt' | 'ge' | 'lt' | 'le' | 'eq' | 'ne' | 'empty' | 'notEmpty';
 export type TargetMode = 'set' | 'add' | 'multiply';
 
+/** A row of a Layer node: a property (`width`, `fill`…), a measure of its text (`text.width`…) or its content (`content.text`…). Its port, on both sides, is its key. */
+export interface LayerRow {
+  key: string;
+  mode?: TargetMode;
+}
+/** A branch of an If: its condition and its value (expressions). */
+export interface Branch {
+  when: string;
+  value: string;
+}
+
 export type LogicNodeKind =
-  | { type: 'layerProp'; layer: string; prop: Prop }
-  | { type: 'textSize'; layer: string; metric: TextMetric }
+  // Values
+  | { type: 'layer'; layer: string; rows: LayerRow[] }
   | { type: 'field'; key: string }
   | { type: 'constant'; value: number }
-  | { type: 'math'; op: MathOp }
-  | { type: 'clamp'; min: number; max: number }
-  | { type: 'condition'; cmp: Cmp }
-  | { type: 'target'; layer: string; prop: Prop; mode: TargetMode }
   | { type: 'text'; value: string }
-  | { type: 'event'; on: TriggerEvent }
-  /** 1 while the graphic `template` is on air, gliding over `transition` s (cg_core::logic::NodeKind::OnAir); `test` in the Designer. */
+  | { type: 'color'; value: string }
+  | { type: 'flag'; value: boolean }
+  /** A Calculation: `expr` over the inputs named `inputs` (cg_core::logic::NodeKind::Expr). */
+  | { type: 'expr'; expr: string; inputs: string[] }
+  /** If / else if / else: the value of the first branch whose condition holds; its flow outputs b0, b1… else. */
+  | { type: 'if'; inputs: string[]; branches: Branch[]; otherwise: string }
+  /** A table: the value of the row whose key is the input. */
+  | { type: 'lookup'; rows: { key: string; value: string }[]; otherwise: string; contains?: boolean }
+  /** 1 while the graphic `template` is on air, gliding over `transition` s; `test` in the Designer. */
   | { type: 'onAir'; template: string; transition?: number; test?: boolean }
-  /** 1 for an instant when the trigger `name` is received (API, Companion…). */
-  | { type: 'triggerIn'; name: string }
-  /** 1 for an instant when Continue (F2) is pressed for the graphic. */
-  | { type: 'continue' }
-  /** On air: sets the variable when `when` becomes true; a number glides over `transition` s. */
-  | { type: 'setVar'; name: string; value: string; transition?: number }
   /** The variable (0 until set on air; `test` in the Designer). */
   | { type: 'var'; name: string; test?: number }
-  /** Writes its input into the data value `key`: a text showing {{key}} shows the result (cg_core::logic::with_outputs). */
+  /** Writes its input into the data value `key`: a text showing {{key}} shows the result. */
   | { type: 'setField'; key: string }
-  | { type: 'bool'; op: 'and' | 'or' }
+  // Flows: what starts them
+  | { type: 'event'; on: TriggerEvent }
+  | { type: 'triggerIn'; name: string }
+  | { type: 'continue' }
+  | { type: 'start' }
+  | { type: 'every'; seconds: number }
+  // Flows: on the way
+  | { type: 'wait'; seconds: number }
+  | { type: 'counter'; start: number; step: number }
+  | { type: 'once' }
+  // Actions
   | { type: 'out' }
   | { type: 'resume'; marker: string }
   | { type: 'fire'; name: string }
-  | { type: 'nextRow'; dataset: string };
+  | { type: 'nextRow'; dataset: string }
+  /** Sets the variable (or to input `value`); a number glides over `transition` s. */
+  | { type: 'setVar'; name: string; value: string; transition?: number }
+  | { type: 'take'; template: string; out?: boolean }
+  | { type: 'widget'; layer: string; control: string };
 
-export type LogicNode = LogicNodeKind & { id: string; x: number; y: number };
+export type LogicNode = LogicNodeKind & { id: string; x: number; y: number; frame?: string; title?: string };
 
 export interface LogicEdge {
   from: string;
+  /** Output of `from` (absent: `out`). */
+  fromPort?: string;
   to: string;
-  /** Input port of `to`: a, b, in, then, else. */
+  /** Input of `to`. */
   port: string;
+}
+
+/** A function of the graph: a dashed frame its nodes are in; switched off, they no longer act. */
+export interface LogicFrame {
+  id: string;
+  name: string;
+  color: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  off?: boolean;
+  collapsed?: boolean;
 }
 
 export interface Logic {
   nodes: LogicNode[];
   edges: LogicEdge[];
+  frames?: LogicFrame[];
 }
 
 export type ZoneTransition = 'sequential' | 'cut' | 'fade';
