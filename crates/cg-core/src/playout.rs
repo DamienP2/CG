@@ -854,6 +854,8 @@ pub struct ProjectRun {
     pub watch: BTreeMap<String, String>,
     pub vals: BTreeMap<String, String>,
     pub asked: Vec<PlaylistAsk>,
+    /// The rows a Logic took (« Resume a playlist »): the server reads their data then.
+    pub taken: Vec<String>,
 }
 
 /// A playlist action asked by a Logic.
@@ -1549,6 +1551,8 @@ impl ChannelState {
                 let t = project
                     .template(&item.template_id)
                     .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
+                // With the settings of the take (an exposed duration…), as the picture.
+                let t = t.with_settings(&shown_data(item));
                 let l = t
                     .layers
                     .iter()
@@ -1769,6 +1773,9 @@ impl ChannelState {
                 )
                 .is_ok();
         }
+        if taken {
+            self.run.0.taken.push(n.id.clone());
+        }
         taken.then(|| list.name.clone())
     }
 
@@ -1814,6 +1821,7 @@ impl ChannelState {
                 self.run.0 = ProjectRun {
                     project: project.id.clone(),
                     since: now,
+                    taken: std::mem::take(&mut self.run.0.taken),
                     ..Default::default()
                 };
             }
@@ -2159,6 +2167,9 @@ impl ChannelState {
             let Some(t) = project.template(&item.template_id) else {
                 continue;
             };
+            // With the settings of the take (an exposed duration…), as the picture.
+            let ts = t.with_settings(&shown_data(item));
+            let t: &Template = &ts;
             // Credits set to go out by themselves: out once they have gone all the way.
             if item.phase == Phase::Holding
                 && item.frame >= t.hold_frame() - 1e-6

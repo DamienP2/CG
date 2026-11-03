@@ -1,3 +1,4 @@
+import { withSettings } from '../engine/settings';
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
@@ -1941,7 +1942,7 @@ function SpecControls({ layer, item, act, setData, fps, lang, selected, onSelect
       <div className={`opx-widget cc-host ${selected ? 'sel' : ''}`} onClick={onSelect}>
         <CentreModeContext.Provider value="air">
           <OperatorBound layer={layer} data={item.data} setData={setData}>
-            <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} setData={setData} />
+            <Op layer={withSettings({ layers: [layer], fields: [] } as never, item.data).layers[0] as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} setData={setData} />
           </OperatorBound>
         </CentreModeContext.Provider>
       </div>

@@ -1106,6 +1106,16 @@ async fn advance(
                 fired.extend(st.run_project(p, &buses));
                 fired
             };
+            // Graphics a Logic took: their data read as for a take (data sets, sources;
+            // the rows read « on take » read now).
+            if !fired.is_empty() {
+                let taken = std::mem::take(&mut st.run.0.taken);
+                let store = state.data.store();
+                crate::state::bind_state(p, &mut st, &store, None, None, false);
+                for id in &taken {
+                    crate::state::bind_state(p, &mut st, &store, None, Some(id), false);
+                }
+            }
             for name in fired {
                 crate::asrun::record(
                     state,

@@ -1,3 +1,4 @@
+import { withSettings } from '../engine/settings';
 import { useEffect, useRef, useState } from 'react';
 import { api, useApp } from '../store';
 import { defaultData } from '../engine/evaluate';
@@ -215,7 +216,9 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
     // Held (heldAt): it waits for its Play as a manual start would, its time standing still.
     const at = heldAt(run, layer, data, holdSecs);
     const held = at !== undefined;
-    const lay = held ? { ...layer, manualStart: true } : layer;
+    // With the settings the operator set (an exposed duration…), as the picture shows them.
+    const set = withSettings({ layers: [layer], fields: [] } as never, data).layers[0] as Layer;
+    const lay = held ? { ...set, manualStart: true } : set;
     const act = async (op: string, args?: unknown) => {
       try {
         const state = await api('POST', '/api/widgets/act', { layer: lay, state: run.widgets[layer.id] ?? null, op, args: args ?? null, data, ageSecs: at ?? ageSecs(), fps });
