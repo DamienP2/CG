@@ -178,7 +178,7 @@ export interface Readout {
  * rows under it: the scoreboard's teams); `children` line 3 (kit rows). In the Operator the
  * widget's name opens line 1.
  */
-export function Centre({ name, readout, status, actions, rows, children }: { name?: string; readout?: Readout; status?: ReactNode; actions?: Line2Item[]; rows?: ReactNode; children?: ReactNode }) {
+export function Centre({ name, readout, status, actions, rows, children, l3Air }: { name?: string; readout?: Readout; status?: ReactNode; actions?: Line2Item[]; rows?: ReactNode; children?: ReactNode; /** Line 3 shown on air / in the preview too (sliders the preview needs). */ l3Air?: boolean }) {
   const mode = useCentreMode();
   // A tile on air: the actions only (a value is typed in the preview, then Update).
   const list = (actions ?? []).filter((a) => a && !(mode === 'air' && a !== GAP && 'field' in a)) as Exclude<Line2Item, false | null | undefined>[];
@@ -206,7 +206,7 @@ export function Centre({ name, readout, status, actions, rows, children }: { nam
         </div>
       )}
       {rows && <div className="cc-l cc-rows">{rows}</div>}
-      {children && mode !== 'air' && <div className="cc-l cc-l3">{children}</div>}
+      {children && (mode !== 'air' || l3Air) && <div className="cc-l cc-l3">{children}</div>}
     </div>
   );
 }

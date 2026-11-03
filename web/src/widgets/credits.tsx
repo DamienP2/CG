@@ -1052,6 +1052,15 @@ function CreditsBar(p: OpP) {
       if (!k.optimised) smooth(b.set);
     }
   };
+  // Under the Operator's preview (its controls only): as in the Designer, play / pause, reset, the duration (when exposed) and where it is.
+  const preview = mode === 'air' && !item;
+  if (preview)
+    return (
+      <Centre name={l.name} actions={[playPause, reset]} l3Air>
+        <DurationRow value={Math.round(total)} onChange={setDuration} />
+        <PositionRow f={f} total={total} onSeek={(x) => act('seek', { fraction: x, ...travel })} />
+      </Centre>
+    );
   return (
     <Centre name={l.name} readout={{ v: mss(rem), sub }} status={status1} actions={actions}>
       <DurationRow value={Math.round(total)} onChange={setDuration} />
