@@ -422,7 +422,7 @@ export type LogicNodeKind =
   // The project's Logic
   /** A graphic: flows `in` / `out`, value `onAir`. */
   | { type: 'template'; template: string }
-  /** A playlist: flows `taken` (a row taken) / `end` (its last row gone out). */
+  /** A playlist: flows `taken` (a row taken) / `end` (its last row gone out); values `onAir`, `interrupted` (cut by another playlist). */
   | { type: 'playlist'; playlist: string };
 
 export type LogicNode = LogicNodeKind & { id: string; x: number; y: number; frame?: string; title?: string };

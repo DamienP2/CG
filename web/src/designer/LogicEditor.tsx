@@ -1449,6 +1449,12 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
             <Row n={n} outP={pOut(n, 'end')}>
               <span className="lx-lab right">{t('End of playlist')}</span>
             </Row>
+            <Row n={n} outP={pOut(n, 'onAir')}>
+              <span className="lx-lab right">{t('On air')}</span>
+            </Row>
+            <Row n={n} outP={pOut(n, 'interrupted')}>
+              <span className="lx-lab right">{t('Interrupted')}</span>
+            </Row>
           </>
         );
       case 'widget':
@@ -1495,7 +1501,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
 
   /** The value a node shows in its header (its main output). */
   const headValue = (n: LogicNode) => {
-    if (n.type === 'layer' || n.type === 'if' || n.type === 'expr' || n.type === 'lookup' || n.type === 'var' || n.type === 'onAir' || n.type === 'counter' || n.type === 'template') return undefined;
+    if (n.type === 'layer' || n.type === 'if' || n.type === 'expr' || n.type === 'lookup' || n.type === 'var' || n.type === 'onAir' || n.type === 'counter' || n.type === 'template' || n.type === 'playlist') return undefined;
     const out = portsOf(n).outs.find((p) => p.type !== 'flow');
     return out ? values.get(`${n.id}|${out.id}`) : undefined;
   };

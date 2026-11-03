@@ -620,6 +620,7 @@ export const data: Record<string, string> = {
   'Take a graphic out': 'Sortir un template',
   'Goes in': 'Entre',
   'Row taken': 'Ligne prise',
+  Interrupted: 'Interrompue',
   'End of playlist': 'Fin de playlist',
   'Choose a playlist': 'Choisir une playlist',
   'Missing graphic': 'Template manquant',

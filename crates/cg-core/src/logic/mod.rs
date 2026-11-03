@@ -268,7 +268,8 @@ pub enum NodeKind {
         template: String,
     },
     /// A playlist: flows `taken` (a row of it is taken) and `end` (its last
-    /// row has gone out).
+    /// row has gone out); values `onAir` (a row of it on air) and
+    /// `interrupted` (its graphic replaced by another playlist's, not played on since).
     Playlist {
         playlist: String,
     },
@@ -699,6 +700,14 @@ impl<'a> Graph<'a> {
                     .unwrap_or(if *test { 1.0 } else { 0.0 }),
             ),
             NodeKind::SetField { .. } => self.input(id, "in", cx, depth).unwrap_or_else(empty),
+            NodeKind::Playlist { playlist } => {
+                let key = if port == "interrupted" {
+                    interrupted_key(playlist)
+                } else {
+                    playlist_air_key(playlist)
+                };
+                LVal::Num(cx.data.get(&key).is_some_and(|v| v == "1") as u8 as f64)
+            }
             NodeKind::Template { template } => LVal::Num(
                 cx.data
                     .get(&on_air_key(template))
@@ -899,6 +908,16 @@ pub fn on_air_key(template: &str) -> String {
 /// The data key of what a playlist last took (changes at each take), read by [`NodeKind::Playlist`].
 pub fn played_key(playlist: &str) -> String {
     format!("__played_{playlist}")
+}
+
+/// The data key of a playlist on air (`1`: a row of it is on air).
+pub fn playlist_air_key(playlist: &str) -> String {
+    format!("__plair_{playlist}")
+}
+
+/// The data key of a playlist interrupted (`1`: its graphic was replaced by another playlist's).
+pub fn interrupted_key(playlist: &str) -> String {
+    format!("__plint_{playlist}")
 }
 
 /// The data key of a playlist done (`1`: its last row has gone out).

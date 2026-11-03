@@ -842,6 +842,9 @@ pub struct Played {
     pub row: String,
     #[serde(default)]
     pub n: u64,
+    /// Its graphic was replaced by a graphic of another playlist (and it has not played on since).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub interrupted: bool,
 }
 
 /// What the project's Logic remembers on a channel, and the playlist
@@ -1254,6 +1257,21 @@ impl ChannelState {
                         .ok_or(PlayoutError::NoZone)?,
                 });
                 // Where its playlist is: « Resume a playlist » plays on after it.
+                let list_of = |rid: Option<&str>| {
+                    rid.and_then(|id| project.rundown.iter().find(|r| r.id == id))
+                        .map(|r| r.playlist.clone())
+                };
+                let new_list = list_of(rundown_id.as_deref());
+                // The graphic it replaces on air, of another playlist: that playlist is interrupted.
+                if let Some(cur) = self.layers.get(&layer) {
+                    if !matches!(cur.phase, Phase::Out | Phase::OutHold) {
+                        if let Some(old) = list_of(cur.rundown_id.as_deref()) {
+                            if new_list.as_ref() != Some(&old) {
+                                self.played.entry(old).or_default().interrupted = true;
+                            }
+                        }
+                    }
+                }
                 if let Some(r) = rundown_id
                     .as_deref()
                     .and_then(|id| project.rundown.iter().find(|r| r.id == id))
@@ -1261,6 +1279,7 @@ impl ChannelState {
                     let p = self.played.entry(r.playlist.clone()).or_default();
                     p.row = r.id.clone();
                     p.n += 1;
+                    p.interrupted = false;
                 }
                 let mut merged = t.default_data();
                 merged.extend(data.unwrap_or_default());
@@ -1581,7 +1600,12 @@ impl ChannelState {
                 Some(l) => {
                     self.layers.remove(&at(l));
                 }
-                None => self.layers.clear(),
+                None => {
+                    self.layers.clear();
+                    for p in self.played.values_mut() {
+                        p.interrupted = false;
+                    }
+                }
             },
         }
         Ok(())
@@ -1811,7 +1835,10 @@ impl ChannelState {
         project: &Project,
         buses: &dyn Fn(&str) -> Vec<u32>,
     ) -> Vec<String> {
-        use crate::logic::{ended_key, event_key, on_air_key, played_key, var_key, NodeKind};
+        use crate::logic::{
+            ended_key, event_key, interrupted_key, on_air_key, played_key, playlist_air_key,
+            var_key, NodeKind,
+        };
         let now = now_ms();
         let mut done = Vec::new();
         let mut asks = std::mem::take(&mut self.run.0.asked);
@@ -1863,6 +1890,12 @@ impl ChannelState {
                             .is_some_and(|p| rows.last().is_some_and(|l| l.id == p.row))
                             && !self.playlist_on_air(&rows);
                         data.insert(ended_key(playlist), if ended { "1" } else { "0" }.into());
+                        let bit = |v: bool| if v { "1" } else { "0" }.to_string();
+                        data.insert(playlist_air_key(playlist), bit(self.playlist_on_air(&rows)));
+                        data.insert(
+                            interrupted_key(playlist),
+                            bit(played.is_some_and(|p| p.interrupted)),
+                        );
                     }
                     NodeKind::TriggerIn { name } => {
                         let v = self.run.0.watch.contains_key(&trigger_flag(name));
@@ -4074,5 +4107,97 @@ mod tests {
         // An unknown playlist: nothing, and the ask is gone.
         assert!(ch.run_project(&p, &|_| Vec::new()).is_empty());
         assert!(ch.run.0.asked.is_empty());
+    }
+
+    #[test]
+    fn a_playlist_cut_by_another_is_interrupted() {
+        use crate::model::{Playlist, RundownItem};
+        let mut p = project();
+        p.templates[0].markers.retain(|m| m.kind == MarkerKind::Out);
+        let mut s = p.templates[0].clone();
+        s.id = "s".into();
+        p.templates.push(s);
+        for id in ["pl", "sy"] {
+            p.playlists.push(Playlist {
+                id: id.into(),
+                name: id.into(),
+                auto_next: false,
+                looping: false,
+                outputs: vec![],
+            });
+        }
+        let item = |id: &str, t: &str, pl: &str| RundownItem {
+            id: id.into(),
+            name: id.into(),
+            template_id: t.into(),
+            zone: String::new(),
+            playlist: pl.into(),
+            layer: 0,
+            data: Default::default(),
+            read: Default::default(),
+            auto_secs: None,
+            hold: false,
+        };
+        p.rundown = vec![
+            item("a", "t", "pl"),
+            item("b", "t", "pl"),
+            item("s1", "s", "sy"),
+        ];
+        // Synthé out: resume the playlist only when it was the one cut.
+        p.logic = serde_json::from_value(serde_json::json!({
+            "nodes": [
+                { "id": "n1", "type": "template", "template": "s", "x": 0, "y": 0 },
+                { "id": "n2", "type": "playlist", "playlist": "pl", "x": 0, "y": 200 },
+                { "id": "if", "type": "if", "inputs": ["a"], "branches": [{ "when": "a", "value": "" }], "otherwise": "", "x": 300, "y": 0 },
+                { "id": "n3", "type": "resumePlaylist", "playlist": "pl", "x": 600, "y": 0 }
+            ],
+            "edges": [
+                { "from": "n1", "fromPort": "out", "to": "if", "port": "run" },
+                { "from": "n2", "fromPort": "interrupted", "to": "if", "port": "a" },
+                { "from": "if", "fromPort": "b0", "to": "n3", "port": "run" }
+            ]
+        }))
+        .unwrap();
+        let take = |ch: &mut ChannelState, t: &str, rid: &str| {
+            let mut c = Command::take("z", t);
+            if let Command::Take { rundown_id, .. } = &mut c {
+                *rundown_id = Some(rid.into());
+            }
+            ch.apply(&p, c).unwrap();
+        };
+        let run = |ch: &mut ChannelState, n: usize| {
+            let mut done = Vec::new();
+            for _ in 0..n {
+                ch.tick(1.0);
+                done.extend(ch.run_project(&p, &|_| Vec::new()));
+            }
+            done
+        };
+        let out = |ch: &mut ChannelState| {
+            ch.apply(
+                &p,
+                Command::TakeOut {
+                    zone: Some("z".into()),
+                    layer: None,
+                },
+            )
+            .unwrap()
+        };
+        // The synthé on an empty zone, then out: nothing resumes.
+        let mut ch = ChannelState::default();
+        run(&mut ch, 1);
+        take(&mut ch, "s", "s1");
+        run(&mut ch, 120);
+        out(&mut ch);
+        assert!(run(&mut ch, 300).is_empty());
+        // The playlist cut by the synthé: interrupted, resumed when it goes out.
+        take(&mut ch, "t", "a");
+        run(&mut ch, 120);
+        take(&mut ch, "s", "s1");
+        run(&mut ch, 200);
+        assert!(ch.played["pl"].interrupted);
+        out(&mut ch);
+        assert_eq!(run(&mut ch, 300), vec!["▶ pl".to_string()]);
+        assert!(!ch.played["pl"].interrupted, "played on");
     }
 }
