@@ -133,11 +133,9 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
           <button disabled={ro} onClick={run(() => openAnimations(targets))}>
             <Sparkles size={13} /> {t('Animation…')}
           </button>
-          {st.template && targets.some((id) => findLayer(st.template!, id)?.type !== 'group') && (
-            <button disabled={ro} onClick={run(() => fitToContent(targets))}>
-              <Shrink size={13} /> {t('Fit the frame to its content')}
-            </button>
-          )}
+          <button disabled={ro} onClick={run(() => fitToContent(targets))}>
+            <Shrink size={13} /> {t('Fit the frame to its content')}
+          </button>
           {/* A mask folder (or its mask): undone; else this layer as the mask of a new folder. */}
           {(() => {
             const folder = layer.type === 'group' && layer.mask ? layer : st.template && maskFolderOf(st.template, layer.id);

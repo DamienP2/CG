@@ -6,7 +6,8 @@ import { findLayer, setProp, useDesigner } from './designerStore';
  * « Fit the frame to its content »: the layer's box shrinks (or grows) to
  * what it draws on the stage — the glyphs of a text, the picture of an image
  * (its letterbox removed), the drawing of an SVG — measured on the Designer's
- * stage, so it works for every widget.
+ * stage, so it works for every widget. A folder fits the frames of its
+ * layers, which keep their place on screen.
  */
 
 type Box = { l: number; t: number; r: number; b: number };
@@ -49,19 +50,26 @@ function drawn(el: HTMLElement): Box | null {
   return u;
 }
 
-/** Fits the boxes of `ids` (folders excepted) to what they draw. */
+/** Fits the boxes of `ids` to what they draw. */
 export function fitToContent(ids: string[]) {
   const st = useDesigner.getState();
   const tpl = st.template;
   if (!tpl) return;
   const frame = st.frame;
-  const boxes: { id: string; x: number; y: number; w: number; h: number }[] = [];
+  const boxes: { id: string; x: number; y: number; w: number; h: number; dx: number; dy: number }[] = [];
   for (const id of ids) {
     const layer = findLayer(tpl, id);
-    if (!layer || layer.type === 'group') continue;
+    if (!layer) continue;
     const el = [...document.querySelectorAll<HTMLElement>(`.stage-wrap [data-layer-id="${CSS.escape(id)}"]`)].find((e) => !e.closest('.stage-ghosts'));
     if (!el || !el.offsetWidth || !el.offsetHeight) continue;
-    const u = drawn(el);
+    // A folder: the frames of its layers.
+    const u =
+      layer.type === 'group'
+        ? tpl.layers.filter((c) => c.parent === id).reduce<Box | null>((u, c) => {
+            const k = el.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(c.id)}"]`);
+            return k ? add(u, k.getBoundingClientRect()) : u;
+          }, null)
+        : drawn(el);
     if (!u) continue;
     const v = (p: Parameters<typeof propValue>[1]) => num(propValue(layer, p, frame));
     const [x, y, w, h] = [v('x'), v('y'), v('width'), v('height')];
@@ -94,7 +102,7 @@ export function fitToContent(ids: string[]) {
     const [ax, ay] = [v('anchorX'), v('anchorY')];
     const [scx, scy] = [v('scaleX'), v('scaleY')];
     const [vx, vy] = [(ox + ax * (nw - w)) * scx, (oy + ay * (nh - h)) * scy];
-    boxes.push({ id, x: x - ax * (nw - w) + vx * cos - vy * sin, y: y - ay * (nh - h) + vx * sin + vy * cos, w: nw, h: nh });
+    boxes.push({ id, x: x - ax * (nw - w) + vx * cos - vy * sin, y: y - ay * (nh - h) + vx * sin + vy * cos, w: nw, h: nh, dx: ox, dy: oy });
   }
   if (!boxes.length) return;
   st.update((t) => {
@@ -106,6 +114,14 @@ export function fitToContent(ids: string[]) {
       setProp(l, 'y', r(b.y), frame);
       setProp(l, 'width', r(b.w), frame);
       setProp(l, 'height', r(b.h), frame);
+      // A folder's layers are placed from its corner, which moved by (dx, dy): on every keyframe.
+      if (l.type !== 'group') continue;
+      for (const k of t.layers.filter((c) => c.parent === l.id))
+        for (const [p, d] of [['x', b.dx], ['y', b.dy]] as const) {
+          const track = k.tracks[p];
+          if (track?.length) for (const key of track) key.value = r(num(key.value) - d);
+          else k.props[p] = r(num(propValue(k, p, frame)) - d);
+        }
     }
   });
 }

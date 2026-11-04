@@ -126,6 +126,10 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   const [drop, setDrop] = useState<{ id: string; pos: DropPos } | null>(null);
   // Right-click menu of a row: copy / paste layers and animations.
   const [ctx, setCtx] = useState<ClipMenuAt | null>(null);
+  // Right-click menu of the tracks and the ruler: a pause, the keyframes.
+  const [tlMenu, setTlMenu] = useState<{ x: number; y: number; frame: number; layerId?: string } | null>(null);
+  // Folders folded: their layers hidden, their keyframes summed up on their row.
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
   const animClip = useClipboard((c) => c.animation);
   const st = useDesigner();
   const { template, frame, zoom, expanded, selectedKeys, playing, loop, selected } = st;
@@ -353,9 +357,9 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     window.addEventListener('pointerup', up);
   };
 
-  const addPause = () =>
+  const addPause = (at = frame) =>
     st.update((t) => {
-      const f = Math.round(frame);
+      const f = Math.round(at);
       if (t.markers.some((m) => m.kind !== 'label' && Math.abs(m.frame - f) < 0.5)) return;
       t.markers.push({ id: newId(), frame: f, name: 'Pause', kind: 'pause' });
     });
@@ -455,7 +459,17 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       </>
     );
   };
-  for (const { layer: row, depth } of rows) {
+  // The layers of a folded folder are not listed.
+  const shown: typeof rows = [];
+  let hideBelow = Infinity;
+  for (const r of rows) {
+    if (r.depth > hideBelow) continue;
+    hideBelow = Infinity;
+    shown.push(r);
+    if (r.layer.type === 'group' && folded[r.layer.id]) hideBelow = r.depth;
+  }
+  const inFolder = (l: Layer) => !!l.parent && template.layers.some((p) => p.id === l.parent && p.type === 'group');
+  for (const { layer: row, depth } of shown) {
     // A mask folder is one row, its mask's: the mask's name, properties and bar; the folder's eye, lock and drop.
     const gm = row.type === 'group' ? row.mask : undefined;
     const layer = (gm && template.layers.find((l) => l.id === gm.layer && l.parent === row.id)) || row;
@@ -465,11 +479,14 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     const isSel = selected.includes(layer.id) || selected.includes(row.id);
     const Icon = layerIcon(layer);
     const dropCls = drop?.id === row.id ? `drop-${drop.pos}` : '';
+    const isFolder = row.type === 'group';
+    const isFolded = isFolder && !!folded[row.id];
+    const kids = isFolder ? descendants(template, row.id).filter((id) => id !== layer.id).map((id) => findLayer(template, id)!).filter(Boolean) : [];
     labels.push(
       <div
         key={layer.id}
-        className={`tl-label layer ${isSel ? 'selected' : ''} ${row.visible ? '' : 'dim'} ${isMask ? 'mask-layer' : ''} ${dropCls}`}
-        style={{ paddingLeft: 4 + depth * 14 }}
+        className={`tl-label layer ${isSel ? 'selected' : ''} ${row.visible ? '' : 'dim'} ${isMask ? 'mask-layer' : ''} ${isFolder ? 'folder' : ''} ${inFolder(row) ? 'in-folder' : ''} ${dropCls}`}
+        style={{ paddingLeft: 4 + depth * 14, ['--rail' as string]: `${depth * 14 - 4}px` }}
         draggable={renaming !== layer.id}
         onDragStart={(e) => e.dataTransfer.setData('text/layer', row.id)}
         onDragOver={(e) => {
@@ -501,13 +518,14 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       >
         <span
           className="twirl"
-          title={t('Show the properties')}
+          title={isFolder ? (isFolded ? t('Show its layers') : t('Fold its layers')) : t('Show the properties')}
           onClick={(e) => {
             e.stopPropagation();
-            st.toggleExpanded(layer.id);
+            if (isFolder) setFolded((f) => ({ ...f, [row.id]: !f[row.id] }));
+            else st.toggleExpanded(layer.id);
           }}
         >
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {(isFolder ? !isFolded : open) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
         <Icon size={13} className="layer-icon" />
         {renaming === layer.id ? (
@@ -530,7 +548,13 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         ) : (
           <span className="layer-name">{layer.name}</span>
         )}
+        {isFolder && <span className="tl-count" title={tn(kids.length, '{n} layer', '{n} layers')}>{kids.length}</span>}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
+        {isFolder && (
+          <button className={`row-btn ${open ? 'on' : ''}`} title={t('Show the properties')} onClick={(e) => (e.stopPropagation(), st.toggleExpanded(layer.id))}>
+            <Diamond size={11} />
+          </button>
+        )}
         {gm && isMask && <span className="mask-mode">{gm.exclude ? t('Exclude') : t('Include')}</span>}
         <span className="row-actions">
           <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([row.id]))}>
@@ -560,7 +584,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     const allFrames = new Map<number, Keyframe>();
     for (const p of animated) for (const k of layer.tracks[p]!) allFrames.set(k.frame, k);
     body.push(
-      <div key={layer.id} className={`tl-row layer ${isSel ? 'selected' : ''}`}>
+      <div key={layer.id} className={`tl-row layer ${isSel ? 'selected' : ''} ${isFolder ? 'folder' : ''}`} data-layer={layer.id}>
         {(() => {
           const sp = layer.span ?? { from: 0, to: template.duration };
           return (
@@ -571,6 +595,8 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           );
         })()}
         {!open && [...allFrames.values()].map((k) => diamond({ layerId: layer.id, prop: 'x', frame: k.frame }, k, true))}
+        {/* Folded: the keyframes of its layers, as ticks. */}
+        {isFolded && [...new Set(kids.flatMap((l) => PROPS.flatMap((p) => (l.tracks[p] ?? []).map((k) => k.frame))))].map((f) => <div key={`k${f}`} className="kf-tick" style={{ left: f * zoom }} />)}
       </div>,
     );
     if (!open) continue;
@@ -715,18 +741,16 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <button className="icon-btn" title={t('Go to end (End)')} onClick={() => st.setFrame(template.duration)}>
             <SkipForward size={15} />
           </button>
+          <span className="tp-sep" />
+          <button className={`icon-btn tl-loop ${loop ? 'on' : ''}`} title={t('Loop (off: stops on On air, Pause and Out)')} aria-label={t('Loop')} onClick={() => st.set({ loop: !loop })}>
+            <Repeat size={14} />
+          </button>
         </div>
-        <button className={`btn small tl-loop ${loop ? 'on' : ''}`} title={t('Loop (off: stops on On air, Pause and Out)')} aria-label={t('Loop')} onClick={() => st.set({ loop: !loop })}>
-          <Repeat size={13} />
-        </button>
-        <KeysMenu />
-        <button className="btn small mk-pause" title={t('Add a pause at the playhead')} onClick={addPause}>
-          <Flag size={13} /> {t('Pause')}
-        </button>
-        {/* The playhead's time, in the middle of the room between Pause and Zoom. */}
-        <div className="spacer" />
         <div className="timecode">
-          <strong>{formatTime(frame, fps)}</strong>
+          <strong>
+            {formatTime(frame, fps).slice(0, -2)}
+            <em>{formatTime(frame, fps).slice(-2)}</em>
+          </strong>
           <span>
             {Math.round(frame)} / {template.duration}
           </span>
@@ -771,7 +795,16 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             {labels}
           </div>
           <div className="tl-right" style={{ width }}>
-            <div className="tl-ruler" onPointerDown={scrub}>
+            <div className="tl-ruler" onPointerDown={scrub} onContextMenu={(e) => (e.preventDefault(), setTlMenu({ x: e.clientX, y: e.clientY, frame: Math.round(frameAt(e.clientX)) }))}>
+              {/* Top: the time, where the playhead's handle is; under it, IN / OUT and the markers. */}
+              <div className="tl-time">
+                {Array.from({ length: Math.floor(template.duration / step) + 1 }, (_, i) => (
+                  <div key={i} className="tick" style={{ left: i * step * zoom }}>
+                    <span>{i * step}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="tl-marks">
               {/* IN: from the start to the hold (on air); OUT: from the hold to the end. */}
               <div className="tl-zone in" style={{ left: 0, width: (outF ?? template.duration) * zoom }}>
                 <small>{((outF ?? template.duration) / fps).toFixed(2)} s</small>IN
@@ -781,11 +814,6 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   OUT<small>{((template.duration - outF) / fps).toFixed(2)} s</small>
                 </div>
               )}
-              {Array.from({ length: Math.floor(template.duration / step) + 1 }, (_, i) => (
-                <div key={i} className="tick" style={{ left: i * step * zoom }}>
-                  <span>{i * step}</span>
-                </div>
-              ))}
               <div className="tl-dur" style={{ left: template.duration * zoom }} title={t('Length of the template: drag')} onPointerDown={dragDuration}>
                 <span>{(template.duration / fps).toFixed(2)} s</span>
               </div>
@@ -816,8 +844,17 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   </div>
                 );
               })}
+              </div>
             </div>
-            <div className="tl-rows" onPointerDown={() => st.selectKeys([])}>
+            <div
+              className="tl-rows"
+              onPointerDown={() => st.selectKeys([])}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                const row = (e.target as HTMLElement).closest<HTMLElement>('[data-layer]');
+                setTlMenu({ x: e.clientX, y: e.clientY, frame: Math.round(frameAt(e.clientX)), layerId: row?.dataset.layer });
+              }}
+            >
               {outF !== undefined && (
                 <div
                   className="out-zone"
@@ -838,6 +875,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         </div>
       </div>
       {ctx && <ClipboardMenu at={ctx} onClose={() => setCtx(null)} />}
+      {tlMenu && <TrackMenu at={tlMenu} onPause={() => addPause(tlMenu.frame)} onClose={() => setTlMenu(null)} />}
       {editing && template.markers.some((m) => m.id === editing.id) && <MarkerEditor id={editing.id} fps={fps} pos={editing} onClose={() => setEditing(null)} />}
     </div>
   );
@@ -1169,45 +1207,44 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
 }
 
 
-/** The timeline's « Keyframes » menu: erase the selected ones, those of the selected layers, or all. */
-function KeysMenu() {
-  const [open, setOpen] = useState(false);
-  const { template, selected, selectedKeys, readOnly } = useDesigner(useShallow((s) => ({ template: s.template, selected: s.selected, selectedKeys: s.selectedKeys, readOnly: s.readOnly })));
+/** Right-click on the tracks or the ruler: a pause at that frame, and erasing keyframes. */
+function TrackMenu({ at, onPause, onClose }: { at: { x: number; y: number; frame: number; layerId?: string }; onPause: () => void; onClose: () => void }) {
+  const { template, selectedKeys, readOnly } = useDesigner(useShallow((s) => ({ template: s.template, selectedKeys: s.selectedKeys, readOnly: s.readOnly })));
   useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), setOpen(false));
+    const close = () => onClose();
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), onClose());
     window.addEventListener('pointerdown', close);
     window.addEventListener('keydown', esc, true);
     return () => {
       window.removeEventListener('pointerdown', close);
       window.removeEventListener('keydown', esc, true);
     };
-  }, [open]);
+  }, [onClose]);
   if (!template) return null;
   const keyed = (ids: string[]) => ids.some((id) => PROPS.some((p) => findLayer(template, id)?.tracks[p]?.length));
   const all = template.layers.map((l) => l.id);
-  const run = (fn: () => void) => () => (setOpen(false), fn());
-  return (
-    <div className="menu-wrap tl-keys" onPointerDown={(e) => e.stopPropagation()}>
-      <button className={`btn small ${open ? 'on' : ''}`} disabled={readOnly || !keyed(all)} onClick={() => setOpen(!open)}>
-        <Diamond size={13} /> {t('Keyframes')} <ChevronDown size={12} />
+  const layer = at.layerId ? findLayer(template, at.layerId) : undefined;
+  const run = (fn: () => void) => () => (onClose(), fn());
+  return createPortal(
+    <div className="menu project-menu tl-track-menu" role="menu" style={{ left: Math.min(at.x, window.innerWidth - 290), top: Math.min(at.y, window.innerHeight - 200) }} onPointerDown={(e) => e.stopPropagation()}>
+      <button disabled={readOnly} onClick={run(onPause)}>
+        <Flag size={13} /> {t('Add a pause here')}
       </button>
-      {open && (
-        <div className="menu project-menu tl-keys-menu" role="menu">
-          <button disabled={!selectedKeys.length} onClick={run(() => clearSelectedKeys(true))}>
-            <DiamondMinus size={13} /> {t('Erase the selected keyframes')}
-            <kbd>{t('Del')}</kbd>
-          </button>
-          <button disabled={!keyed(selected)} onClick={run(() => clearKeyframes(selected, undefined, selected.length > 1 ? t('Erase the keyframes of {n} layers?', { n: selected.length }) : t('Erase the keyframes of “{name}”?', { name: findLayer(template, selected[0])?.name ?? '' })))}>
-            <DiamondMinus size={13} /> {t('Erase the keyframes of the selected layers')}
-          </button>
-          <div className="menu-sep" />
-          <button className="danger" onClick={run(() => clearKeyframes(all, undefined, t('Erase every keyframe of the template?')))}>
-            <Trash2 size={13} /> {t('Erase every keyframe of the template')}
-          </button>
-        </div>
+      <div className="menu-sep" />
+      <button disabled={readOnly || !selectedKeys.length} onClick={run(() => clearSelectedKeys(true))}>
+        <DiamondMinus size={13} /> {t('Erase the selected keyframes')}
+        <kbd>{t('Del')}</kbd>
+      </button>
+      {layer && (
+        <button disabled={readOnly || !keyed([layer.id])} onClick={run(() => clearKeyframes([layer.id], undefined, t('Erase the keyframes of “{name}”?', { name: layer.name })))}>
+          <DiamondMinus size={13} /> {t('Erase the keyframes of “{name}”', { name: layer.name })}
+        </button>
       )}
-    </div>
+      <div className="menu-sep" />
+      <button className="danger" disabled={readOnly || !keyed(all)} onClick={run(() => clearKeyframes(all, undefined, t('Erase every keyframe of the template?')))}>
+        <Trash2 size={13} /> {t('Erase every keyframe of the template')}
+      </button>
+    </div>,
+    document.body,
   );
 }

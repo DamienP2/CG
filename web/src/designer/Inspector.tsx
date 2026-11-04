@@ -1090,6 +1090,8 @@ function LayerInspector({ layer }: { layer: Layer }) {
   const hasLook = layer.type !== 'image' && layer.type !== 'slideshow' && !widgetOf(layer)?.ownsLook;
   const driven = useDrivenValues(layer);
   const spec = widgetOf(layer);
+  // A folder: its properties only.
+  const folder = layer.type === 'group' && layer.lottie === undefined;
   return (
     <DrivenContext.Provider value={driven}>
       <FormatNote layer={layer} />
@@ -1106,12 +1108,14 @@ function LayerInspector({ layer }: { layer: Layer }) {
           <SpecInspector layer={layer} />
         </Boundary>
       ) : (
-        <Group id="general" title={t('General')}>
-          <LayerGeneral layer={layer} />
-        </Group>
+        !folder && (
+          <Group id="general" title={t('General')}>
+            <LayerGeneral layer={layer} />
+          </Group>
+        )
       )}
-      {layer.type !== 'text' && <EffectsGroup layer={layer} />}
-      <Group id="properties" title={t('Properties')}>
+      {layer.type !== 'text' && layer.type !== 'group' && <EffectsGroup layer={layer} />}
+      <Group id={folder ? 'folder-properties' : 'properties'} title={t('Properties')} defaultOpen={folder}>
         <Group id="transform" title={tc('section', 'Transform')} level={2}>
           {TRANSFORM_ROWS.map((r) => (
             <GroupRow key={r.label} layer={layer} spec={r} />

@@ -20764,3 +20764,138 @@ textarea.tx-grow {
 .tlib-save {
   width: min(420px, 94vw);
 }
+
+/* ===== Timeline: folders, two-band ruler, transport ===== */
+.tl-label.layer.folder,
+.tl-row.layer.folder {
+  background: var(--accent-soft);
+}
+.tl-label.layer.folder .layer-icon {
+  color: var(--accent);
+}
+.tl-label.layer.folder .layer-name {
+  font-weight: 600;
+}
+.tl-label.layer.folder.selected,
+.tl-row.layer.folder.selected {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.tl-count {
+  flex: none;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--panel-3);
+  color: var(--text-2);
+  font: 600 10px/15px var(--mono);
+  text-align: center;
+}
+/* The layers of a folder: a line down from the folder's arrow. */
+.tl-label.layer.in-folder {
+  position: relative;
+}
+.tl-label.layer.in-folder::before {
+  content: '';
+  position: absolute;
+  left: var(--rail);
+  top: 0;
+  bottom: -1px;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* A folded folder: its layers' keyframes, as ticks. */
+.kf-tick {
+  position: absolute;
+  top: 9px;
+  width: 0;
+  height: 8px;
+  border-left: 1.5px solid var(--accent-2);
+  pointer-events: none;
+}
+.tl-ruler,
+.tl-corner {
+  height: 40px;
+}
+.tl-rows {
+  min-height: calc(100% - 40px);
+}
+/* Top band: the time and the playhead's handle; under it, IN / OUT and the markers. */
+.tl-time {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-time .tick {
+  height: 4px;
+}
+.tl-time .tick span {
+  bottom: 2px;
+  font-size: 10px;
+}
+.tl-marks {
+  position: absolute;
+  inset: 16px 0 0;
+}
+.tl-marks .tl-marker::before {
+  height: 22px;
+}
+.transport {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.transport .icon-btn {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: none;
+}
+.transport .icon-btn:hover:not(:disabled) {
+  background: var(--panel-3);
+}
+.transport .icon-btn.play {
+  width: 34px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.transport .tl-loop.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.tp-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--line);
+}
+.timecode {
+  align-items: flex-start;
+  min-width: 0;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.timecode strong {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.timecode strong em {
+  font-style: normal;
+  color: var(--accent-2);
+}
+.timecode span {
+  font-size: 10px;
+}
+.tl-track-menu kbd {
+  margin-left: auto;
+}
+.project-menu.tl-track-menu {
+  right: auto;
+  width: max-content;
+}
