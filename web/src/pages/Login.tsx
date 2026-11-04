@@ -16,7 +16,7 @@ export function Login() {
   const [error, setError] = useState(() => {
     const q = new URLSearchParams(location.search);
     const e = q.get('sso_error');
-    if (!e) return '';
+    if (!e) return useApp.getState().elsewhere ? t('Signed in on another computer.') : '';
     history.replaceState(null, '', location.pathname);
     const why: Record<string, string> = {
       noGroup: t('None of your directory groups gives access to Strata.'),

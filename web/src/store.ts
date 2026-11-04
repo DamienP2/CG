@@ -21,7 +21,8 @@ type ServerEvent =
   | { type: 'changed'; what: string }
   | { type: 'presence'; present: Present[] }
   | { type: 'zoneLocks'; channelId: string; locks: ZoneLock[]; takenFrom: string | null }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'sessionEnded' };
 
 /** Someone with the Operator open on a channel. */
 export interface Present {
@@ -70,6 +71,8 @@ export interface Live {
 
 interface AppStore {
   auth: AuthState | null;
+  /** Signed out by a sign-in of the same user on another computer. */
+  elsewhere: boolean;
   connected: boolean;
   /** Server clock − client clock, ms. */
   serverOffset: number;
@@ -230,6 +233,7 @@ export const useApp = create<AppStore>((set, get) => {
 
   return {
     auth: null,
+    elsewhere: false,
     connected: false,
     serverOffset: 0,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -267,7 +271,7 @@ export const useApp = create<AppStore>((set, get) => {
         void api('PUT', '/api/me/lang', { lang: r.user.lang }).catch(() => {});
       } else setLang(r.user.lang);
       setTheme(r.user.theme || 'dark');
-      set({ auth: { ...get().auth!, user: r.user } });
+      set({ auth: { ...get().auth!, user: r.user }, elsewhere: false });
       socket?.close();
     },
 
@@ -368,6 +372,12 @@ export const useApp = create<AppStore>((set, get) => {
             case 'error':
               get().toast(msg.message, 'error');
               break;
+            case 'sessionEnded': {
+              // The same user signed in on another computer: back to the sign-in, saying why.
+              const a = get().auth;
+              set({ elsewhere: true, ...(a ? { auth: { ...a, user: null } } : {}) });
+              break;
+            }
             default:
               // Events other parts of the app listen to (`asRun`, `schedule`…).
               serverEvents.dispatchEvent(new CustomEvent((msg as { type: string }).type, { detail: msg }));

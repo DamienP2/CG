@@ -277,6 +277,9 @@ pub struct Auth {
     keys: RwLock<Keys>,
     /// Key id -> last use (ms), kept in memory.
     key_use: Mutex<HashMap<String, i64>>,
+    /// Sessions closed by a sign-in on another computer (their tokens):
+    /// their live connections are told and close.
+    ended: tokio::sync::broadcast::Sender<String>,
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
@@ -303,6 +306,7 @@ impl Auth {
             keys_path,
             seal_path: data_dir.join("keys.secret"),
             key_use: Mutex::new(HashMap::new()),
+            ended: tokio::sync::broadcast::channel(64).0,
         }
     }
 
@@ -743,6 +747,8 @@ impl Auth {
         Some((self.open_session(&user.id), user))
     }
 
+    /// One computer at a time: a sign-in closes the user's other sessions
+    /// (the computer before is told, see [`Auth::ended`]).
     fn open_session(&self, user_id: &str) -> String {
         let token = format!(
             "{}{}",
@@ -751,6 +757,15 @@ impl Auth {
         );
         if let Ok(mut s) = self.sessions.lock() {
             s.retain(|_, v| v.expires > Instant::now());
+            let before: Vec<String> = s
+                .iter()
+                .filter(|(_, v)| v.user_id == user_id)
+                .map(|(k, _)| k.clone())
+                .collect();
+            for t in before {
+                s.remove(&t);
+                let _ = self.ended.send(t);
+            }
             s.insert(
                 token.clone(),
                 Session {
@@ -849,6 +864,11 @@ impl Auth {
         };
         self.save(list).map_err(|e| e.to_string())?;
         Ok((self.open_session(&user.id), user))
+    }
+
+    /// The sessions a sign-in elsewhere closes, as they go.
+    pub fn ended(&self) -> tokio::sync::broadcast::Receiver<String> {
+        self.ended.subscribe()
     }
 
     pub fn logout(&self, token: &str) {
@@ -974,6 +994,29 @@ mod tests {
             password: pw.into(),
             role_fixed: false,
         }
+    }
+
+    #[test]
+    fn one_computer_at_a_time() {
+        let dir = std::env::temp_dir().join(format!("cg-auth-one-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let auth = Auth::load(&dir);
+        auth.create(input("marie", Role::Operator, "correct horse"))
+            .unwrap();
+        auth.create(input("paul", Role::Operator, "battery staple"))
+            .unwrap();
+        let mut told = auth.ended();
+        let (first, _) = auth.login("marie", "correct horse").unwrap();
+        let (paul, _) = auth.login("paul", "battery staple").unwrap();
+        let (second, _) = auth.login("marie", "correct horse").unwrap();
+        // The computer before is signed out, and told; the other users are not.
+        assert!(auth.user_for_token(&first).is_none());
+        assert!(auth.user_for_token(&second).is_some());
+        assert!(auth.user_for_token(&paul).is_some());
+        assert_eq!(told.try_recv().unwrap(), first);
+        assert!(told.try_recv().is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

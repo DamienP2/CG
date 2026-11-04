@@ -3754,10 +3754,20 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
         }
     }
 
+    let mut ended = s.auth.ended();
     loop {
         tokio::select! {
             // Engine restart / shutdown: close so the client reconnects.
             _ = &mut closing => break,
+            // Its user signed in on another computer: told, then closed.
+            t = ended.recv() => {
+                if let Ok(t) = t {
+                    if viewer.token.as_deref() == Some(t.as_str()) {
+                        let _ = tx.send(Message::Text(r#"{"type":"sessionEnded"}"#.into())).await;
+                        break;
+                    }
+                }
+            },
             ev = events.recv() => {
                 let sent = match ev {
                     Ok(ev) => ev,

@@ -774,6 +774,7 @@ export const home: Record<string, string> = {
   'local account': 'compte local',
   '{issuer} answers · {n} keys': '{issuer} répond · {n} clés',
   'None of your directory groups gives access to Strata.': 'Aucun de vos groupes de l’annuaire ne donne accès à Strata.',
+  'Signed in on another computer.': 'Connecté sur un autre poste.',
   'This account is disabled.': 'Ce compte est désactivé.',
   'The sign-in took too long: try again.': 'La connexion a pris trop de temps : réessayez.',
   'The directory refused the sign-in:': 'L’annuaire a refusé la connexion :',
