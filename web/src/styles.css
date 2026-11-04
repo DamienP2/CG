@@ -20813,28 +20813,49 @@ textarea.tx-grow {
 }
 .tl-ruler,
 .tl-corner {
-  height: 40px;
+  height: 44px;
 }
 .tl-rows {
-  min-height: calc(100% - 40px);
+  min-height: calc(100% - 44px);
 }
-/* Top band: the time and the playhead's handle; under it, IN / OUT and the markers. */
+/* Top band: the graduation, with the playhead's handle on it; under it, IN / OUT and the markers. */
 .tl-time {
   position: absolute;
   inset: 0 0 auto;
-  height: 16px;
+  height: 22px;
   border-bottom: 1px solid var(--line);
 }
 .tl-time .tick {
-  height: 4px;
+  height: 7px;
 }
 .tl-time .tick span {
-  bottom: 2px;
+  bottom: 8px;
+  left: 3px;
   font-size: 10px;
 }
 .tl-marks {
   position: absolute;
-  inset: 16px 0 0;
+  inset: 22px 0 0;
+}
+.playhead::before {
+  top: 10px;
+  width: 13px;
+  height: 12px;
+  margin-left: -7.5px;
+}
+.tl-fold {
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 2px;
+  margin: -2px 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+.tl-fold:hover {
+  background: var(--panel-3);
 }
 .tl-marks .tl-marker::before {
   height: 22px;
@@ -20871,12 +20892,7 @@ textarea.tx-grow {
   background: var(--line);
 }
 .timecode {
-  align-items: flex-start;
-  min-width: 0;
-  padding: 3px 10px;
-  border-radius: 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+  min-width: 96px;
 }
 .timecode strong {
   font-size: 16px;

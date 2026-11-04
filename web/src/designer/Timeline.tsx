@@ -9,6 +9,8 @@ import {
   Code,
   Copy,
   Diamond,
+  Folder,
+  FolderOpen,
   DiamondMinus,
   Eye,
   EyeOff,
@@ -518,16 +520,22 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       >
         <span
           className="twirl"
-          title={isFolder ? (isFolded ? t('Show its layers') : t('Fold its layers')) : t('Show the properties')}
+          title={t('Show the properties')}
           onClick={(e) => {
             e.stopPropagation();
-            if (isFolder) setFolded((f) => ({ ...f, [row.id]: !f[row.id] }));
-            else st.toggleExpanded(layer.id);
+            st.toggleExpanded(layer.id);
           }}
         >
-          {(isFolder ? !isFolded : open) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
-        <Icon size={13} className="layer-icon" />
+        {/* A folder's icon folds its layers. */}
+        {isFolder ? (
+          <button className="tl-fold" title={isFolded ? t('Show its layers') : t('Fold its layers')} onClick={(e) => (e.stopPropagation(), setFolded((f) => ({ ...f, [row.id]: !f[row.id] })))}>
+            {isMask ? <Icon size={13} className="layer-icon" /> : isFolded ? <Folder size={13} className="layer-icon" /> : <FolderOpen size={13} className="layer-icon" />}
+          </button>
+        ) : (
+          <Icon size={13} className="layer-icon" />
+        )}
         {renaming === layer.id ? (
           <input
             autoFocus
@@ -550,11 +558,6 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         )}
         {isFolder && <span className="tl-count" title={tn(kids.length, '{n} layer', '{n} layers')}>{kids.length}</span>}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
-        {isFolder && (
-          <button className={`row-btn ${open ? 'on' : ''}`} title={t('Show the properties')} onClick={(e) => (e.stopPropagation(), st.toggleExpanded(layer.id))}>
-            <Diamond size={11} />
-          </button>
-        )}
         {gm && isMask && <span className="mask-mode">{gm.exclude ? t('Exclude') : t('Include')}</span>}
         <span className="row-actions">
           <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([row.id]))}>
