@@ -83,6 +83,9 @@ pub struct PlayoutItem {
     /// The graphic this one replaced in a « Fade » zone, fading out under it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaving: Option<Box<Leaving>>,
+    /// Fading or sliding in or out the way the Logic said (« How… »).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<Motion>,
     /// What its Triggers watch, by node, since the take: a value as it was
     /// (it changes), another graphic seen on air (it goes out), an action
     /// done (it acts once each time its input becomes true).
@@ -136,9 +139,191 @@ pub struct Leaving {
 }
 
 impl Leaving {
+    /// How the graphic going looks now (its « How… » from the Logic, else a linear fade out).
+    pub fn look(&self) -> Look {
+        match self.item.motion {
+            Some(m) => Motion {
+                frame: self.frame,
+                length: self.length,
+                ..m
+            }
+            .look(),
+            None => Look {
+                alpha: (1.0 - self.frame / self.length.max(1.0)).clamp(0.0, 1.0) as f32,
+                ..Look::STILL
+            },
+        }
+    }
     /// Opacity of the graphic going, 1 → 0.
     pub fn opacity(&self) -> f32 {
-        (1.0 - self.frame / self.length.max(1.0)).clamp(0.0, 1.0) as f32
+        self.look().alpha
+    }
+}
+
+/// The way a graphic comes in or goes out, chosen in the Logic (« How… »).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HowMode {
+    /// Its own in / out animation.
+    #[default]
+    Anim,
+    /// At once.
+    Cut,
+    Fade,
+    /// Through an edge of the frame.
+    Slide,
+}
+
+/// An edge of the frame (where a graphic slides in from, or out to).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Side {
+    #[default]
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl Side {
+    fn opposite(self) -> Side {
+        match self {
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+            Side::Top => Side::Bottom,
+            Side::Bottom => Side::Top,
+        }
+    }
+    /// One frame width or height towards it.
+    fn unit(self) -> (f64, f64) {
+        match self {
+            Side::Left => (-1.0, 0.0),
+            Side::Right => (1.0, 0.0),
+            Side::Top => (0.0, -1.0),
+            Side::Bottom => (0.0, 1.0),
+        }
+    }
+}
+
+fn half_second() -> f64 {
+    0.5
+}
+
+/// « How… »: the way, its length and its curve.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct How {
+    #[serde(default)]
+    pub mode: HowMode,
+    #[serde(default = "half_second")]
+    pub seconds: f64,
+    #[serde(default)]
+    pub easing: crate::easing::Easing,
+    #[serde(default)]
+    pub side: Side,
+}
+
+impl Default for How {
+    fn default() -> Self {
+        Self {
+            mode: HowMode::Anim,
+            seconds: half_second(),
+            easing: Default::default(),
+            side: Side::Left,
+        }
+    }
+}
+
+impl How {
+    /// Its own animation (no motion of the whole graphic).
+    pub fn animates(&self) -> bool {
+        self.mode == HowMode::Anim
+    }
+    fn frames(&self, fps: f64) -> f64 {
+        (self.seconds.max(0.0) * fps).round().max(1.0)
+    }
+    /// The motion of a graphic coming in this way.
+    pub fn coming(self, fps: f64) -> Motion {
+        Motion {
+            how: self,
+            frame: 0.0,
+            length: self.frames(fps),
+            going: false,
+        }
+    }
+    /// The motion of a graphic going out this way (`pushed`: by one sliding
+    /// in, it goes out through the other edge).
+    pub fn going(self, fps: f64, pushed: bool) -> Motion {
+        let side = if pushed {
+            self.side.opposite()
+        } else {
+            self.side
+        };
+        Motion {
+            how: How { side, ..self },
+            frame: 0.0,
+            length: self.frames(fps),
+            going: true,
+        }
+    }
+}
+
+/// A graphic fading or sliding in or out (« How… »).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Motion {
+    pub how: How,
+    /// Frames since it began.
+    pub frame: f64,
+    pub length: f64,
+    /// Going out (removed at the end), else coming in.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub going: bool,
+}
+
+/// How a whole graphic is laid: its opacity, and its offset in frame widths / heights.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Look {
+    pub alpha: f32,
+    pub dx: f64,
+    pub dy: f64,
+}
+
+impl Look {
+    pub const STILL: Look = Look {
+        alpha: 1.0,
+        dx: 0.0,
+        dy: 0.0,
+    };
+    /// Not as drawn alone (drawn whole, then laid).
+    pub fn moved(&self) -> bool {
+        self.alpha < 1.0 || self.dx != 0.0 || self.dy != 0.0
+    }
+}
+
+impl Motion {
+    pub fn done(&self) -> bool {
+        self.frame >= self.length
+    }
+    pub fn look(&self) -> Look {
+        let p = self.how.easing.apply(self.frame / self.length.max(1.0));
+        // Away from where it stands: 1 at the start coming in, at the end going out.
+        let away = if self.going { p } else { 1.0 - p };
+        match self.how.mode {
+            HowMode::Fade => Look {
+                alpha: (1.0 - away).clamp(0.0, 1.0) as f32,
+                ..Look::STILL
+            },
+            HowMode::Slide => {
+                let (ux, uy) = self.how.side.unit();
+                Look {
+                    alpha: 1.0,
+                    dx: ux * away,
+                    dy: uy * away,
+                }
+            }
+            HowMode::Anim | HowMode::Cut => Look::STILL,
+        }
     }
 }
 
@@ -555,7 +740,13 @@ impl PlayoutItem {
             watch: BTreeMap::new(),
             vals: BTreeMap::new(),
             leaving: None,
+            motion: None,
         }
+    }
+
+    /// How the whole graphic is laid now.
+    pub fn look(&self) -> Look {
+        self.motion.map_or(Look::STILL, |m| m.look())
     }
 
     /// Time on air of one layer, in frames: the item's age, unless the
@@ -832,6 +1023,9 @@ pub struct ChannelState {
     /// The project's Logic on this channel (see [`Self::run_project`]).
     #[serde(skip)]
     pub run: Scratch<ProjectRun>,
+    /// The way the next take or out goes (« How… » of a Logic), then none.
+    #[serde(skip)]
+    pub how: Scratch<Option<How>>,
 }
 
 /// What a playlist last took: its row, and how many rows so far (a change
@@ -864,7 +1058,7 @@ pub struct ProjectRun {
 /// A playlist action asked by a Logic.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlaylistAsk {
-    Resume(String),
+    Resume(String, Option<How>),
     StopAuto(String),
 }
 
@@ -1113,6 +1307,25 @@ fn begin_out(project: &Project, item: &mut PlayoutItem) -> bool {
     true
 }
 
+/// Takes a graphic out the way the Logic said (`how`; none: its out
+/// animation). False when it is gone at once (to be removed).
+fn leave(project: &Project, item: &mut PlayoutItem, how: Option<How>) -> bool {
+    match how.filter(|h| !h.animates()) {
+        None => begin_out(project, item),
+        Some(h) if h.mode == HowMode::Cut => false,
+        Some(h) => {
+            let fps = project.frame_rate.as_f64().max(1.0);
+            item.next = None;
+            item.motion = Some(h.going(fps, false));
+            // Off air for everything else (the Logic, the Operator), still drawn.
+            item.phase = Phase::Out;
+            item.target = item.frame;
+            item.pause_ahead = false;
+            true
+        }
+    }
+}
+
 /// The data of a graphic on air changed (`old` → `item.data`): its widgets
 /// that keep what they show react (`wid::on_data`: a chart freezes the data
 /// of the take, or tweens to the new values).
@@ -1312,6 +1525,41 @@ impl ChannelState {
                 let transition = project
                     .zone_at(zone_layer(layer))
                     .map_or(ZoneTransition::Sequential, |z| z.transition);
+                // The way the Logic said (« How… »): it replaces the zone's.
+                if let Some(h) = self.how.0.filter(|h| !h.animates()) {
+                    let fps = project.frame_rate.as_f64().max(1.0);
+                    let mut new = PlayoutItem::start(take);
+                    // No in animation: straight on air, faded or slid in.
+                    new.frame = new.target;
+                    new.phase = Phase::Holding;
+                    if h.mode != HowMode::Cut {
+                        new.motion = Some(h.coming(fps));
+                    }
+                    match self.layers.get_mut(&layer) {
+                        Some(current) if h.mode != HowMode::Cut => {
+                            let mut old = std::mem::replace(current, new);
+                            old.next = None;
+                            old.leaving = None;
+                            let going = h.going(fps, true);
+                            let length = going.length;
+                            old.motion = Some(going);
+                            current.leaving = Some(Box::new(Leaving {
+                                item: old,
+                                frame: 0.0,
+                                length,
+                            }));
+                        }
+                        _ => {
+                            self.layers.insert(layer, new);
+                        }
+                    }
+                    return Ok(());
+                }
+                let transition = if self.how.0.is_some() {
+                    ZoneTransition::Sequential
+                } else {
+                    transition
+                };
                 match self.layers.get_mut(&layer) {
                     // Zone busy: the graphic on air goes out first.
                     Some(current) if transition == ZoneTransition::Sequential => {
@@ -1408,7 +1656,7 @@ impl ChannelState {
                     .ok_or(PlayoutError::EmptyLayer(layer))?;
                 // Out also cancels a pending take.
                 item.next = None;
-                if !begin_out(project, item) {
+                if !leave(project, item, self.how.0) {
                     self.layers.remove(&layer);
                 }
             }
@@ -1638,6 +1886,21 @@ impl ChannelState {
                 changed = true;
                 if l.frame >= l.length {
                     item.leaving = None;
+                }
+            }
+            if let Some(m) = &mut item.motion {
+                m.frame += frames;
+                changed = true;
+                if m.done() {
+                    if m.going {
+                        // Faded or slid out: gone.
+                        finished.push(*layer);
+                        continue;
+                    }
+                    item.motion = None;
+                }
+                if item.motion.is_some_and(|m| m.going) {
+                    continue;
                 }
             }
             if matches!(item.phase, Phase::Holding | Phase::OutHold) {
@@ -1928,7 +2191,8 @@ impl ChannelState {
         for a in acts {
             use crate::logic::flow::Act;
             match a {
-                Act::Take(template) => {
+                Act::Take(template, how) => {
+                    self.how.0 = how;
                     let ok = self
                         .apply_on(
                             project,
@@ -1942,6 +2206,7 @@ impl ChannelState {
                             0,
                         )
                         .is_ok();
+                    self.how.0 = None;
                     if ok {
                         done.push(format!(
                             "{} ↑",
@@ -1951,7 +2216,8 @@ impl ChannelState {
                         ));
                     }
                 }
-                Act::TakeOut(template) => {
+                Act::TakeOut(template, how) => {
+                    self.how.0 = how;
                     let layers: Vec<u32> = self
                         .layers
                         .iter()
@@ -1971,6 +2237,7 @@ impl ChannelState {
                             0,
                         );
                     }
+                    self.how.0 = None;
                     if !layers.is_empty() {
                         done.push(format!(
                             "{} ↓",
@@ -1991,20 +2258,23 @@ impl ChannelState {
                 Act::SetVar { name, value, .. } => {
                     self.run.0.vals.insert(var_key(&name), value);
                 }
-                Act::ResumePlaylist(p) => asks.push(PlaylistAsk::Resume(p)),
+                Act::ResumePlaylist(p, how) => asks.push(PlaylistAsk::Resume(p, how)),
                 Act::StopAuto(p) => asks.push(PlaylistAsk::StopAuto(p)),
-                Act::ClearAll => {
-                    self.layers.clear();
+                Act::ClearAll(how) => {
+                    self.clear_all(project, how);
                     done.push("✕".into());
                 }
                 // A graphic's own actions: none in the project's Logic.
-                Act::Out | Act::Resume(_) | Act::NextRow(_) | Act::Widget { .. } => {}
+                Act::Out(_) | Act::Resume(_) | Act::NextRow(_) | Act::Widget { .. } => {}
             }
         }
         for ask in asks {
             match ask {
-                PlaylistAsk::Resume(p) => {
-                    if let Some(name) = self.resume_playlist(project, &p, &buses(&p)) {
+                PlaylistAsk::Resume(p, how) => {
+                    self.how.0 = how;
+                    let name = self.resume_playlist(project, &p, &buses(&p));
+                    self.how.0 = None;
+                    if let Some(name) = name {
                         done.push(format!("▶ {name}"));
                     }
                 }
@@ -2016,6 +2286,22 @@ impl ChannelState {
             }
         }
         done
+    }
+
+    /// Everything out (a Logic's « Clear all »): at once, or the way it said.
+    fn clear_all(&mut self, project: &Project, how: Option<How>) {
+        if how.is_none() {
+            self.layers.clear();
+            return;
+        }
+        let gone: Vec<u32> = self
+            .layers
+            .iter_mut()
+            .filter_map(|(l, item)| (!leave(project, item, how)).then_some(*l))
+            .collect();
+        for l in gone {
+            self.layers.remove(&l);
+        }
     }
 
     /// Auto next between graphics: a graphic of a playlist set to auto next
@@ -2189,10 +2475,10 @@ impl ChannelState {
         let mut fires = Vec::new();
         let mut rows = Vec::new();
         // Another graphic in or out, on the output of the one whose Logic says so.
-        let mut takes: Vec<(String, bool, u32)> = Vec::new();
+        let mut takes: Vec<(String, bool, u32, Option<How>)> = Vec::new();
         let mut widgets: Vec<(u32, String, WidgetControl)> = Vec::new();
         let mut asks: Vec<PlaylistAsk> = Vec::new();
-        let mut clear_all = false;
+        let mut clear_all: Option<Option<How>> = None;
         for (layer, item) in self.layers.iter_mut() {
             if matches!(item.phase, Phase::Out) {
                 continue;
@@ -2289,8 +2575,12 @@ impl ChannelState {
             for a in acts {
                 use crate::logic::flow::Act;
                 match a {
-                    Act::Out => {
-                        item.watch.insert(WANT_OUT.into(), "1".into());
+                    Act::Out(how) => {
+                        // The way it goes (« How… »), kept until it can go.
+                        let way = how
+                            .and_then(|h| serde_json::to_string(&h).ok())
+                            .unwrap_or_else(|| "1".into());
+                        item.watch.insert(WANT_OUT.into(), way);
                     }
                     Act::Resume(m) => {
                         item.watch.insert(format!("{WANT_RESUME}{m}"), "1".into());
@@ -2302,11 +2592,13 @@ impl ChannelState {
                         value,
                         transition,
                     } => set_var(item, &name, &value, transition, fps),
-                    Act::Take(template) => takes.push((template, false, bus_of(*layer))),
-                    Act::TakeOut(template) => takes.push((template, true, bus_of(*layer))),
-                    Act::ResumePlaylist(p) => asks.push(PlaylistAsk::Resume(p)),
+                    Act::Take(template, how) => takes.push((template, false, bus_of(*layer), how)),
+                    Act::TakeOut(template, how) => {
+                        takes.push((template, true, bus_of(*layer), how))
+                    }
+                    Act::ResumePlaylist(p, how) => asks.push(PlaylistAsk::Resume(p, how)),
                     Act::StopAuto(p) => asks.push(PlaylistAsk::StopAuto(p)),
-                    Act::ClearAll => clear_all = true,
+                    Act::ClearAll(how) => clear_all = Some(how),
                     Act::Widget { layer: l, control } => {
                         if let Ok(control) = serde_json::from_value::<WidgetControl>(
                             serde_json::Value::String(control),
@@ -2321,9 +2613,12 @@ impl ChannelState {
                 match item.phase {
                     Phase::Playing => {}
                     Phase::Holding => {
-                        item.watch.remove(WANT_OUT);
+                        let how = item
+                            .watch
+                            .remove(WANT_OUT)
+                            .and_then(|j| serde_json::from_str::<How>(&j).ok());
                         done.push(t.name.clone());
-                        if !begin_out(project, item) {
+                        if !leave(project, item, how) {
                             gone.push(*layer);
                         }
                         continue;
@@ -2347,7 +2642,7 @@ impl ChannelState {
         for layer in gone {
             self.layers.remove(&layer);
         }
-        for (template, out, bus) in takes {
+        for (template, out, bus, how) in takes {
             let cmd = if out {
                 match self.layers.iter().find(|(l, i)| {
                     bus_of(**l) == bus
@@ -2369,7 +2664,10 @@ impl ChannelState {
                     rundown_id: None,
                 }
             };
-            if self.apply_on(project, cmd, bus).is_ok() {
+            self.how.0 = how;
+            let ok = self.apply_on(project, cmd, bus).is_ok();
+            self.how.0 = None;
+            if ok {
                 let name = project
                     .template(&template)
                     .map_or(template.clone(), |t| t.name.clone());
@@ -2382,8 +2680,8 @@ impl ChannelState {
         }
         // Done by run_project, on the playlists' outputs.
         self.run.0.asked.extend(asks);
-        if clear_all {
-            self.layers.clear();
+        if let Some(how) = clear_all {
+            self.clear_all(project, how);
             done.push("✕".into());
             return done;
         }
@@ -2512,6 +2810,7 @@ impl ChannelState {
             i.fade.is_some()
                 || !i.changes.is_empty()
                 || i.leaving.is_some()
+                || i.motion.is_some()
                 || !matches!(i.phase, Phase::Holding | Phase::OutHold)
         })
     }
@@ -3606,6 +3905,88 @@ mod tests {
     }
 
     #[test]
+    fn a_how_slides_in_fades_out_or_cuts() {
+        let p = project();
+        let mut ch = ChannelState::default();
+        let take = |rid: &str| Command::Take {
+            zone: None,
+            layer: None,
+            template_id: "t".into(),
+            data: None,
+            rundown_id: Some(rid.into()),
+        };
+        let fps = p.frame_rate.as_f64();
+        let how = |mode| How {
+            mode,
+            seconds: 0.4,
+            easing: crate::easing::Easing::Linear,
+            side: Side::Left,
+        };
+        ch.apply(&p, take("a")).unwrap();
+        for _ in 0..40 {
+            ch.tick(1.0);
+        }
+        // Slid in from the left, straight on air; the one there goes out on the right.
+        ch.how.0 = Some(how(HowMode::Slide));
+        ch.apply(&p, take("b")).unwrap();
+        ch.how.0 = None;
+        let it = &ch.layers[&1];
+        assert_eq!(it.phase, Phase::Holding);
+        assert_eq!(it.look().dx, -1.0);
+        let going = it.leaving.as_ref().expect("pushed out");
+        assert_eq!(going.look().dx, 0.0);
+        let len = (0.4 * fps).round() as usize;
+        for _ in 0..len / 2 {
+            ch.tick(1.0);
+        }
+        let it = &ch.layers[&1];
+        assert!((it.look().dx + 0.5).abs() < 0.1, "{:?}", it.look());
+        assert!((it.leaving.as_ref().unwrap().look().dx - 0.5).abs() < 0.1);
+        for _ in 0..len {
+            ch.tick(1.0);
+        }
+        assert!(ch.layers[&1].motion.is_none() && ch.layers[&1].leaving.is_none());
+        assert_eq!(ch.layers[&1].look(), Look::STILL);
+
+        // Faded out: off air at once for the Logic, gone at the end.
+        ch.how.0 = Some(how(HowMode::Fade));
+        ch.apply(
+            &p,
+            Command::TakeOut {
+                zone: None,
+                layer: Some(1),
+            },
+        )
+        .unwrap();
+        ch.how.0 = None;
+        assert_eq!(ch.layers[&1].phase, Phase::Out);
+        for _ in 0..len / 2 {
+            ch.tick(1.0);
+        }
+        let a = ch.layers[&1].look().alpha;
+        assert!(a > 0.4 && a < 0.6, "{a}");
+        for _ in 0..len {
+            ch.tick(1.0);
+        }
+        assert!(!ch.layers.contains_key(&1));
+
+        // Cut: in at once, out at once.
+        ch.how.0 = Some(how(HowMode::Cut));
+        ch.apply(&p, take("c")).unwrap();
+        assert_eq!(ch.layers[&1].phase, Phase::Holding);
+        ch.apply(
+            &p,
+            Command::TakeOut {
+                zone: None,
+                layer: Some(1),
+            },
+        )
+        .unwrap();
+        ch.how.0 = None;
+        assert!(!ch.layers.contains_key(&1));
+    }
+
+    #[test]
     fn fade_zone_crosses_the_two_graphics() {
         let mut p = project();
         p.zones[0].transition = ZoneTransition::Fade;
@@ -4107,7 +4488,10 @@ mod tests {
     #[test]
     fn a_graphic_logic_asks_the_playlist_actions() {
         let mut ch = ChannelState::default();
-        ch.run.0.asked.push(PlaylistAsk::Resume("nope".into()));
+        ch.run
+            .0
+            .asked
+            .push(PlaylistAsk::Resume("nope".into(), None));
         let p = project();
         // An unknown playlist: nothing, and the ask is gone.
         assert!(ch.run_project(&p, &|_| Vec::new()).is_empty());

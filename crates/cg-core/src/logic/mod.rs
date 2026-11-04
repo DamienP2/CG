@@ -186,6 +186,10 @@ pub struct CheckRow {
     pub test: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub value: String,
+    /// How it joins the line before: `and` (the default) or `or`; the lines
+    /// joined by « and » go together, « or » separates them.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub join: String,
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -197,6 +201,9 @@ fn ab() -> Vec<String> {
 }
 fn one() -> f64 {
     1.0
+}
+fn half() -> f64 {
+    0.5
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -339,6 +346,20 @@ pub enum NodeKind {
         seconds: f64,
     },
 
+    /// How…: the take, out, resume or clear after it goes this way (cut,
+    /// fade, slide through an edge, or the graphic's own animation), over
+    /// `seconds` on `easing` (input `run`, output `next`).
+    How {
+        #[serde(default)]
+        mode: crate::playout::HowMode,
+        #[serde(default = "half")]
+        seconds: f64,
+        #[serde(default)]
+        easing: crate::easing::Easing,
+        #[serde(default)]
+        side: crate::playout::Side,
+    },
+
     // ── Flows: on the way (input `run`, output `next`) ─────────────────
     /// Waits `seconds` (or input `seconds`), then `next`.
     Wait {
@@ -471,6 +492,7 @@ impl NodeKind {
         matches!(
             self,
             NodeKind::Wait { .. }
+                | NodeKind::How { .. }
                 | NodeKind::Counter { .. }
                 | NodeKind::Once {}
                 | NodeKind::Out {}
@@ -1370,6 +1392,10 @@ pub fn lower(logic: &mut Logic, scope: Scope) {
                         inputs.push(w);
                     }
                     inputs.push(v);
+                    let or = r.join == "or" || (r.join.is_empty() && *any);
+                    if !whens.is_empty() {
+                        whens.push(if or { "ou" } else { "et" }.to_string());
+                    }
                     whens.push(format!("({test})"));
                 }
                 kinds.push((
@@ -1378,10 +1404,11 @@ pub fn lower(logic: &mut Logic, scope: Scope) {
                         inputs,
                         branches: vec![Branch {
                             // No line: never true.
+                            // « et » binds before « ou »: (a et b) ou c.
                             when: if whens.is_empty() {
                                 "0".into()
                             } else {
-                                whens.join(if *any { " ou " } else { " et " })
+                                whens.join(" ")
                             },
                             value: "1".into(),
                         }],

@@ -462,7 +462,7 @@ fn flows_wait_count_choose_and_act() {
         tick(2.0, false, &mut watch, &mut vals),
         vec![Act::Fire("go".into())]
     );
-    assert_eq!(tick(2.1, true, &mut watch, &mut vals), vec![Act::Out]);
+    assert_eq!(tick(2.1, true, &mut watch, &mut vals), vec![Act::Out(None)]);
     assert_eq!(vals[&count_key("n")], "3");
 }
 
@@ -515,6 +515,7 @@ fn check(id: &str, rows: &[(&str, &str, &str)]) -> Node {
                     what: (*w).into(),
                     test: (*t).into(),
                     value: (*v).into(),
+                    join: String::new(),
                 })
                 .collect(),
             any: false,
@@ -585,14 +586,14 @@ fn steps_resume_a_playlist_cut_when_a_graphic_goes_out() {
     assert!(step(&logic, Scope::Project, &air("1", "1"), &mut w).is_empty());
     assert_eq!(
         step(&logic, Scope::Project, &air("0", "1"), &mut w),
-        vec![Act::ResumePlaylist("res".into())]
+        vec![Act::ResumePlaylist("res".into(), None)]
     );
     // Not interrupted: the other branch.
     let mut w = BTreeMap::new();
     step(&logic, Scope::Project, &air("1", "0"), &mut w);
     assert_eq!(
         step(&logic, Scope::Project, &air("0", "0"), &mut w),
-        vec![Act::Take("logo".into())]
+        vec![Act::Take("logo".into(), None)]
     );
 }
 
@@ -634,7 +635,7 @@ fn steps_in_a_graphic_become_its_events() {
     assert!(step(&logic, Scope::Graphic, &[], &mut w).is_empty());
     assert_eq!(
         step(&logic, Scope::Graphic, &[(event_key("w"), "1")], &mut w),
-        vec![Act::Out]
+        vec![Act::Out(None)]
     );
 }
 
@@ -675,4 +676,81 @@ fn steps_watch_a_value_and_compare_it() {
     );
     assert!(step(&logic, Scope::Graphic, &d("60", "Léa"), &mut w).is_empty());
     assert!(step(&logic, Scope::Graphic, &d("70", ""), &mut w).is_empty());
+}
+
+#[test]
+fn a_how_on_the_way_goes_with_the_action() {
+    use crate::playout::{How, HowMode, Side};
+    let how = How {
+        mode: HowMode::Slide,
+        seconds: 0.8,
+        easing: crate::easing::Easing::EaseOut,
+        side: Side::Right,
+    };
+    let logic = Logic {
+        nodes: vec![
+            when("w", "trigger"),
+            node(
+                "h",
+                NodeKind::How {
+                    mode: how.mode,
+                    seconds: how.seconds,
+                    easing: how.easing,
+                    side: how.side,
+                },
+            ),
+            node(
+                "t",
+                NodeKind::Take {
+                    template: "logo".into(),
+                    out: false,
+                },
+            ),
+            node("o", NodeKind::Out {}),
+        ],
+        edges: vec![
+            edge2("w", "out", "h", "run"),
+            edge2("h", "next", "t", "run"),
+            edge2("w", "out", "o", "run"),
+        ],
+        frames: vec![],
+    };
+    let mut w = BTreeMap::new();
+    step(&logic, Scope::Graphic, &[], &mut w);
+    let acts = step(&logic, Scope::Graphic, &[(event_key("w"), "1")], &mut w);
+    // The take goes that way; the out, not after the How…, its own way.
+    assert!(acts.contains(&Act::Take("logo".into(), Some(how))));
+    assert!(acts.contains(&Act::Out(None)));
+}
+
+#[test]
+fn and_binds_before_or() {
+    // (a > 5 and b > 5) or c > 5
+    let mut c = check(
+        "if",
+        &[
+            ("field:a", "gt", "5"),
+            ("field:b", "gt", "5"),
+            ("field:c", "gt", "5"),
+        ],
+    );
+    if let NodeKind::Check { rows, .. } = &mut c.kind {
+        rows[2].join = "or".into();
+    }
+    let logic = Logic {
+        nodes: vec![c],
+        edges: vec![],
+        frames: vec![],
+    };
+    let g = current(&logic);
+    let holds = |a: &str, b: &str, cc: &str| {
+        let d: Data = [("a", a), ("b", b), ("c", cc)]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        flow::value(&g, "if", "out", &d, 0.0) == LVal::Num(1.0)
+    };
+    assert!(holds("9", "9", "0"));
+    assert!(!holds("9", "0", "0"));
+    assert!(holds("0", "0", "9"));
 }

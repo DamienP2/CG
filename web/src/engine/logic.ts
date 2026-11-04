@@ -92,6 +92,7 @@ export function portsOf(n: LogicNode): { ins: Port[]; outs: Port[] } {
       return { ins: [run, { id: 'reset', label: 'Reset', type: 'flow' }], outs: [next] };
     case 'setVar':
       return { ins: [run, { id: 'value', label: 'Value', type: 'any' }], outs: [next] };
+    case 'how':
     case 'out':
     case 'resume':
     case 'fire':
@@ -233,7 +234,7 @@ class Graph {
   /** The phrase of an If… holds (cg_core::logic::lower). */
   holds(n: LogicNode & { type: 'check' }, cx: Cx, depth: number): boolean {
     const bit = (k: string) => parseFloat(cx.data[k] ?? '') > 0.5;
-    const res = n.rows.flatMap((r): boolean[] => {
+    const res = n.rows.flatMap((r, ri): [boolean, number][] => {
       const [kind, id] = r.what.split(/:(.*)/s);
       const v: LVal | undefined =
         kind === 'tpl' ? (bit(onAirKey(id)) ? 1 : 0)
@@ -246,22 +247,26 @@ class Graph {
       const w = r.value ?? '';
       const c = compare(v, w);
       switch (r.test) {
-        case 'onAir': case 'interrupted': case 'ended': case 'yes': return [toNum(v) > 0.5];
-        case 'notOnAir': case 'notInterrupted': case 'notEnded': case 'no': return [toNum(v) < 0.5];
-        case 'gt': return [c > 0];
-        case 'ge': return [c >= 0];
-        case 'lt': return [c < 0];
-        case 'le': return [c <= 0];
-        case 'eq': return [c === 0];
-        case 'ne': return [c !== 0];
-        case 'contains': return [text(v).toLowerCase().includes(w.toLowerCase())];
-        case 'empty': return [!text(v).trim()];
-        case 'notEmpty': return [!!text(v).trim()];
+        case 'onAir': case 'interrupted': case 'ended': case 'yes': return [[toNum(v) > 0.5, ri]];
+        case 'notOnAir': case 'notInterrupted': case 'notEnded': case 'no': return [[toNum(v) < 0.5, ri]];
+        case 'gt': return [[c > 0, ri]];
+        case 'ge': return [[c >= 0, ri]];
+        case 'lt': return [[c < 0, ri]];
+        case 'le': return [[c <= 0, ri]];
+        case 'eq': return [[c === 0, ri]];
+        case 'ne': return [[c !== 0, ri]];
+        case 'contains': return [[text(v).toLowerCase().includes(w.toLowerCase()), ri]];
+        case 'empty': return [[!text(v).trim(), ri]];
+        case 'notEmpty': return [[!!text(v).trim(), ri]];
       }
       return [];
     });
     if (!res.length) return false;
-    return n.any ? res.some(Boolean) : res.every(Boolean);
+    // « and » binds first: groups of lines joined by « and », any group true.
+    const or = (i: number) => (n.rows[i].join ?? (n.any ? 'or' : 'and')) === 'or';
+    const groups: boolean[][] = [];
+    res.forEach(([v, ri], i) => (i === 0 || or(ri) ? groups.push([v]) : groups[groups.length - 1].push(v)));
+    return groups.some((g) => g.every(Boolean));
   }
 
   /** The first branch of an If whose condition holds (-1: else). */

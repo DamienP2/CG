@@ -18,11 +18,12 @@ use super::{
 };
 use crate::anim::Data;
 use crate::model::{Prop, Value};
+use crate::playout::How;
 
 /// What a flow asks of the playout.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
-    Out,
+    Out(Option<How>),
     Resume(String),
     Fire(String),
     NextRow(String),
@@ -31,11 +32,11 @@ pub enum Act {
         value: String,
         transition: f64,
     },
-    Take(String),
-    TakeOut(String),
-    ResumePlaylist(String),
+    Take(String, Option<How>),
+    TakeOut(String, Option<How>),
+    ResumePlaylist(String, Option<How>),
     StopAuto(String),
-    ClearAll,
+    ClearAll(Option<How>),
     Widget {
         layer: String,
         control: String,
@@ -78,19 +79,21 @@ pub fn run(
             }
         };
     }
-    // (node, input port) to run.
-    let mut queue: VecDeque<(String, String)> = VecDeque::new();
-    let fire = |queue: &mut VecDeque<(String, String)>, node: &str, port: &str| {
+    // (node, input port, the way set by a How… on the way) to run.
+    type Queue = VecDeque<(String, String, Option<How>)>;
+    let mut queue: Queue = VecDeque::new();
+    let fire_how = |queue: &mut Queue, node: &str, port: &str, how: Option<How>| {
         for e in &logic.edges {
             if e.from == node && e.from_port == port {
                 if let Some(to) = g.nodes.get(e.to.as_str()) {
                     if to.kind.flow_inputs().contains(&e.port.as_str()) {
-                        queue.push_back((e.to.clone(), e.port.clone()));
+                        queue.push_back((e.to.clone(), e.port.clone(), how));
                     }
                 }
             }
         }
     };
+    let fire = |queue: &mut Queue, node: &str, port: &str| fire_how(queue, node, port, None);
     let has_flow_out: BTreeSet<(&str, &str)> = logic
         .edges
         .iter()
@@ -191,7 +194,10 @@ pub fn run(
                 if let Some(due) = watch.get(&k).and_then(|v| v.parse::<f64>().ok()) {
                     if tick.secs >= due {
                         watch.remove(&k);
-                        fire(&mut queue, id, "next");
+                        let how = watch
+                            .remove(&format!("fl:waith:{id}"))
+                            .and_then(|j| serde_json::from_str(&j).ok());
+                        fire_how(&mut queue, id, "next", how);
                     }
                 }
             }
@@ -233,14 +239,14 @@ pub fn run(
             format!("fl:e:{}.{}>{}.{}", e.from, e.from_port, e.to, e.port),
             now,
         ) {
-            queue.push_back((e.to.clone(), e.port.clone()));
+            queue.push_back((e.to.clone(), e.port.clone(), None));
         }
     }
 
     // Through the flow wires.
     let mut acts = Vec::new();
     let mut steps = 0;
-    while let Some((id, port)) = queue.pop_front() {
+    while let Some((id, port, how)) = queue.pop_front() {
         steps += 1;
         if steps > MAX_STEPS {
             break;
@@ -251,16 +257,33 @@ pub fn run(
         if !g.acts(&id) {
             continue;
         }
-        let mut act = |a: Act, queue: &mut VecDeque<(String, String)>| {
+        let mut act = |a: Act, queue: &mut Queue| {
             acts.push(a);
-            fire(queue, &id, "next");
+            fire_how(queue, &id, "next", how);
         };
         match &n.kind {
             NodeKind::If { branches, .. } => {
                 let chosen = g.branch(&id, branches, cx!(), 0);
                 let p = chosen.map_or("else".to_string(), |i| format!("b{i}"));
-                fire(&mut queue, &id, &p);
+                fire_how(&mut queue, &id, &p, how);
             }
+            // How…: the actions after it go that way.
+            NodeKind::How {
+                mode,
+                seconds,
+                easing,
+                side,
+            } => fire_how(
+                &mut queue,
+                &id,
+                "next",
+                Some(How {
+                    mode: *mode,
+                    seconds: *seconds,
+                    easing: *easing,
+                    side: *side,
+                }),
+            ),
             NodeKind::Wait { seconds } => {
                 let s = g
                     .input(&id, "seconds", cx!(), 0)
@@ -269,6 +292,10 @@ pub fn run(
                     format!("fl:wait:{id}"),
                     format!("{}", tick.secs + s.max(0.0)),
                 );
+                match how.and_then(|h| serde_json::to_string(&h).ok()) {
+                    Some(j) => watch.insert(format!("fl:waith:{id}"), j),
+                    None => watch.remove(&format!("fl:waith:{id}")),
+                };
             }
             NodeKind::Counter { start, step } => {
                 let k = count_key(&id);
@@ -279,7 +306,7 @@ pub fn run(
                 let next = if port == "reset" { *start } else { cur + step };
                 local.insert(k.clone(), format_number(next));
                 vals.insert(k, format_number(next));
-                fire(&mut queue, &id, "next");
+                fire_how(&mut queue, &id, "next", how);
             }
             NodeKind::Once {} => {
                 let k = format!("fl:once:{id}");
@@ -287,10 +314,10 @@ pub fn run(
                     watch.remove(&k);
                 } else if let std::collections::btree_map::Entry::Vacant(e) = watch.entry(k) {
                     e.insert("1".into());
-                    fire(&mut queue, &id, "next");
+                    fire_how(&mut queue, &id, "next", how);
                 }
             }
-            NodeKind::Out {} => act(Act::Out, &mut queue),
+            NodeKind::Out {} => act(Act::Out(how), &mut queue),
             NodeKind::Resume { marker } => act(Act::Resume(marker.clone()), &mut queue),
             NodeKind::Fire { name } if !name.trim().is_empty() => {
                 act(Act::Fire(name.trim().into()), &mut queue)
@@ -316,19 +343,19 @@ pub fn run(
             }
             NodeKind::Take { template, out } if !template.is_empty() => act(
                 if *out {
-                    Act::TakeOut(template.clone())
+                    Act::TakeOut(template.clone(), how)
                 } else {
-                    Act::Take(template.clone())
+                    Act::Take(template.clone(), how)
                 },
                 &mut queue,
             ),
             NodeKind::ResumePlaylist { playlist } if !playlist.is_empty() => {
-                act(Act::ResumePlaylist(playlist.clone()), &mut queue)
+                act(Act::ResumePlaylist(playlist.clone(), how), &mut queue)
             }
             NodeKind::StopAuto { playlist } if !playlist.is_empty() => {
                 act(Act::StopAuto(playlist.clone()), &mut queue)
             }
-            NodeKind::ClearAll {} => act(Act::ClearAll, &mut queue),
+            NodeKind::ClearAll {} => act(Act::ClearAll(how), &mut queue),
             NodeKind::Widget { layer, control } => act(
                 Act::Widget {
                     layer: layer.clone(),
@@ -336,7 +363,7 @@ pub fn run(
                 },
                 &mut queue,
             ),
-            _ => fire(&mut queue, &id, "next"),
+            _ => fire_how(&mut queue, &id, "next", how),
         }
     }
     acts

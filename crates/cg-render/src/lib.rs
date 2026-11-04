@@ -325,8 +325,12 @@ fn with_presence<'a, 'b>(
 struct OnAir<'p> {
     layer: u32,
     item: &'p cg_core::PlayoutItem,
-    /// Below 1: the graphic replaced in a « Fade » zone, fading out under the new one.
+    /// Below 1: the graphic replaced in a « Fade » zone, fading out under the
+    /// new one, or fading in or out the way a Logic said (« How… »).
     alpha: f32,
+    /// Sliding in or out (« How… »): its offset, in frame widths and heights.
+    dx: f32,
+    dy: f32,
     template: &'p Template,
     /// Laid out for the format, with the operator's settings.
     set: std::cell::OnceCell<std::borrow::Cow<'p, Template>>,
@@ -828,18 +832,21 @@ impl Renderer {
                 let going = item
                     .leaving
                     .as_deref()
-                    .map(|g| (&g.item, g.opacity()))
-                    .filter(|(_, a)| *a > 0.0);
+                    .map(|g| (&g.item, g.look()))
+                    .filter(|(_, k)| k.alpha > 0.0);
                 going
                     .into_iter()
-                    .chain([(item, 1.0)])
-                    .map(|(it, a)| (*l, it, a))
+                    .chain([(item, item.look())])
+                    .map(|(it, k)| (*l, it, k))
             })
-            .filter_map(|(l, item, alpha)| {
+            .filter(|(_, _, k)| k.alpha > 0.0)
+            .filter_map(|(l, item, look)| {
                 project.template(&item.template_id).map(|t| OnAir {
                     layer: l,
                     item,
-                    alpha,
+                    alpha: look.alpha,
+                    dx: look.dx as f32,
+                    dy: look.dy as f32,
                     template: t,
                     set: Default::default(),
                     logic: Default::default(),
@@ -862,7 +869,8 @@ impl Renderer {
                 })
             })
             .collect();
-        let leaving = on_air.iter().any(|a| a.alpha < 1.0);
+        let moved = |a: &OnAir| a.alpha < 1.0 || a.dx != 0.0 || a.dy != 0.0;
+        let leaving = on_air.iter().any(moved);
         macro_rules! ctx {
             ($i:expr) => {{
                 let a = &on_air[$i];
@@ -917,7 +925,7 @@ impl Renderer {
             self.steps.plan = Some(Vec::new());
             for (i, a) in on_air.iter().enumerate() {
                 self.steps.item = i;
-                if fading(a.item).is_some() || a.alpha < 1.0 || !a.item.changes.is_empty() {
+                if fading(a.item).is_some() || moved(a) || !a.item.changes.is_empty() {
                     self.plan_step(cache::Motion::Moving);
                 } else {
                     let ctx = ctx!(i);
@@ -1031,8 +1039,13 @@ impl Renderer {
                 })
                 .map(|r| build_mask(pm, None, r, root));
             let alpha = on_air[i].alpha;
-            if alpha < 1.0 {
-                // The graphic going in a « Fade » zone: drawn whole, then laid at its opacity.
+            if moved(&on_air[i]) {
+                // The graphic going in a « Fade » zone (or fading, sliding the
+                // way a Logic said): drawn whole, then laid at its opacity and place.
+                let shift = Transform::from_translate(
+                    on_air[i].dx * dw as f32 * scale,
+                    on_air[i].dy * dh as f32 * scale,
+                );
                 self.enter_step(pm);
                 self.steps.whole += 1;
                 self.steps.fading = true;
@@ -1046,7 +1059,7 @@ impl Renderer {
                         opacity: alpha,
                         ..Default::default()
                     },
-                    Transform::identity(),
+                    shift,
                     None,
                 );
                 self.steps.whole -= 1;
@@ -3673,6 +3686,53 @@ mod tests {
         going.frame = going.length;
         let after = r.render_channel(&project, &state, OUT, "UTC");
         assert_eq!(alone.data, after.data);
+    }
+
+    #[test]
+    fn a_how_slides_the_graphic_in() {
+        let project = sample::demo_project();
+        let take = Command::Take {
+            zone: Some("lower-third".into()),
+            layer: None,
+            template_id: "lower-third".into(),
+            data: Some(std::collections::BTreeMap::from([(
+                "name".to_string(),
+                "Marie Curie".to_string(),
+            )])),
+            rundown_id: None,
+        };
+        let mut still = ChannelState::default();
+        still.how.0 = Some(cg_core::playout::How {
+            mode: cg_core::playout::HowMode::Cut,
+            ..Default::default()
+        });
+        still.apply(&project, take.clone()).unwrap();
+        let mut sliding = ChannelState::default();
+        sliding.how.0 = Some(cg_core::playout::How {
+            mode: cg_core::playout::HowMode::Slide,
+            seconds: 1.0,
+            easing: cg_core::Easing::Linear,
+            side: cg_core::playout::Side::Left,
+        });
+        sliding.apply(&project, take).unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let at_rest = r.render_channel(&project, &still, OUT, "UTC");
+        // At the start it is wholly out of the frame, on the left.
+        let empty = r.render_channel(&project, &ChannelState::default(), OUT, "UTC");
+        let start = r.render_channel(&project, &sliding, OUT, "UTC");
+        assert_eq!(start.data, empty.data);
+        let fps = project.frame_rate.as_f64();
+        for _ in 0..(fps as usize / 2) {
+            sliding.tick(1.0);
+        }
+        let half = r.render_channel(&project, &sliding, OUT, "UTC");
+        assert_ne!(half.data, at_rest.data);
+        assert_ne!(half.data, empty.data);
+        for _ in 0..fps as usize {
+            sliding.tick(1.0);
+        }
+        let end = r.render_channel(&project, &sliding, OUT, "UTC");
+        assert_eq!(end.data, at_rest.data);
     }
 
     #[test]

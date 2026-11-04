@@ -373,6 +373,8 @@ export interface CheckRow {
   what: string;
   test: string;
   value?: string;
+  /** How it joins the line before: `and` (default) or `or`; « and » binds first. */
+  join?: 'and' | 'or';
 }
 /** A branch of an If: its condition and its value (expressions). */
 export interface Branch {
@@ -411,6 +413,8 @@ export type LogicNodeKind =
   | { type: 'continue' }
   | { type: 'start' }
   | { type: 'every'; seconds: number }
+  /** How…: the take, out, resume or clear after it goes this way. */
+  | ({ type: 'how' } & Partial<How>)
   // Flows: on the way
   | { type: 'wait'; seconds: number }
   | { type: 'counter'; start: number; step: number }
@@ -623,8 +627,27 @@ export interface PlayoutItem {
   changes?: ValueMove[];
   /** The graphic it replaced in a « Fade » zone, fading out under it. */
   leaving?: { item: PlayoutItem; frame: number; length: number } | null;
+  /** Fading or sliding in or out the way a Logic said (« How… », cg_core::playout::Motion). */
+  motion?: HowMotion | null;
   /** What its Logic saw on air (events, triggers, Continue: `__ev_<node>`; variables: `__var_<name>`), shown with its data. */
   vals?: Record<string, string>;
+}
+
+/** The way a graphic comes in or goes out, chosen in the Logic (« How… », cg_core::playout::How). */
+export type HowMode = 'anim' | 'cut' | 'fade' | 'slide';
+export type Side = 'left' | 'right' | 'top' | 'bottom';
+export interface How {
+  mode: HowMode;
+  seconds: number;
+  easing: Easing;
+  side: Side;
+}
+/** A graphic fading or sliding in or out (cg_core::playout::Motion). */
+export interface HowMotion {
+  how: How;
+  frame: number;
+  length: number;
+  going?: boolean;
 }
 
 /** Own time of a widget layer, in frames on air. */

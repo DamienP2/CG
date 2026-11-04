@@ -21572,6 +21572,7 @@ textarea.tx-grow {
 .lx .fam-math { --fam: #f59e0b; }
 .lx .fam-text { --fam: #f472b6; }
 .lx .fam-cond { --fam: #a78bfa; }
+.lx .fam-how { --fam: #22d3ee; }
 .lx .fam-time { --fam: #22d3ee; }
 .lx .fam-event { --fam: #fb7185; }
 .lx .fam-trigger { --fam: #facc15; }
@@ -22188,12 +22189,84 @@ textarea.tx-grow {
   flex: none;
 }
 .lx-join {
-  width: 100%;
-  font-size: 10.5px;
-  font-weight: 700;
+  flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--bg);
+  padding: 1px 6px;
+  font: 800 10px/1.4 var(--ui);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #a78bfa;
+  cursor: pointer;
+}
+.lx-join.or {
+  color: #fbbf24;
+  border-color: color-mix(in srgb, #fbbf24 45%, transparent);
+}
+/* A line joined by « or » starts a new group. */
+.lx-phrase.or {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line-2);
+}
+.lx-adds {
+  display: flex;
+  gap: 8px;
+}
+/* How…: its curves and its free bezier. */
+.lx-curves {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.lx-curves button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 2px 2px 3px;
+  color: var(--text-3);
+  font: 600 9.5px/1.2 var(--ui);
+  cursor: pointer;
+  min-width: 0;
+}
+.lx-curves button span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lx-curves button.on {
+  border-color: #22d3ee;
+  color: var(--text);
+}
+.lx-bezier {
+  width: 100%;
+  height: auto;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  touch-action: none;
+}
+.lx-bezier .diag {
+  stroke: var(--line-2);
+}
+.lx-bezier .arm {
+  stroke: var(--text-3);
+  stroke-dasharray: 3 3;
+}
+.lx-bezier .curve {
+  stroke: #22d3ee;
+  stroke-width: 2;
+  fill: none;
+}
+.lx-bezier circle {
+  fill: #22d3ee;
+  cursor: grab;
 }
 .lx-kw.yes,
 .lx-branch.chosen .lx-kw.yes {
@@ -22409,6 +22482,8 @@ textarea.tx-grow {
 .lf-chain .fam-text { --fam: #f472b6; }
 .lx-presets .fam-cond,
 .lf-chain .fam-cond { --fam: #a78bfa; }
+.lx-presets .fam-how,
+.lf-chain .fam-how { --fam: #22d3ee; }
 .lx-presets .fam-time,
 .lf-chain .fam-time { --fam: #22d3ee; }
 .lx-presets .fam-event,

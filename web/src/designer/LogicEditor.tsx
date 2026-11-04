@@ -19,6 +19,7 @@ import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { useDesigner } from './designerStore';
 import { useProjectLogic } from './projectLogic';
+import { HowBody, howOf } from './logicHow';
 import { hasMoments, lineFor, momentsOf, needsSteps, needsValue, sourceOf, subjectsOf, testsOf, toSteps } from './logicSteps';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { t, tc } from '../i18n';
@@ -35,7 +36,7 @@ import { entries, FAMS, isProjectLogic, kindOf, layerNode, rowLabel, rowsFor, sc
  */
 
 const NODE_W = 210;
-const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when']);
+const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when', 'how']);
 const FRAME_COLORS = ['#8fa3ff', '#a78bfa', '#22d3ee', '#f59e0b', '#f472b6', '#4ade80', '#fb7185', '#facc15'];
 const CLIP_KEY = 'strata.logic.clipboard';
 const TYPES: { id: PortType; label: string }[] = [
@@ -283,7 +284,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       setDisplayPref(sizesKey, next);
       return next;
     });
-  const widthOf = (n: LogicNode) => sizes[n.id] ?? (WIDE.has(n.type) ? (n.type === 'if' || n.type === 'check' ? 300 : 240) : NODE_W);
+  const widthOf = (n: LogicNode) => sizes[n.id] ?? (WIDE.has(n.type) ? (n.type === 'if' || n.type === 'check' || n.type === 'how' ? 300 : 240) : NODE_W);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [selFrame, setSelFrame] = useState<string | null>(null);
   const [wire, setWire] = useState<{ from: PortRef; x: number; y: number } | null>(null);
@@ -1456,6 +1457,8 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         return flowRows(<Dropdown value={n.playlist} placeholder={t('Choose a playlist')} options={(projectLists ?? []).map((l) => ({ value: l.id, label: l.name }))} onChange={(playlist) => set({ playlist } as Partial<LogicNode>)} />);
       case 'clearAll':
         return flowRows();
+      case 'how':
+        return flowRows(<HowBody how={howOf(n)} set={(patch, key) => set(patch as Partial<LogicNode>, key && `lx-${n.id}-${key}`)} />);
       case 'template': {
         const g = useApp.getState().project?.templates.find((x) => x.id === n.template);
         const zone = useApp.getState().project?.zones.find((z) => z.id === g?.zone)?.name;
@@ -1507,6 +1510,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         const subjects = subjectsOf(template);
         const truth = v(n, 'out');
         const usesIn = n.rows.some((r) => r.what === 'in');
+        const joinOf = (i: number) => n.rows[i].join ?? (n.any ? 'or' : 'and');
         const setRow = (i: number, patch: Partial<{ what: string; test: string; value: string }>, key?: string) =>
           mutate(
             n.id,
@@ -1519,22 +1523,25 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
           );
         return (
           <>
-            <Row n={n} inP={pIn(n, 'run')}>
-              {n.rows.length > 1 && (
-                <Segmented
-                  value={n.any ? 'or' : 'and'}
-                  onChange={(x) => set({ any: x === 'or' || undefined } as Partial<LogicNode>)}
-                  options={[
-                    { value: 'and', label: t('all') },
-                    { value: 'or', label: t('one of them') },
-                  ]}
-                />
-              )}
-            </Row>
+            <Row n={n} inP={pIn(n, 'run')} />
             <div className="lx-body lx-phrases">
               {n.rows.map((r, i) => (
-                <div key={i} className="lx-phrase">
-                  {i > 0 && <span className="lx-join">{n.any ? t('or') : t('and')}</span>}
+                <div key={i} className={`lx-phrase ${i > 0 && joinOf(i) === 'or' ? 'or' : ''}`}>
+                  {i > 0 && (
+                    <button
+                      className={`lx-join ${joinOf(i)}`}
+                      onClick={() =>
+                        mutate(n.id, (m) => {
+                          const c = m as typeof n;
+                          c.rows.forEach((x, j) => void (j > 0 && !x.join && (x.join = c.any ? 'or' : 'and')));
+                          delete c.any;
+                          c.rows[i].join = c.rows[i].join === 'or' ? 'and' : 'or';
+                        })
+                      }
+                    >
+                      {joinOf(i) === 'or' ? t('or') : t('and')}
+                    </button>
+                  )}
                   <Dropdown value={r.what} placeholder={t('Choose')} options={[...(subjects.some((o) => o.value === r.what) ? [] : [{ value: r.what, label: r.what }]), ...subjects.map((o) => ({ value: o.value, label: t(o.label), group: o.group && t(o.group) }))]} onChange={(what) => setRow(i, { what })} />
                   <Dropdown value={r.test} options={testsOf(r.what).map((o) => ({ value: o.value, label: t(o.label) }))} onChange={(test) => setRow(i, { test })} />
                   {needsValue(r.test) && <TextInput value={r.value ?? ''} placeholder={t('value')} onChange={(x) => setRow(i, { value: x }, `lx-${n.id}-v${i}`)} />}
@@ -1543,9 +1550,19 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
                   </button>
                 </div>
               ))}
-              <button className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).rows.push(lineFor(subjects[0]?.value ?? 'in')))}>
-                <Plus size={11} /> {t('condition')}
-              </button>
+              {n.rows.length ? (
+                <div className="lx-adds">
+                  {(['and', 'or'] as const).map((j) => (
+                    <button key={j} className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).rows.push({ ...lineFor(subjects[0]?.value ?? 'in'), join: j }))}>
+                      <Plus size={11} /> {j === 'and' ? t('and') : t('or')}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).rows.push(lineFor(subjects[0]?.value ?? 'in')))}>
+                  <Plus size={11} /> {t('condition')}
+                </button>
+              )}
             </div>
             {usesIn && (
               <Row n={n} inP={pIn(n, 'in')}>

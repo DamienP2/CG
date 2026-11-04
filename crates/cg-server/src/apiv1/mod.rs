@@ -1306,6 +1306,7 @@ mod tests {
                 watch: Default::default(),
                 vals: Default::default(),
                 leaving: None,
+                motion: None,
             },
         );
     }

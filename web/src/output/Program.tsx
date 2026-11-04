@@ -5,7 +5,7 @@ import { LiveTime, useTicker } from '../engine/LiveTime';
 import { Scene } from '../engine/Scene';
 import { layerAgeFrames } from '../engine/widgets';
 import { onAirKey, onAirWatched, presence } from '../engine/logic';
-import { holdFrame } from '../engine/evaluate';
+import { holdFrame, motionLook } from '../engine/evaluate';
 import { areaClip, zoneArea } from '../engine/zones';
 import type { Layer, PlayoutItem, Project, Template } from '../engine/types';
 import type { Live } from '../store';
@@ -91,17 +91,24 @@ export const Program = memo(function Program({ project, live, width, height, max
         // The graphic replaced in a « Fade » zone, fading out under the new one.
         const going = item.leaving;
         const goingT = going && templates.get(going.item.templateId);
-        const goingAlpha = going ? 1 - Math.min(1, (going.frame + since * fps) / Math.max(1, going.length)) : 0;
+        const goingFrame = going ? going.frame + since * fps : 0;
+        const goingLook = going?.item.motion ? motionLook({ ...going.item.motion, length: going.length }, goingFrame) : { alpha: going ? 1 - Math.min(1, goingFrame / Math.max(1, going.length)) : 0, dx: 0, dy: 0 };
+        const goingAlpha = goingLook.alpha;
+        // Fading or sliding in or out the way a Logic said (« How… »).
+        const look = motionLook(item.motion, item.motion ? item.motion.frame + since * fps : 0);
+        if (look.alpha <= 0) return null;
+        const laid = (l: { alpha: number; dx: number; dy: number }) => ({ position: 'absolute' as const, inset: 0, ...(l.alpha < 1 ? { opacity: l.alpha } : {}), ...(l.dx || l.dy ? { transform: `translate(${l.dx * 100}%, ${l.dy * 100}%)` } : {}) });
         return (
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
             {going && goingT && goingAlpha > 0 && (
-              <div style={{ position: 'absolute', inset: 0, opacity: goingAlpha }}>
+              <div style={laid(goingLook)}>
                 <LayerTime item={going.item} template={goingT} ageSecs={(going.item.age ?? 0) / fps} since={live?.at ?? now} now={now} maxFps={maxFps} fps={fps} lang={project.language}>
                   <Scene template={goingT} frame={going.item.frame} data={going.item.data} />
                 </LayerTime>
               </div>
             )}
+            <div style={laid(look)}>
             <LayerTime item={item} template={t} ageSecs={age} since={live?.at ?? now} now={now} maxFps={maxFps} fps={fps} lang={project.language}>
               {/*
                * A row or an Update fading: the graphic with the new values fades in while the one with
@@ -134,6 +141,7 @@ export const Program = memo(function Program({ project, live, width, height, max
                 );
               })()}
             </LayerTime>
+            </div>
           </div>
         );
       })}
@@ -158,4 +166,4 @@ function LayerTime({ item, template, ageSecs, since, now, maxFps, fps, lang, chi
 /** A timeline on its way to its target (not held at a stop). */
 const advancing = (item: PlayoutItem) => item.phase !== 'holding' && item.phase !== 'outHold' && item.frame < item.target;
 /** Something moves: the timeline, or a fade. */
-const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length) || !!item.changes?.length || (!!item.leaving && item.leaving.frame < item.leaving.length);
+const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length) || !!item.changes?.length || (!!item.leaving && item.leaving.frame < item.leaving.length) || (!!item.motion && item.motion.frame < item.motion.length);

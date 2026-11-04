@@ -1,5 +1,6 @@
 import {
   AlarmClock,
+  MoveRight,
   GitBranch,
   ArrowDown,
   ArrowLeftRight,
@@ -62,7 +63,7 @@ import { t } from '../i18n';
  * the labels of a Layer node's rows.
  */
 
-export type Fam = 'layer' | 'graphic' | 'playlist' | 'input' | 'math' | 'text' | 'cond' | 'time' | 'event' | 'trigger' | 'action' | 'var' | 'mine';
+export type Fam = 'layer' | 'graphic' | 'playlist' | 'how' | 'input' | 'math' | 'text' | 'cond' | 'time' | 'event' | 'trigger' | 'action' | 'var' | 'mine';
 
 export const FAMS: { id: Fam; label: string }[] = [
   { id: 'layer', label: 'Layers' },
@@ -70,6 +71,7 @@ export const FAMS: { id: Fam; label: string }[] = [
   { id: 'playlist', label: 'Playlists' },
   { id: 'event', label: 'When' },
   { id: 'cond', label: 'If' },
+  { id: 'how', label: 'How' },
   { id: 'action', label: 'Actions' },
   { id: 'time', label: 'Timing' },
   { id: 'var', label: 'Variables' },
@@ -278,6 +280,8 @@ function templateEntries(tpl: Template): Entry[] {
     calc('line', 'text', 'Line n', Rows3, 'ligne(a, 1)', ['a']),
     calc('length', 'text', 'Length', Ruler, 'longueur(a)', ['a']),
     { key: 'lookup', fam: 'text', label: 'Lookup table', icon: Table2, make: (_t, x, y) => ({ ...base(x, y), type: 'lookup', rows: [{ key: '', value: '' }], otherwise: '' }) },
+    // How…: the way the next take or out goes
+    { key: 'how', fam: 'how', label: 'How…', icon: MoveRight, make: (_t, x, y) => ({ ...base(x, y), type: 'how', mode: 'fade', seconds: 0.5, easing: { type: 'easeInOut' }, side: 'left' }) },
     // If…: a phrase, true or false
     { key: 'check', fam: 'cond', label: 'If…', icon: GitBranch, make: (_t, x, y) => ({ ...base(x, y), type: 'check', rows: [] }) },
     { key: 'if', fam: 'cond', label: 'If / else if / else', icon: Split, make: (_t, x, y) => ({ ...base(x, y), type: 'if', inputs: ['a', 'b'], branches: [{ when: 'a > b', value: '1' }], otherwise: '0' }) },
@@ -323,6 +327,7 @@ export function kindOf(n: LogicNode, tpl: Template): { fam: Fam; label: string; 
   }
   if (n.type === 'event' || n.type === 'when') return { fam: 'event', label: t('When'), icon: Zap };
   if (n.type === 'check') return { fam: 'cond', label: t('If'), icon: GitBranch };
+  if (n.type === 'how') return { fam: 'how', label: t('How'), icon: MoveRight };
   if (n.type === 'expr') {
     const e = all.find((x) => x.key === 'expr')!;
     const preset = n.title ? all.find((x) => x.fam !== 'layer' && x.label === n.title) : undefined;

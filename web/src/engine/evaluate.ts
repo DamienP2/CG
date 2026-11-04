@@ -268,3 +268,16 @@ export function holdFrame(t: Template): number {
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
+
+/** How a whole graphic is laid by a « How… » motion at `frame` (cg_core::playout::Motion::look). */
+export function motionLook(m: import('./types').HowMotion | null | undefined, frame = m?.frame ?? 0): { alpha: number; dx: number; dy: number } {
+  if (!m) return { alpha: 1, dx: 0, dy: 0 };
+  const p = applyEasing(m.how.easing ?? { type: 'easeInOut' }, Math.min(1, Math.max(0, frame / Math.max(1, m.length))));
+  const away = m.going ? p : 1 - p;
+  if (m.how.mode === 'fade') return { alpha: Math.min(1, Math.max(0, 1 - away)), dx: 0, dy: 0 };
+  if (m.how.mode === 'slide') {
+    const u = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] }[m.how.side ?? 'left'];
+    return { alpha: 1, dx: u[0] * away, dy: u[1] * away };
+  }
+  return { alpha: 1, dx: 0, dy: 0 };
+}
