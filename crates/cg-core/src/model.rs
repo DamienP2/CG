@@ -2187,7 +2187,7 @@ impl Zone {
 
     /// Starting layout of a new project: one full-screen zone.
     pub fn defaults() -> Vec<Zone> {
-        [("full-screen", "Full screen", 10)]
+        [("full-screen", "Plein écran", 10)]
             .iter()
             .enumerate()
             .map(|(i, (id, name, layer))| Zone {

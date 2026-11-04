@@ -757,11 +757,13 @@ async fn create_project(
         // published: the operator sees it right away.
         let zone = p.zones.first().map(|z| z.id.clone()).unwrap_or_default();
         // Named in the user's language (French by default).
-        let first = if me.lang.starts_with("en") {
-            "Template 1"
-        } else {
-            "Modèle 1"
-        };
+        let en = me.lang.starts_with("en");
+        let first = if en { "Template 1" } else { "Modèle 1" };
+        if en {
+            for z in p.zones.iter_mut().filter(|z| z.id == "full-screen") {
+                z.name = "Full screen".into();
+            }
+        }
         let blank = cg_core::Template::blank_secs(
             first,
             &zone,

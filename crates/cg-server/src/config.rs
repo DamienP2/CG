@@ -591,7 +591,7 @@ impl ServerConfig {
         }
         let legacy = c.outputs.take();
         if c.channels.is_empty() {
-            let mut ch = ChannelConfig::new("main", "Channel 1");
+            let mut ch = ChannelConfig::new("main", "Canal 1");
             ch.outputs = legacy.unwrap_or_default();
             c.channels.push(ch);
             let _ = c.save(data_dir);
