@@ -244,6 +244,8 @@ struct Live {
     /// Pictures a second of the source, once known (fields when interlaced).
     rate: Mutex<Option<f64>>,
     interlaced: AtomicBool,
+    /// The timecode its signal carries (SDI), as last read.
+    timecode: Mutex<Option<crate::timecode::Reading>>,
 }
 
 impl Live {
@@ -405,6 +407,7 @@ impl Inputs {
                 child: Mutex::new(None),
                 rate: Mutex::new(None),
                 interlaced: AtomicBool::new(false),
+                timecode: Mutex::new(None),
             });
             let l = live.clone();
             let spawned = std::thread::Builder::new()
@@ -444,6 +447,17 @@ impl Inputs {
                 }
             })
             .collect()
+    }
+
+    /// The timecode the input `id` carries, when read lately.
+    pub fn timecode(&self, id: &str) -> Option<crate::timecode::Reading> {
+        let map = self.live.read().unwrap_or_else(|p| p.into_inner());
+        let r = (*map
+            .get(id)?
+            .timecode
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()))?;
+        r.fresh().then_some(r)
     }
 
     /// What the load sampler counts.
@@ -1097,6 +1111,20 @@ fn run_sdi(l: &Live) {
             match card.take(&mut seq) {
                 Some((w, h, rgba)) => {
                     let mode = card.mode();
+                    // Its timecode (RP188 / VITC), for the schedule.
+                    if let Some(tc) = card.timecode() {
+                        let rate = cg_core::FrameRate::new(
+                            mode.timescale.max(1) as u32,
+                            mode.duration.max(1) as u32,
+                        );
+                        if let Some(ms) = crate::timecode::ms_of_day(&tc, rate) {
+                            *l.timecode.lock().unwrap_or_else(|p| p.into_inner()) =
+                                Some(crate::timecode::Reading {
+                                    ms_of_day: ms,
+                                    at: Instant::now(),
+                                });
+                        }
+                    }
                     let fps = mode.fps();
                     let fields = mode.interlaced();
                     l.interlaced.store(fields, Ordering::Relaxed);
@@ -1200,6 +1228,7 @@ mod tests {
             child: Mutex::new(None),
             rate: Mutex::new(None),
             interlaced: AtomicBool::new(false),
+            timecode: Mutex::new(None),
         }
     }
 

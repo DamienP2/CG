@@ -7,13 +7,11 @@
 //! waits for the next day, a single one stays in the list, missed.
 //!
 //! Timecode here is the time of day in the server's time zone, counted in
-//! frames of the channel (drop-frame notation, `;`, at 29.97 and 59.94).
-//!
-//! TODO(ltc): an external timecode (LTC, RP188 / VITC on an SDI input) is not
-//! read: the DeckLink shim (crates/cg-output, its C++ part) would have to read
-//! `IDeckLinkVideoInputFrame::GetTimecode` on an input and hand it to the
-//! server; the entries would then compare `tc_ms_of_day` with that clock
-//! instead of the server's time of day.
+//! frames of the channel (drop-frame notation, `;`, at 29.97 and 59.94) —
+//! or, when Settings › Time names an SDI input, the timecode that input
+//! carries (RP188 VITC / LTC, else VITC; see [`crate::timecode`]): the
+//! « at timecode » entries are moved by the gap between it and the server's
+//! clock ([`follow_timecode`]), so they fire when it reaches theirs.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -101,6 +99,14 @@ pub struct Scheduled {
     /// on the channel, the server was off).
     #[serde(default)]
     pub missed: bool,
+    /// « At timecode »: the gap (external timecode − server time of day, ms)
+    /// `next` was moved by, to fire when the external timecode says.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tc_offset: i64,
+}
+
+fn is_zero(x: &i64) -> bool {
+    *x == 0
 }
 
 /// An entry as clients see it.
@@ -183,7 +189,7 @@ pub fn tz_of(name: &str) -> TimeZone {
     TimeZone::get(n).unwrap_or_else(|_| TimeZone::system())
 }
 
-const DAY_MS: i64 = 86_400_000;
+pub const DAY_MS: i64 = 86_400_000;
 
 /// "HH:MM:SS" (or "HH:MM") → ms since midnight.
 pub fn parse_time(s: &str) -> Result<i64, String> {
@@ -470,7 +476,10 @@ impl AppState {
                 return;
             };
             match (e.repeat, next) {
-                (Repeat::Daily, Some(n)) => items[i].next = n,
+                (Repeat::Daily, Some(n)) => {
+                    items[i].next = n;
+                    items[i].tc_offset = 0;
+                }
                 _ if fired => {
                     items.remove(i);
                 }
@@ -481,9 +490,64 @@ impl AppState {
     }
 }
 
+/// The external timecode in use, if any: the gap between it and the
+/// server's time of day (ms), and its state for the clients.
+pub fn timecode_state(s: &AppState) -> crate::timecode::TimecodeState {
+    let input = s.config.time.timecode_input.trim().to_string();
+    if input.is_empty() {
+        return Default::default();
+    }
+    match s.inputs.timecode(&input) {
+        Some(r) => crate::timecode::TimecodeState {
+            offset_ms: crate::timecode::offset(r.now(), ms_of_day(&s.tz(), now_ms())),
+            ok: true,
+            input,
+            error: None,
+        },
+        None => crate::timecode::TimecodeState {
+            input,
+            error: Some("no timecode on this input: the server's time of day stands in".into()),
+            ..Default::default()
+        },
+    }
+}
+
+/// Moves the « at timecode » entries still to come by the change of the gap
+/// between the external timecode and the server's clock (`want`), so that
+/// they fire when the external timecode reaches theirs. True when one moved.
+pub fn follow_timecode(items: &mut [Scheduled], want: i64, now: i64) -> bool {
+    // Under a frame and a half at 50: the noise of the reading.
+    const STEADY_MS: i64 = 30;
+    let mut moved = false;
+    for e in items.iter_mut() {
+        if !matches!(e.when, When::Timecode { .. }) || e.missed || e.next <= now {
+            continue;
+        }
+        let d = want - e.tc_offset;
+        if d.abs() >= STEADY_MS {
+            e.next -= d;
+            e.tc_offset = want;
+            moved = true;
+        }
+    }
+    moved
+}
+
 /// Fires the entries when their time comes (sleeps until the next one).
 pub async fn run(s: Shared) {
     loop {
+        // « At timecode »: on the external timecode when there is one.
+        let want = timecode_state(&s).offset_ms;
+        let behind = s.schedule.lock().iter().any(|e| {
+            matches!(e.when, When::Timecode { .. })
+                && !e.missed
+                && e.next > now_ms()
+                && (want - e.tc_offset).abs() >= 30
+        });
+        if behind {
+            let now = now_ms();
+            s.schedule.edit(|items| follow_timecode(items, want, now));
+        }
         let now = now_ms();
         let due: Vec<Scheduled> = s
             .schedule
@@ -624,6 +688,7 @@ pub async fn create(
         label,
         next,
         missed: false,
+        tc_offset: 0,
     };
     s.schedule.edit(|items| items.push(entry.clone()));
     s.broadcast_schedule(&id).await;
@@ -676,6 +741,7 @@ pub async fn patch(
                 .map_err(bad)?
                 .ok_or_else(|| bad("this time has passed"))?;
             e.missed = false;
+            e.tc_offset = 0;
         }
         e.enabled = p.enabled;
         Ok::<_, (StatusCode, String)>(e.clone())
@@ -762,6 +828,49 @@ mod tests {
             next_fire(&when, Repeat::Daily, &tz, P25, later).unwrap(),
             Some(at(2026, 10, 21, 19, 0, 5))
         );
+    }
+
+    #[test]
+    fn timecode_entries_follow_the_external_timecode() {
+        let e = |when: When, next: i64| Scheduled {
+            id: "e".into(),
+            channel_id: "c".into(),
+            project_id: "p".into(),
+            action: Action::Take,
+            item: None,
+            zone: None,
+            when,
+            repeat: Repeat::Once,
+            created_by: String::new(),
+            enabled: true,
+            label: String::new(),
+            next,
+            missed: false,
+            tc_offset: 0,
+        };
+        let tc = || When::Timecode {
+            tc: "20:00:00:00".into(),
+        };
+        let mut items = vec![
+            e(tc(), 10_000),
+            e(
+                When::At {
+                    time: "20:00:00".into(),
+                },
+                10_000,
+            ),
+            e(tc(), 500),
+        ];
+        // The external timecode is 2 s ahead of the server: the take comes 2 s sooner.
+        assert!(follow_timecode(&mut items, 2_000, 1_000));
+        assert_eq!(items[0].next, 8_000);
+        // Not the time-of-day entries, nor the ones already due.
+        assert_eq!((items[1].next, items[2].next), (10_000, 500));
+        // The same gap again: nothing moves; noise under 30 ms neither.
+        assert!(!follow_timecode(&mut items, 2_010, 1_000));
+        // The source lost: back to the server's clock.
+        assert!(follow_timecode(&mut items, 0, 1_000));
+        assert_eq!((items[0].next, items[0].tc_offset), (10_000, 0));
     }
 
     #[test]

@@ -772,4 +772,13 @@ export const home: Record<string, string> = {
   'Newsroom system address': 'Adresse du système de rédaction',
   'READY, PLAY, STOP of each graphic, on its upper port.': 'READY, PLAY, STOP de chaque habillage, sur son port haut.',
   'Waiting for a first state': 'En attente d’un premier état',
+  'External timecode (SDI)': 'Timecode externe (SDI)',
+  'No timecode on the input: server time': 'Pas de timecode sur l’entrée : heure du serveur',
+  'Takes at a timecode': 'Prises à un timecode',
+  'Server\'s time of day': 'Heure du serveur',
+  'SDI input {name} (RP188 / VITC)': 'Entrée SDI {name} (RP188 / VITC)',
+  'Timecode received': 'Timecode reçu',
+  'No timecode on this input': 'Pas de timecode sur cette entrée',
+  '{ms} ms from the server': '{ms} ms par rapport au serveur',
+  'The server\'s time of day stands in': 'L’heure du serveur prend le relais',
 };

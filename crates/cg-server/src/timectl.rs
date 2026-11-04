@@ -27,6 +27,10 @@ pub struct TimeConfig {
     /// NTP servers (names or addresses); none: the system's own.
     #[serde(default)]
     pub ntp_servers: Vec<String>,
+    /// The live input (SDI) whose timecode the « at timecode » takes follow;
+    /// "" = the server's time of day.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub timecode_input: String,
 }
 
 fn yes() -> bool {
@@ -38,6 +42,7 @@ impl Default for TimeConfig {
         Self {
             ntp: true,
             ntp_servers: Vec::new(),
+            timecode_input: String::new(),
         }
     }
 }
@@ -448,6 +453,7 @@ mod tests {
         let mut c = TimeConfig {
             ntp: true,
             ntp_servers: vec![" a.org ".into(), "".into(), "A.org".into(), "b".into()],
+            ..Default::default()
         };
         c.normalize();
         assert_eq!(c.ntp_servers, ["a.org", "b"]);
@@ -462,6 +468,7 @@ mod tests {
         let c = TimeConfig {
             ntp: false,
             ntp_servers: vec!["a.org".into(), "10.0.0.1".into()],
+            ..Default::default()
         };
         assert_eq!(
             request(&c, false),

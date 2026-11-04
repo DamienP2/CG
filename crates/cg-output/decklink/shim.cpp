@@ -523,6 +523,12 @@ class Input final : public IDeckLinkInputCallback {
     uint64_t seq = 0;
     int signal = -1; // -1 unknown, 0 no input source, 1 locked
     uint32_t mode = 0; // the BMDDisplayMode captured (the detected one once the signal is known)
+    // The timecode of the newest frame (RP188: VITC / LTC in the signal; else VITC).
+    int tc_ok = 0;
+    uint8_t tc[4] = {0, 0, 0, 0}; // hours, minutes, seconds, frames
+    int tc_drop = 0;
+    int tc_mark = 0; // field mark: the second frame of a pair (rates above 30)
+    uint64_t tc_seq = 0; // the frame it came with
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID *ppv) override {
         if (!ppv) {
@@ -579,6 +585,34 @@ class Input final : public IDeckLinkInputCallback {
             }
             arrived.notify_all();
             return S_OK;
+        }
+        // Its timecode, whatever the picture: RP188 (VITC1, LTC, VITC2), else VITC.
+        {
+            IDeckLinkTimecode *code = NULL;
+            if (f->GetTimecode(bmdTimecodeRP188Any, &code) != S_OK || !code) {
+                code = NULL;
+                if (f->GetTimecode(bmdTimecodeVITC, &code) != S_OK) {
+                    code = NULL;
+                }
+            }
+            std::lock_guard<std::mutex> lk(m);
+            if (code) {
+                uint8_t hh = 0, mm = 0, ss = 0, ff = 0;
+                if (code->GetComponents(&hh, &mm, &ss, &ff) == S_OK) {
+                    tc[0] = hh;
+                    tc[1] = mm;
+                    tc[2] = ss;
+                    tc[3] = ff;
+                    BMDTimecodeFlags fl = code->GetFlags();
+                    tc_drop = (fl & bmdTimecodeIsDropFrame) ? 1 : 0;
+                    tc_mark = (fl & bmdTimecodeFieldMark) ? 1 : 0;
+                    tc_ok = 1;
+                    tc_seq++;
+                }
+                code->Release();
+            } else {
+                tc_ok = 0;
+            }
         }
         if (f->GetPixelFormat() != bmdFormat8BitYUV) {
             return S_OK;
@@ -1106,6 +1140,23 @@ int dl_input_signal(void *h) {
     Input *in = (Input *)h;
     std::lock_guard<std::mutex> lk(in->m);
     return in->signal;
+}
+
+// The timecode of the newest frame: 1 and its hours, minutes, seconds,
+// frames, drop-frame flag, field mark and count; 0 when the signal carries none.
+int dl_input_timecode(void *h, int *out, uint64_t *count) {
+    Input *in = (Input *)h;
+    std::lock_guard<std::mutex> lk(in->m);
+    if (!in->tc_ok || in->signal == 0) {
+        return 0;
+    }
+    for (int i = 0; i < 4; i++) {
+        out[i] = in->tc[i];
+    }
+    out[4] = in->tc_drop;
+    out[5] = in->tc_mark;
+    *count = in->tc_seq;
+    return 1;
 }
 
 void dl_input_close(void *h) {

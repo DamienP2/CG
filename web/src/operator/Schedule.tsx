@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { t } from '../i18n';
 import { useTicker } from '../engine/LiveTime';
 import type { FrameRate, Project, RundownItem } from '../engine/types';
+import type { TimecodeState } from '../outputs/types';
 import { api, clientNow, serverEvents, useApp } from '../store';
 
 /*
@@ -161,9 +162,18 @@ export function TimecodeChip({ channelId }: { channelId: string }) {
   const now = useServerNow(25);
   // Server lost: no time of its own to show.
   const connected = useApp((s) => s.connected);
+  // An SDI input's timecode when the server follows one (Settings › Time).
+  const [ext, setExt] = useState<TimecodeState | null>(null);
+  useEffect(() => {
+    const load = () => api<TimecodeState>('GET', '/api/timecode').then(setExt).catch(() => setExt(null));
+    load();
+    const h = setInterval(() => document.hidden || void load(), 5000);
+    return () => clearInterval(h);
+  }, []);
+  const offset = ext?.ok ? ext.offsetMs : 0;
   return (
-    <span className="sch-tc" title={t('Time of day, in frames of the channel')}>
-      <span className="sch-tc-l">TC</span> <b>{connected ? tcOfDay(msOfDay(tz, now), rate) : '--:--:--:--'}</b>
+    <span className={`sch-tc ${ext?.input ? (ext.ok ? 'ext' : 'lost') : ''}`} title={ext?.input ? (ext.ok ? t('External timecode (SDI)') : t('No timecode on the input: server time')) : t('Time of day, in frames of the channel')}>
+      <span className="sch-tc-l">TC</span> <b>{connected ? tcOfDay(msOfDay(tz, now) + offset, rate) : '--:--:--:--'}</b>
     </span>
   );
 }

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { CircleCheck, CircleX, Clock, Globe, Info, RefreshCw, Server, X } from 'lucide-react';
+import { CircleCheck, CircleX, Clock, Globe, Info, RefreshCw, Server, Timer, X } from 'lucide-react';
 import { t } from '../i18n';
 import { api, useApp } from '../store';
-import { emptyTime, type HardwareInfo, type ServerConfig, type TimeConfig, type TimeState } from '../outputs/types';
+import { emptyTime, type HardwareInfo, type ServerConfig, type TimeConfig, type TimecodeState, type TimeState } from '../outputs/types';
 import { Card, Field } from './ui';
 import '../hardware/hardware.css';
 
@@ -176,6 +176,8 @@ export function TimePage({
         </div>
       </Card>
 
+      <TimecodeCard cfg={cfg} edit={edit} />
+
       <Card icon={<Globe size={16} />} title={t('Time zone')}>
         <div className="set-grid">
           <Field label={t('Clocks and schedule')}>
@@ -189,5 +191,46 @@ export function TimePage({
         </div>
       </Card>
     </div>
+  );
+}
+
+/** The timecode the « at timecode » takes follow: an SDI input's (RP188 / VITC), or the server's time of day. */
+function TimecodeCard({ cfg, edit }: { cfg: ServerConfig; edit: (fn: (c: ServerConfig) => void) => void }) {
+  const [st, setSt] = useState<TimecodeState | null>(null);
+  useEffect(() => {
+    const load = () => api<TimecodeState>('GET', '/api/timecode').then(setSt).catch(() => setSt(null));
+    load();
+    const h = setInterval(() => document.hidden || void load(), 2000);
+    return () => clearInterval(h);
+  }, []);
+  const sdi = (cfg.inputs ?? []).filter((i) => i.kind === 'sdi');
+  const chosen = cfg.time?.timecodeInput ?? '';
+  const ms = st?.offsetMs ?? 0;
+  return (
+    <Card icon={<Timer size={16} />} title={t('Timecode')}>
+      <div className="set-grid">
+        <Field label={t('Takes at a timecode')}>
+          <select value={chosen} onChange={(e) => edit((c) => void (c.time = { ...emptyTime(), ...c.time, timecodeInput: e.target.value || undefined }))}>
+            <option value="">{t("Server's time of day")}</option>
+            {sdi.map((i) => (
+              <option key={i.id} value={i.id}>
+                {t('SDI input {name} (RP188 / VITC)', { name: i.name })}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {chosen && st?.input === chosen && (
+        <div className="hw-detect">
+          <div className={`hw-det-item ${st.ok ? 'ok' : 'warn'}`}>
+            {st.ok ? <CircleCheck size={16} /> : <CircleX size={16} />}
+            <div>
+              <strong>{st.ok ? t('Timecode received') : t('No timecode on this input')}</strong>
+              <span>{st.ok ? t('{ms} ms from the server', { ms: (ms > 0 ? '+' : '') + ms }) : t("The server's time of day stands in")}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

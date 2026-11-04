@@ -243,6 +243,7 @@ mod ffi {
         pub fn dl_input_signal(h: *mut c_void) -> c_int;
         pub fn dl_input_mode(h: *mut c_void) -> u32;
         pub fn dl_input_wait(h: *mut c_void, seq: u64, timeout_ms: c_int) -> c_int;
+        pub fn dl_input_timecode(h: *mut c_void, out: *mut c_int, count: *mut u64) -> c_int;
         pub fn dl_input_close(h: *mut c_void);
     }
 
@@ -605,6 +606,20 @@ impl Drop for OutputHandle {
     }
 }
 
+/// The timecode an input's signal carries (RP188: VITC / LTC; else VITC).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputTimecode {
+    pub hours: u8,
+    pub minutes: u8,
+    pub seconds: u8,
+    pub frames: u8,
+    pub drop_frame: bool,
+    /// The second frame of a pair (frame rates above 30: RP188 counts pairs).
+    pub field_mark: bool,
+    /// Frames read with a timecode so far (it changes with each new one).
+    pub count: u64,
+}
+
 /// An open DeckLink input capturing 8-bit 4:2:2 (UYVY). Closed when dropped.
 pub struct InputHandle {
     #[cfg(decklink_shim)]
@@ -717,6 +732,30 @@ impl InputHandle {
         #[cfg(not(decklink_shim))]
         {
             let _ = (buf, seq);
+            None
+        }
+    }
+
+    /// The timecode of the newest frame (None: the signal carries none).
+    pub fn timecode(&self) -> Option<InputTimecode> {
+        #[cfg(decklink_shim)]
+        {
+            let mut v = [0 as std::ffi::c_int; 6];
+            let mut count = 0u64;
+            // SAFETY: open handle; `v` holds the 6 values the shim writes.
+            let ok = unsafe { ffi::dl_input_timecode(self.raw, v.as_mut_ptr(), &mut count) } == 1;
+            ok.then(|| InputTimecode {
+                hours: v[0] as u8,
+                minutes: v[1] as u8,
+                seconds: v[2] as u8,
+                frames: v[3] as u8,
+                drop_frame: v[4] != 0,
+                field_mark: v[5] != 0,
+                count,
+            })
+        }
+        #[cfg(not(decklink_shim))]
+        {
             None
         }
     }

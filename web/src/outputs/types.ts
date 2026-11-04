@@ -293,6 +293,16 @@ export interface SyncConfig {
 export interface TimeConfig {
   ntp: boolean;
   ntpServers: string[];
+  /** The SDI input whose timecode the « at timecode » takes follow ("" = the server's clock). */
+  timecodeInput?: string;
+}
+
+/** GET /api/timecode (crates/cg-server/src/timecode.rs). */
+export interface TimecodeState {
+  input: string;
+  ok: boolean;
+  offsetMs: number;
+  error?: string | null;
 }
 
 export const emptyTime = (): TimeConfig => ({ ntp: true, ntpServers: [] });

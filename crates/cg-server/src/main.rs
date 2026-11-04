@@ -37,6 +37,7 @@ mod social;
 mod state;
 mod sync;
 mod thumbs;
+mod timecode;
 mod timectl;
 mod update;
 mod web;

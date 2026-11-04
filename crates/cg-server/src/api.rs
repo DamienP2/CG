@@ -188,6 +188,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/asrun.csv", get(crate::asrun::get_asrun_csv))
         .route("/api/system/config", put(put_system_config))
         .route("/api/system/time", get(get_system_time))
+        .route("/api/timecode", get(get_timecode))
         .route("/api/system/time/sync", post(sync_system_time))
         .route("/api/outputs/status", get(outputs_status))
         .route("/api/hardware", get(get_hardware))
@@ -2755,6 +2756,15 @@ async fn output_redirect(State(s): State<Shared>) -> Response {
         Some(id) => axum::response::Redirect::temporary(&format!("/output/{id}")).into_response(),
         None => not_found("channel").into_response(),
     }
+}
+
+/// The timecode « at timecode » takes follow: an SDI input's, or the
+/// server's time of day (any signed-in user).
+async fn get_timecode(
+    State(s): State<Shared>,
+    CurrentUser(_): CurrentUser,
+) -> Json<crate::timecode::TimecodeState> {
+    Json(crate::schedule::timecode_state(&s))
 }
 
 /// Admins, or the tray app on the server itself.

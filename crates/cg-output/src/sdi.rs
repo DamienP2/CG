@@ -431,6 +431,11 @@ impl DeckLinkInput {
         self.card.signal()
     }
 
+    /// The timecode its signal carries (RP188 VITC / LTC, else VITC).
+    pub fn timecode(&self) -> Option<crate::decklink::InputTimecode> {
+        self.card.timecode()
+    }
+
     /// Waits up to `timeout_ms` for a frame newer than `seq` (woken as soon
     /// as the card hands one over).
     pub fn wait(&self, seq: u64, timeout_ms: u32) -> bool {

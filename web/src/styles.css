@@ -22862,3 +22862,11 @@ textarea.tx-grow {
   padding: 0 6px;
   color: var(--text-2);
 }
+
+/* The TC chip on an SDI input's timecode (green), or lost (amber). */
+.sch-tc.ext .sch-tc-l {
+  color: #22c55e;
+}
+.sch-tc.lost .sch-tc-l {
+  color: #f59e0b;
+}
