@@ -1495,6 +1495,9 @@ impl Renderer {
             };
             let is_group = matches!(layer.kind, LayerKind::Group { .. });
             let shadowed = layer.drop_shadow && !matches!(layer.kind, LayerKind::Text { .. });
+            // A folder under full opacity: its layers drawn together, then laid
+            // at its opacity (they do not show through each other, as in CSS).
+            let faded = is_group && r.num(Prop::Opacity) < 0.999;
             // A mask folder: its children drawn through its mask (one step, drawn each frame).
             let masked = folder_mask(ctx.template, &layer.id).filter(|m| {
                 ctx.template
@@ -1511,7 +1514,7 @@ impl Renderer {
                 continue;
             }
             if planning {
-                if shadowed {
+                if shadowed || (faded && masked.is_none()) {
                     // The layer and its children are one step (drawn together).
                     let outer = self.steps.plan.replace(Vec::new());
                     let (own, then) = self.layer_motion(pm, ctx, &r, tf, opacity);
@@ -1558,6 +1561,7 @@ impl Renderer {
             // (drawn once), when nothing of it changed.
             // (its own motion, that of its second step when drawn in two)
             let sprite = (self.sprites_on
+                && !faded
                 && !own_drawn
                 && !self.in_sprite
                 && !self.steps.fading
@@ -1593,6 +1597,12 @@ impl Renderer {
                 if !laid {
                     self.draw_shadowed(pm, ctx, &r, tf, opacity, cut, shadow, true);
                 }
+                self.steps.whole -= 1;
+                continue;
+            }
+            if faded {
+                self.steps.whole += 1;
+                self.draw_faded(pm, ctx, &r, tf, opacity, mask, own_rect);
                 self.steps.whole -= 1;
                 continue;
             }
@@ -2181,6 +2191,42 @@ impl Renderer {
             ..PixmapPaint::default()
         };
         pm.draw_pixmap(x, y, out.as_ref(), &paint, Transform::identity(), mask);
+    }
+
+    /// A folder and its layers drawn on their own, then laid at `opacity`
+    /// through `mask`; `rect`: its crop or clip.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_faded(
+        &mut self,
+        pm: &mut Pixmap,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        tf: Transform,
+        opacity: f32,
+        mask: Option<&Mask>,
+        rect: Option<Rect>,
+    ) {
+        let mut content = match self.scratch.take() {
+            Some(mut c) if (c.width(), c.height()) == (pm.width(), pm.height()) => {
+                c.fill(tiny_skia::Color::TRANSPARENT);
+                c
+            }
+            _ => match Pixmap::new(pm.width(), pm.height()) {
+                Some(c) => c,
+                None => return,
+            },
+        };
+        let cut = rect.map(|rc| build_mask(&content, None, rc, tf));
+        self.draw_layer(&mut content, ctx, r, tf, 1.0, cut.as_ref());
+        self.draw_children(&mut content, ctx, Some(&r.layer.id), tf, 1.0, cut.as_ref());
+        let paint = PixmapPaint {
+            opacity,
+            ..PixmapPaint::default()
+        };
+        pm.draw_pixmap(0, 0, content.as_ref(), &paint, Transform::identity(), mask);
+        if self.caching {
+            self.scratch = Some(content);
+        }
     }
 
     /// Calls `f` (a widget's drawing or motion, src/wid) with the layer's inputs.
@@ -3124,10 +3170,16 @@ fn load_image(assets_dir: &Path, src: &str) -> Option<Pixmap> {
         return premultiplied(img);
     }
     let name = src.trim().strip_prefix("/assets/")?;
-    if name.contains("..") {
+    // In the assets only (not `/assets//etc/…`, `..`, a drive or a share).
+    let rel = Path::new(name);
+    if !rel
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)))
+        || name.contains(['\\', ':'])
+    {
         return None;
     }
-    let path = assets_dir.join(name);
+    let path = assets_dir.join(rel);
     if name.to_ascii_lowercase().ends_with(".svg") {
         return load_svg(&path);
     }
@@ -3146,11 +3198,19 @@ fn premultiplied(img: image::RgbaImage) -> Option<Pixmap> {
     Pixmap::from_vec(data, tiny_skia::IntSize::from_wh(w, h)?)
 }
 
+/// How SVGs are read: the pictures they hold in themselves (`data:`), no
+/// file of the machine their `<image>` would name.
+pub fn svg_options() -> resvg::usvg::Options<'static> {
+    let mut o = resvg::usvg::Options::default();
+    o.image_href_resolver.resolve_string = Box::new(|_, _| None);
+    o
+}
+
 /// An SVG drawn into a picture (2048 px on its long side: sharp when scaled
 /// down, as logos are).
 fn load_svg(path: &Path) -> Option<Pixmap> {
     let data = std::fs::read(path).ok()?;
-    let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
+    let tree = resvg::usvg::Tree::from_data(&data, &svg_options()).ok()?;
     let size = tree.size();
     let k = 2048.0 / size.width().max(size.height()).max(1.0);
     let (w, h) = (
@@ -3403,6 +3463,48 @@ mod tests {
         let f = r.render_template(&project, &make(true), "main", 1.0, &data);
         assert_eq!(px(&f, w / 4, h / 2)[3], 0);
         assert_eq!(px(&f, 3 * w / 4, h / 2), [255, 0, 0, 255]);
+    }
+
+    /// A folder at half opacity: its layers laid together (the red one under
+    /// the blue one not seen through it), as the browser does.
+    #[test]
+    fn a_faded_folder_is_laid_as_one() {
+        use super::*;
+        let project = cg_core::sample::demo_project();
+        let rect = |id: &str, fill: [f32; 4]| {
+            serde_json::json!({"id": id, "name": id, "type": "rect", "parent": "g",
+             "props": {"x": 0.0, "y": 0.0, "width": 200.0, "height": 200.0, "fill": fill}})
+        };
+        let t: Template = serde_json::from_value(serde_json::json!({
+            "id": "fd", "name": "F", "duration": 10.0, "markers": [], "fields": [], "zone": "",
+            "layers": [
+                {"id": "g", "name": "Dossier", "type": "group",
+                 "props": {"x": 0.0, "y": 0.0, "width": 200.0, "height": 200.0, "opacity": 0.5}},
+                rect("r", [1.0, 0.0, 0.0, 1.0]),
+                rect("b", [0.0, 0.0, 1.0, 1.0])
+            ]
+        }))
+        .unwrap();
+        let dir = std::env::temp_dir().join("cg-render-test-assets");
+        let mut r = Renderer::new(&dir);
+        let f = r.render_template(&project, &t, "main", 1.0, &Data::default());
+        let i = (100 * f.width as usize + 100) * 4;
+        let p = [f.data[i], f.data[i + 1], f.data[i + 2], f.data[i + 3]];
+        assert!(p[0] <= 1 && p[1] == 0 && p[3].abs_diff(128) <= 1, "{p:?}");
+    }
+
+    /// An image's path stays in the assets.
+    #[test]
+    fn images_are_read_in_the_assets_only() {
+        let dir = std::env::temp_dir().join("cg-render-test-assets");
+        for src in [
+            "/assets//etc/hosts.png",
+            "/assets/../x.png",
+            "/assets/C:/x.png",
+            "/assets/\\\\host\\s\\x.png",
+        ] {
+            assert!(super::load_image(&dir, src).is_none(), "{src}");
+        }
     }
 
     /// Over a live picture: the graphics where they draw, the picture

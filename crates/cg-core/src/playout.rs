@@ -1977,7 +1977,12 @@ impl ChannelState {
                         if begin_out(project, item) {
                             item.next = Some(take);
                         } else {
+                            // No out animation: a cut.
+                            let old = item.data.clone();
                             item.data.insert(row.0, row.1);
+                            item.data
+                                .insert(ds.shown_key(), format!("{}", item.age.round()));
+                            data_changed(project, item, &old);
                         }
                     }
                     RowChange::Fade => {
@@ -3370,6 +3375,49 @@ mod tests {
             ),
             Err(PlayoutError::UnknownDataset("nope".into()))
         );
+    }
+
+    #[test]
+    fn dataset_auto_without_out_animation_waits_on_each_row() {
+        use crate::model::{DataSet, RowChange};
+        let mut p = project();
+        let t = &mut p.templates[0];
+        t.markers.retain(|m| m.kind == MarkerKind::Out);
+        t.duration = t.hold_frame();
+        t.datasets.push(DataSet {
+            key: "ds".into(),
+            name: "Guests".into(),
+            source: "s".into(),
+            list: String::new(),
+            steps: vec![],
+            change: RowChange::OutIn,
+        });
+        let mut st = ChannelState::default();
+        let data: Data = [("ds__auto", "2"), ("ds__count", "5"), ("ds__loop", "1")]
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .into();
+        st.apply(
+            &p,
+            Command::Take {
+                zone: Some("z".into()),
+                layer: None,
+                template_id: "t".into(),
+                data: Some(data),
+                rundown_id: None,
+            },
+        )
+        .unwrap();
+        let fps = p.frame_rate.as_f64();
+        st.tick(200.0);
+        st.tick(2.0 * fps);
+        assert!(st.auto_rows(&p));
+        assert_eq!(st.layers.values().next().unwrap().data["ds__row"], "2");
+        // Not the next row on the next frame: 2 s on this one.
+        st.tick(1.0);
+        assert!(!st.auto_rows(&p));
+        st.tick(2.0 * fps);
+        assert!(st.auto_rows(&p));
+        assert_eq!(st.layers.values().next().unwrap().data["ds__row"], "3");
     }
 
     #[test]

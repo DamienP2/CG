@@ -3723,11 +3723,15 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
         Some(id) => s.project(id).await,
         None => None,
     } {
-        let p = match &viewer.user {
-            Some(u) => mine(&p, u),
-            None => p,
-        };
-        if send(&mut tx, &Event::Project { project: p }).await.is_err() {
+        if send(
+            &mut tx,
+            &Event::Project {
+                project: std::sync::Arc::new(p.for_output()),
+            },
+        )
+        .await
+        .is_err()
+        {
             return;
         }
     }
@@ -3764,6 +3768,8 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                     _ => "",
                 };
                 let visible = match ev {
+                    // Output pages: not the drafts.
+                    Event::ProjectTemplate { draft: true, .. } if viewer.channel.is_some() => false,
                     Event::Project { .. } | Event::ProjectTemplate { .. } => match (&viewer.user, &viewer.channel) {
                         (_, Some(_)) => followed.as_deref() == Some(project_id),
                         (Some(u), None) => u.sees_project(project_id),
@@ -3784,7 +3790,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                             if c.project_id != followed {
                                 followed = c.project_id.clone();
                                 if let Some(id) = &followed {
-                                    extra = s.project(id).await.map(|project| Event::Project { project });
+                                    extra = s.project(id).await.map(|p| Event::Project { project: std::sync::Arc::new(p.for_output()) });
                                 }
                             }
                         }
@@ -3800,6 +3806,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                 // What this viewer may see of a list; None: all of it (the
                 // JSON written once for every client is sent).
                 let own = match ev {
+                    Event::Project { project } if viewer.channel.is_some() => Some(Event::Project { project: std::sync::Arc::new(project.for_output()) }),
                     // Without the personal playlists of others.
                     Event::Project { project } if viewer.user.as_ref().is_some_and(|u| !std::sync::Arc::ptr_eq(&mine(project, u), project)) => {
                         viewer.user.as_ref().map(|u| Event::Project { project: mine(project, u) })

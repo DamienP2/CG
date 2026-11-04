@@ -3412,7 +3412,7 @@ impl<'a, 'i> Cv<'a, 'i> {
         match image_data(href(n).unwrap_or("")) {
             Ok((data, ext)) => {
                 let size = if ext == "svg" {
-                    usvg::Tree::from_data(&data, &usvg::Options::default())
+                    usvg::Tree::from_data(&data, &cg_render::svg_options())
                         .ok()
                         .map(|t| (t.size().width() as f64, t.size().height() as f64))
                 } else {
@@ -3570,7 +3570,7 @@ impl<'a, 'i> Cv<'a, 'i> {
         };
         ser(n, &mut doc, extra, 0);
         doc.push_str("</g></svg>");
-        let tree = usvg::Tree::from_str(&doc, &usvg::Options::default()).ok()?;
+        let tree = usvg::Tree::from_str(&doc, &cg_render::svg_options()).ok()?;
         if !tree.root().has_children() {
             return None;
         }
@@ -3893,7 +3893,7 @@ fn path_segments(d: &str) -> Option<Vec<tiny_skia::PathSegment>> {
     let mut doc = format!(r##"<svg xmlns="{SVG_NS}" width="1" height="1"><path fill="#000" d=""##);
     xml_escape(d, &mut doc);
     doc.push_str("\"/></svg>");
-    let tree = usvg::Tree::from_str(&doc, &usvg::Options::default()).ok()?;
+    let tree = usvg::Tree::from_str(&doc, &cg_render::svg_options()).ok()?;
     first_path(tree.root()).map(|p| p.data().segments().collect())
 }
 
@@ -3918,7 +3918,7 @@ fn usvg_color(s: &str) -> Option<Color> {
     let doc = format!(
         r##"<svg xmlns="{SVG_NS}" width="1" height="1"><g fill="#010203"><rect width="1" height="1" fill="{s}"/></g></svg>"##
     );
-    let tree = usvg::Tree::from_str(&doc, &usvg::Options::default()).ok()?;
+    let tree = usvg::Tree::from_str(&doc, &cg_render::svg_options()).ok()?;
     let f = first_path(tree.root())?.fill()?;
     let usvg::Paint::Color(c) = f.paint() else {
         return None;

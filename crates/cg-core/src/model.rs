@@ -2310,6 +2310,18 @@ pub struct Palette {
 }
 
 impl Project {
+    /// What an output page needs to show the air: the published templates
+    /// and the project's look, not its rundown, playlists or drafts.
+    pub fn for_output(&self) -> Project {
+        Project {
+            rundown: Vec::new(),
+            playlists: Vec::new(),
+            drafts: Vec::new(),
+            logic_flows: Vec::new(),
+            ..self.clone()
+        }
+    }
+
     /// The project as a user sees it: without the personal playlists of
     /// others (and their graphics), but for an admin.
     pub fn for_user(&self, user: &str, admin: bool) -> std::borrow::Cow<'_, Project> {

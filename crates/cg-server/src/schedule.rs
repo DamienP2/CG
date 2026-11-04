@@ -468,18 +468,13 @@ impl AppState {
             tracing::warn!("scheduled {} missed (server busy or off)", e.label);
         }
         let rate = self.rate_of(&e.channel_id);
-        let next = next_fire(&e.when, e.repeat, &tz, rate, now.max(e.next))
-            .ok()
-            .flatten();
+        let next = refire(&e, &tz, rate, now);
         self.schedule.edit(|items| {
             let Some(i) = items.iter().position(|x| x.id == e.id) else {
                 return;
             };
             match (e.repeat, next) {
-                (Repeat::Daily, Some(n)) => {
-                    items[i].next = n;
-                    items[i].tc_offset = 0;
-                }
+                (Repeat::Daily, Some(n)) => items[i].next = n,
                 _ if fired => {
                     items.remove(i);
                 }
@@ -488,6 +483,20 @@ impl AppState {
         });
         self.broadcast_schedule(&e.channel_id).await;
     }
+}
+
+/// When an entry that just fired fires again. « At timecode »: the next
+/// time the external timecode shows it (its gap to the server's clock kept),
+/// not the server's clock, which may not be there yet.
+fn refire(e: &Scheduled, tz: &TimeZone, rate: FrameRate, now: i64) -> Option<i64> {
+    let gap = match e.when {
+        When::Timecode { .. } => e.tc_offset,
+        _ => 0,
+    };
+    next_fire(&e.when, e.repeat, tz, rate, now.max(e.next) + gap)
+        .ok()
+        .flatten()
+        .map(|n| n - gap)
 }
 
 /// The external timecode in use, if any: the gap between it and the
@@ -871,6 +880,35 @@ mod tests {
         // The source lost: back to the server's clock.
         assert!(follow_timecode(&mut items, 0, 1_000));
         assert_eq!((items[0].next, items[0].tc_offset), (10_000, 0));
+    }
+
+    #[test]
+    fn a_daily_timecode_ahead_of_the_server_fires_once_a_day() {
+        let tz = paris();
+        let target = at(2026, 10, 20, 20, 0, 0);
+        // The external timecode is 2 s ahead: it fired at 19:59:58 on the server.
+        let e = Scheduled {
+            id: "e".into(),
+            channel_id: "c".into(),
+            project_id: "p".into(),
+            action: Action::Take,
+            item: None,
+            zone: None,
+            when: When::Timecode {
+                tc: "20:00:00:00".into(),
+            },
+            repeat: Repeat::Daily,
+            created_by: String::new(),
+            enabled: true,
+            label: String::new(),
+            next: target - 2_000,
+            missed: false,
+            tc_offset: 2_000,
+        };
+        assert_eq!(
+            refire(&e, &tz, P25, target - 2_000),
+            Some(at(2026, 10, 21, 20, 0, 0) - 2_000)
+        );
     }
 
     #[test]
