@@ -13,6 +13,7 @@ Strata est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group), 
    - **MOS ID** : `strata.mos` par défaut, c'est l'identifiant à déclarer dans la rédaction ;
    - **Ports** : 10540 (bas : objets, profils 0-1) et 10541 (haut : conducteurs, profil 2) ;
    - **Projet** : celui qui reçoit les conducteurs. En mode *Automatique*, c'est le projet des habillages.
+   - **État renvoyé à la rédaction** : adresse du système de rédaction et son port haut (10541 par défaut). Strata y envoie l'état de chaque habillage (voir plus bas). Vide : rien n'est envoyé.
 
    Enregistrer : le moteur redémarre et les ports s'ouvrent. L'état (*Listening* ou *Connected*) et le nombre de connexions s'affichent en haut de la page ; *Running orders* liste les conducteurs reçus.
 2. **Utilisateurs** : créer un compte `saga-plugin` de rôle **Operator**, limité aux projets des émissions concernées, puis une **clé d'API** pour ce compte (onglet **API** → *API keys*, en la faisant agir en tant que ce compte).
@@ -57,6 +58,19 @@ Rouvrir un élément existant recharge ses valeurs, et le bouton devient **Updat
 
 Chaque message reçoit sa réponse sur la même connexion (`roAck` / `mosAck`). Les conducteurs sont conservés dans `<données>/mos/` et survivent aux redémarrages.
 
+### État renvoyé à la rédaction
+
+Quand l'adresse du système de rédaction est renseignée, Strata ouvre une connexion vers son port haut et y envoie `roElementStat` (`element="ITEM"`, avec `roID`, `storyID`, `itemID`, `objID` et `itemChannel` de l'élément) :
+
+| État | Quand |
+| --- | --- |
+| `READY` | Le conducteur est reçu et le template de l'habillage existe dans le projet. |
+| `NOT READY` | Le template de l'habillage n'existe pas dans le projet. |
+| `PLAY` | L'habillage passe à l'antenne (sur n'importe quel canal). |
+| `STOP` | Il sort de l'antenne. |
+
+Chaque message attend son `roAck` ; une connexion perdue est rouverte au message suivant. L'état de la liaison (connecté, erreur, dernier état envoyé) s'affiche dans l'onglet MOS. Le `ncsID` est celui des réglages, sinon celui que la rédaction utilise ; l'encodage est celui de la rédaction (UTF-16 par défaut).
+
 Format des éléments créés par le plugin (`mosExternalMetadata`, schéma `https://stratagraphics.io/mos/v1`) :
 
 ```xml
@@ -70,6 +84,6 @@ Format des éléments créés par le plugin (`mosExternalMetadata`, schéma `htt
 
 ## Limites actuelles
 
-- **Pas de retour d'état vers la rédaction.** Strata n'envoie pas encore `roItemStat` (PLAY / STOP) : la rédaction ne voit pas quel habillage est à l'antenne.
 - **Profils 3 à 7 non pris en charge.** Il n'y a pas d'objets créés côté device ni de contrôle de playout par la rédaction (`roCtrl` est seulement accusé). Le Take reste chez l'opérateur, ou passe par l'API (`POST /api/channels/{id}/items/{item}/take`).
+- **Système de rédaction en cloud.** MOS est du TCP non chiffré, ouvert par la rédaction vers Strata : un système en cloud doit passer par un VPN ou par sa passerelle MOS installée sur site.
 - **Validation sur une vraie Saga à faire.** L'intégration a été testée avec un simulateur MOS, pas avec Saga elle-même : la première mise en service doit être faite avec l'administrateur Saga.

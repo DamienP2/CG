@@ -768,4 +768,8 @@ export const home: Record<string, string> = {
   'Add this colour': 'Ajouter cette couleur',
   'Recent colours': 'Récentes',
   'Export without the pictures': 'Exporter sans les images',
+  'State sent to the newsroom': 'État renvoyé à la rédaction',
+  'Newsroom system address': 'Adresse du système de rédaction',
+  'READY, PLAY, STOP of each graphic, on its upper port.': 'READY, PLAY, STOP de chaque habillage, sur son port haut.',
+  'Waiting for a first state': 'En attente d’un premier état',
 };

@@ -1,6 +1,6 @@
 import { InfoTip } from '../ui/InfoTip';
 import { friendlyError } from '../ui/serverError';
-import { Cable, Copy, KeyRound, ListOrdered, Newspaper, Plug } from 'lucide-react';
+import { Cable, Copy, KeyRound, ListOrdered, Newspaper, Plug, Radio } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t, tn } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
@@ -16,6 +16,8 @@ export interface MosConfig {
   lowerPort: number;
   upperPort: number;
   projectId: string;
+  ncsHost: string;
+  ncsPort: number;
 }
 
 interface MosStatus {
@@ -25,6 +27,7 @@ interface MosStatus {
   lastMessage: string | null;
   lastMessageAt: number | null;
   runningOrders: { id: string; slug: string; projectId: string; stories: number; items: number }[];
+  report: { on: boolean; connected: boolean; error: string | null; sent: number; last: string | null; lastAt: number | null };
 }
 
 type Section = 'connection' | 'orders' | 'plugin';
@@ -105,6 +108,28 @@ export function MosPage() {
                 </select>
               </Field>
             </div>
+          </Card>
+          <Card icon={<Radio size={16} />} title={t('State sent to the newsroom')}>
+            <div className="set-grid">
+              <Field label={t('Newsroom system address')} hint={t('READY, PLAY, STOP of each graphic, on its upper port.')}>
+                <input value={mos.ncsHost ?? ''} placeholder="10.0.0.20" onChange={(e) => set({ ncsHost: e.target.value })} />
+              </Field>
+              <Field label={t('Port')}>
+                <input type="number" value={mos.ncsPort ?? 10541} onChange={(e) => set({ ncsPort: +e.target.value })} />
+              </Field>
+            </div>
+            {mos.enabled && !!mos.ncsHost && status?.report && (
+              <p className="hint">
+                <span className={`nav-dot ${status.report.error ? 'warn' : status.report.connected ? 'ok' : 'off'}`} />{' '}
+                {status.report.error ? friendlyError(status.report.error) : status.report.connected ? t('Connected') : t('Waiting for a first state')}
+                {status.report.last && (
+                  <>
+                    {' · '}
+                    <code>{status.report.last}</code> {status.report.lastAt && new Date(status.report.lastAt).toLocaleTimeString()}
+                  </>
+                )}
+              </p>
+            )}
           </Card>
           {status?.lastMessage && (
             <p className="hint">

@@ -38,6 +38,9 @@ pub struct MosItem {
     pub slug: String,
     pub mos_id: String,
     pub obj_id: String,
+    /// Where the newsroom plays it (`itemChannel`), sent back with its state.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub channel: String,
     /// From our payload; empty for other devices' items.
     pub project: String,
     pub template: String,
@@ -79,6 +82,7 @@ fn parse_item(n: roxmltree::Node) -> MosItem {
         slug: text(n, "itemSlug"),
         mos_id: text(n, "mosID"),
         obj_id: text(n, "objID"),
+        channel: text(n, "itemChannel"),
         ..Default::default()
     };
     // Our payload: <strata project=… template=… zone=…><field key=…>…</field></strata>
@@ -503,6 +507,22 @@ pub struct Status {
     pub last_message: Option<String>,
     pub last_message_at: Option<i64>,
     pub running_orders: Vec<RoSummary>,
+    /// The state of the items sent to the newsroom system (`roElementStat`).
+    pub report: Report,
+}
+
+/// Sending the state of the items to the newsroom system.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Report {
+    /// An address to send to is set.
+    pub on: bool,
+    pub connected: bool,
+    pub error: Option<String>,
+    /// Messages the newsroom system acknowledged.
+    pub sent: u64,
+    pub last: Option<String>,
+    pub last_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -594,7 +614,7 @@ async fn accept_loop(state: Shared, listener: TcpListener) {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum Encoding {
+pub(crate) enum Encoding {
     Utf16Be,
     Utf16Le,
     Utf8,
@@ -688,6 +708,9 @@ async fn connection(state: Shared, mut sock: TcpStream) -> std::io::Result<()> {
             enc = detect(&buf);
         }
         let Some(e) = enc else { continue };
+        if let Ok(mut l) = LAST_ENC.lock() {
+            *l = Some(e);
+        }
         for msg in take_messages(&mut buf, e) {
             let reply = handle(&state, &msg).await;
             if let Some(r) = reply {
@@ -711,6 +734,12 @@ async fn handle(state: &Shared, xml: &str) -> Option<String> {
         }
     };
     let root = doc.root_element();
+    if let Ok(mut l) = LAST_NCS.lock() {
+        let id = text(root, "ncsID");
+        if !id.is_empty() {
+            *l = id;
+        }
+    }
     let env = Envelope {
         cfg,
         ncs_id: text(root, "ncsID"),
@@ -806,6 +835,7 @@ async fn store_ro(state: &Shared, ro: RunningOrder) -> String {
                 project = pid,
                 "MOS running order received"
             );
+            report_ready(state, &ro, state.project(&pid).await.as_deref());
             let mut ros = state.mos.ros.lock().unwrap_or_else(|e| e.into_inner());
             ros.insert(ro.id.clone(), (pid, ro));
             state.mos.save(&ros);
@@ -829,6 +859,7 @@ async fn update_ro(state: &Shared, ro_id: &str, f: impl FnOnce(&mut RunningOrder
     f(&mut ro);
     match write_ro(state, &pid, &ro).await {
         Ok(_) => {
+            report_ready(state, &ro, state.project(&pid).await.as_deref());
             let mut ros = state.mos.ros.lock().unwrap_or_else(|e| e.into_inner());
             ros.insert(ro.id.clone(), (pid, ro));
             state.mos.save(&ros);
@@ -861,8 +892,317 @@ async fn delete_ro(state: &Shared, ro_id: &str) -> String {
     "OK".into()
 }
 
+// ------------------------------------------- the state sent to the NCS ----
+
+/// The ncsID and the encoding the newsroom system last used with us.
+static LAST_NCS: Mutex<String> = Mutex::new(String::new());
+static LAST_ENC: Mutex<Option<Encoding>> = Mutex::new(None);
+/// Messages to send to the newsroom system (bodies, without the envelope).
+static OUTBOX: Mutex<Option<tokio::sync::mpsc::UnboundedSender<String>>> = Mutex::new(None);
+/// The items said READY since the start (not said again on each change).
+static READY: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+
+fn set_report(f: impl FnOnce(&mut Report)) {
+    set_status(|s| f(&mut s.report));
+}
+
+/// `roElementStat` of an item (MOS 2.8): `status` READY, NOT READY, PLAY, STOP.
+fn element_stat(ro: &RunningOrder, story: &Story, item: &MosItem, status: &str) -> String {
+    format!(
+        "<roElementStat element=\"ITEM\"><roID>{}</roID><storyID>{}</storyID><itemID>{}</itemID><objID>{}</objID><itemChannel>{}</itemChannel><status>{}</status><time>{}</time></roElementStat>",
+        esc(&ro.id),
+        esc(&story.id),
+        esc(&item.id),
+        esc(&item.obj_id),
+        esc(&item.channel),
+        esc(status),
+        mos_time()
+    )
+}
+
+fn send_stat(body: String) {
+    if let Some(tx) = OUTBOX.lock().ok().and_then(|o| o.clone()) {
+        let _ = tx.send(body);
+    }
+}
+
+/// The rundown item a MOS item became (see [`apply_to_project`]).
+fn rundown_id(ro: &RunningOrder, story: &Story, item: &MosItem) -> String {
+    format!("mos:{}:{}:{}", ro.id, story.id, item.id)
+}
+
+/// After a running order is received or changed: READY for our items the
+/// project can play, NOT READY for ours it cannot (a template missing),
+/// once each.
+fn report_ready(state: &Shared, ro: &RunningOrder, project: Option<&Project>) {
+    let mos_id = &state.config.mos.mos_id;
+    let mut said = READY.lock().unwrap_or_else(|e| e.into_inner());
+    let said = said.get_or_insert_with(Default::default);
+    for story in &ro.stories {
+        for item in &story.items {
+            let ours = item.mos_id.eq_ignore_ascii_case(mos_id)
+                || (item.mos_id.is_empty() && !item.template.is_empty());
+            if !ours {
+                continue;
+            }
+            let ok = project.is_some_and(|p| p.template(&item.template).is_some());
+            let key = format!("{}|{}", rundown_id(ro, story, item), ok);
+            if said.insert(key) {
+                send_stat(element_stat(
+                    ro,
+                    story,
+                    item,
+                    if ok { "READY" } else { "NOT READY" },
+                ));
+            }
+        }
+    }
+}
+
+/// Sends the state of the newsroom's items while the engine cycle lasts:
+/// PLAY when one of them goes on air (on any channel), STOP when it goes
+/// out; READY / NOT READY as running orders come (see [`report_ready`]).
+pub async fn report(state: Shared) {
+    let cfg = state.config.mos.clone();
+    let host = cfg.ncs_host.trim().to_string();
+    set_report(|r| {
+        *r = Report {
+            on: cfg.enabled && !host.is_empty(),
+            ..Default::default()
+        }
+    });
+    if !cfg.enabled || host.is_empty() {
+        return;
+    }
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    if let Ok(mut o) = OUTBOX.lock() {
+        *o = Some(tx);
+    }
+    let sender = tokio::spawn(send_loop(cfg.clone(), host, rx));
+    let mut events = state.events.subscribe();
+    let mut on_air: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
+    let closing = crate::state::until_true(state.closing.subscribe());
+    tokio::pin!(closing);
+    loop {
+        let ev = tokio::select! {
+            _ = &mut closing => break,
+            ev = events.recv() => ev,
+        };
+        let ev = match ev {
+            Ok(ev) => ev,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(_) => break,
+        };
+        let crate::state::Event::Channel {
+            channel_id,
+            state: ch,
+            ..
+        } = &ev.event
+        else {
+            continue;
+        };
+        let now: std::collections::BTreeSet<String> = ch
+            .layers
+            .values()
+            .filter(|i| {
+                !matches!(
+                    i.phase,
+                    cg_core::playout::Phase::Out | cg_core::playout::Phase::OutHold
+                )
+            })
+            .filter_map(|i| i.rundown_id.clone())
+            .filter(|r| r.starts_with("mos:"))
+            .collect();
+        let was = on_air
+            .insert(channel_id.clone(), now.clone())
+            .unwrap_or_default();
+        let others: std::collections::BTreeSet<String> = on_air
+            .iter()
+            .filter(|(c, _)| *c != channel_id)
+            .flat_map(|(_, s)| s.iter().cloned())
+            .collect();
+        let changes: Vec<(&String, &str)> = now
+            .difference(&was)
+            .map(|r| (r, "PLAY"))
+            .chain(
+                was.difference(&now)
+                    .filter(|r| !others.contains(*r))
+                    .map(|r| (r, "STOP")),
+            )
+            .collect();
+        if changes.is_empty() {
+            continue;
+        }
+        let ros: Vec<RunningOrder> = state
+            .mos
+            .ros
+            .lock()
+            .map(|r| r.values().map(|(_, ro)| ro.clone()).collect())
+            .unwrap_or_default();
+        for (rid, status) in changes {
+            'find: for ro in &ros {
+                for story in &ro.stories {
+                    for item in &story.items {
+                        if rundown_id(ro, story, item) == *rid {
+                            send_stat(element_stat(ro, story, item, status));
+                            break 'find;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(mut o) = OUTBOX.lock() {
+        *o = None;
+    }
+    sender.abort();
+}
+
+/// Keeps a connection to the newsroom system's upper port and sends each
+/// message on it, waiting for its acknowledgement (a lost connection is
+/// opened again for the next message).
+async fn send_loop(
+    cfg: MosConfig,
+    host: String,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<String>,
+) {
+    let mut conn: Option<TcpStream> = None;
+    let mut id: u64 = 1;
+    let wait = std::time::Duration::from_secs(5);
+    while let Some(body) = rx.recv().await {
+        let ncs = if cfg.ncs_id.trim().is_empty() {
+            LAST_NCS.lock().map(|l| l.clone()).unwrap_or_default()
+        } else {
+            cfg.ncs_id.trim().to_string()
+        };
+        let enc = LAST_ENC
+            .lock()
+            .ok()
+            .and_then(|e| *e)
+            .unwrap_or(Encoding::Utf16Be);
+        let msg = format!(
+            "<mos><mosID>{}</mosID><ncsID>{}</ncsID><messageID>{id}</messageID>{body}</mos>",
+            esc(&cfg.mos_id),
+            esc(&ncs)
+        );
+        id += 1;
+        let bytes = encode(&msg, enc);
+        let mut sent = false;
+        // Twice: on the connection kept, then on a new one.
+        for _ in 0..2 {
+            if conn.is_none() {
+                match tokio::time::timeout(wait, TcpStream::connect((host.as_str(), cfg.ncs_port)))
+                    .await
+                {
+                    Ok(Ok(s)) => {
+                        conn = Some(s);
+                        set_report(|r| {
+                            r.connected = true;
+                            r.error = None;
+                        });
+                    }
+                    Ok(Err(e)) => {
+                        set_report(|r| {
+                            r.connected = false;
+                            r.error = Some(format!("cannot reach {host}:{}: {e}", cfg.ncs_port));
+                        });
+                        break;
+                    }
+                    Err(_) => {
+                        set_report(|r| {
+                            r.connected = false;
+                            r.error = Some(format!("{host}:{} does not answer", cfg.ncs_port));
+                        });
+                        break;
+                    }
+                }
+            }
+            let Some(sock) = conn.as_mut() else { break };
+            let answer = async {
+                sock.write_all(&bytes).await?;
+                // Its acknowledgement (roAck), in the encoding it answers in.
+                let mut buf = Vec::new();
+                let mut tmp = [0u8; 4096];
+                loop {
+                    let n = sock.read(&mut tmp).await?;
+                    if n == 0 {
+                        return Err(std::io::Error::other("closed"));
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                    if let Some(e) = detect(&buf) {
+                        if let Some(m) = take_messages(&mut buf, e).into_iter().next() {
+                            return Ok::<String, std::io::Error>(m);
+                        }
+                    }
+                }
+            };
+            match tokio::time::timeout(wait, answer).await {
+                Ok(Ok(reply)) => {
+                    if reply.contains("NACK") {
+                        tracing::warn!("MOS: the newsroom system refused a state: {reply}");
+                    }
+                    sent = true;
+                    break;
+                }
+                _ => {
+                    conn = None;
+                    set_report(|r| r.connected = false);
+                }
+            }
+        }
+        if sent {
+            let what = body
+                .split("<status>")
+                .nth(1)
+                .and_then(|s| s.split('<').next())
+                .unwrap_or("")
+                .to_string();
+            set_report(|r| {
+                r.sent += 1;
+                r.connected = true;
+                r.error = None;
+                r.last = Some(what);
+                r.last_at = Some(crate::state::now_ms());
+            });
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_state_of_an_item_goes_back_with_its_ids() {
+        let item = MosItem {
+            id: "I1".into(),
+            obj_id: "OBJ<1>".into(),
+            channel: "CG1".into(),
+            ..Default::default()
+        };
+        let story = Story {
+            id: "S1".into(),
+            slug: String::new(),
+            items: vec![item.clone()],
+        };
+        let ro = RunningOrder {
+            id: "RO1".into(),
+            slug: String::new(),
+            stories: vec![story.clone()],
+        };
+        let x = element_stat(&ro, &story, &item, "PLAY");
+        assert!(x.starts_with("<roElementStat element=\"ITEM\"><roID>RO1</roID><storyID>S1</storyID><itemID>I1</itemID>"));
+        assert!(x.contains(
+            "<objID>OBJ&lt;1&gt;</objID><itemChannel>CG1</itemChannel><status>PLAY</status>"
+        ));
+        assert_eq!(rundown_id(&ro, &story, &item), "mos:RO1:S1:I1");
+        // As parsed from the newsroom's message.
+        let doc = roxmltree::Document::parse(
+            "<item><itemID>I1</itemID><itemChannel>CG2</itemChannel></item>",
+        )
+        .unwrap();
+        assert_eq!(parse_item(doc.root_element()).channel, "CG2");
+    }
+
     use super::*;
 
     #[test]

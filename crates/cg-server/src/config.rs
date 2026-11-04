@@ -384,6 +384,13 @@ pub struct MosConfig {
     /// Project receiving the running orders ("" = the project of the items).
     #[serde(default)]
     pub project_id: String,
+    /// The newsroom system's address, where the state of its items is sent
+    /// (ready, on air, out: `roElementStat`); "" = none sent.
+    #[serde(default)]
+    pub ncs_host: String,
+    /// Its upper port (profile 2).
+    #[serde(default = "default_upper_port")]
+    pub ncs_port: u16,
 }
 
 fn default_mos_id() -> String {
@@ -405,6 +412,8 @@ impl Default for MosConfig {
             lower_port: default_lower_port(),
             upper_port: default_upper_port(),
             project_id: String::new(),
+            ncs_host: String::new(),
+            ncs_port: default_upper_port(),
         }
     }
 }

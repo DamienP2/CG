@@ -585,6 +585,8 @@ pub async fn serve(
         let channels = engine::start(&shared);
         let engine = vec![
             tokio::spawn(mos::serve(shared.clone())),
+            // The state of the newsroom's items, sent back to it.
+            tokio::spawn(mos::report(shared.clone())),
             tokio::spawn(datasources::run(shared.clone())),
             tokio::spawn(social::run::run(shared.clone())),
             tokio::spawn(social::moderation::run(shared.clone())),
