@@ -619,4 +619,17 @@ export const designer: Record<string, string> = {
   'Choose a sound': 'Choisir un son',
   'Volume': 'Volume',
   'Every sound': 'Tous les sons',
+  // Templates in the library
+  'From the library': 'Depuis la bibliothèque',
+  'Save in the library…': 'Enregistrer dans la bibliothèque…',
+  'Scaled': 'Mise à l’échelle',
+  'Remove “{name}” from the library?': 'Retirer « {name} » de la bibliothèque ?',
+  'The projects that use it keep their copy.': 'Les projets qui l’utilisent gardent leur copie.',
+  'Remove from the library': 'Retirer de la bibliothèque',
+  'Saved in the library ({n} media copied to the shared library)': 'Enregistré dans la bibliothèque ({n} médias copiés dans la bibliothèque partagée)',
+  'Save “{name}” in the library': 'Enregistrer « {name} » dans la bibliothèque',
+  'Shared library': 'Bibliothèque partagée',
+  'Of the project': 'Du projet',
+  'No template': 'Aucun modèle',
+  'Into': 'Dans',
 };

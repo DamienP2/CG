@@ -42,6 +42,7 @@ mod thumbs;
 mod timecode;
 mod timectl;
 mod tls;
+mod tpllib;
 mod update;
 mod web;
 mod webimages;

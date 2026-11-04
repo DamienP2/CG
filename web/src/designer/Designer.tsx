@@ -1,4 +1,4 @@
-import { Copy, GripVertical, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
+import { BookmarkPlus, Copy, GripVertical, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown } from '../ui/Dropdown';
@@ -27,6 +27,7 @@ import { formatById } from '../engine/formats';
 import { zoneArea } from '../engine/zones';
 import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
+import { fromLibrary, LibraryGrid, SaveToLibrary, useTemplateLibrary, type LibTemplate } from './templateLibrary';
 import { t, tn } from '../i18n';
 import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
@@ -216,6 +217,19 @@ function TemplateList({ project }: { project: Project }) {
     setNewOpen(false);
     void create(undefined, newName, newZone || undefined);
   };
+  // The library's templates (shared, and kept with this project); the one being saved there.
+  const library = useTemplateLibrary(newOpen ? project.id : null);
+  const [toLibrary, setToLibrary] = useState<Template | null>(null);
+  const addFromLibrary = async (e: LibTemplate) => {
+    setNewOpen(false);
+    try {
+      const tpl = await fromLibrary(project, e.id, newZone || defaultZone || '');
+      load(tpl);
+      await saveTemplate(tpl);
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
   const [over, setOver] = useState(false);
   const [importing, setImporting] = useState(false);
   const fromFile = async (f: File) => {
@@ -338,10 +352,17 @@ function TemplateList({ project }: { project: Project }) {
                   <span>{t('Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)')}</span>
                 </button>
               </div>
+              {!!library?.length && (
+                <div className="new-tpl-lib">
+                  <span className="set-label">{t('From the library')}</span>
+                  <LibraryGrid list={library} onPick={(e) => void addFromLibrary(e)} />
+                </div>
+              )}
             </div>
           </div>,
             document.body,
           )}
+        {toLibrary && <SaveToLibrary project={project} template={toLibrary} onClose={() => setToLibrary(null)} />}
         {importFile && (
           <ImportModal
             file={importFile}
@@ -401,6 +422,9 @@ function TemplateList({ project }: { project: Project }) {
             </span>
             {unpublished && <span className="tpl-draft" title={published ? t('Changes not in the Operator yet: click Publish at the top') : t('New, not in the Operator yet: click Publish at the top')} />}
             <div className="item-actions">
+              <button className="icon-btn ghost" title={t('Save in the library…')} onClick={(e) => (e.stopPropagation(), setToLibrary(tpl))}>
+                <BookmarkPlus size={12} />
+              </button>
               <button className="icon-btn ghost" title={t('Duplicate')} onClick={(e) => (e.stopPropagation(), create(tpl))}>
                 <Copy size={12} />
               </button>

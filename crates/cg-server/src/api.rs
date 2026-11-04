@@ -29,6 +29,7 @@ pub fn router() -> Router<Shared> {
         .merge(crate::sound::router())
         .merge(crate::tls::router())
         .merge(crate::sso::router())
+        .merge(crate::tpllib::router())
         .merge(crate::health::router())
         .merge(crate::apiv1::router())
         .merge(crate::social::api::router())

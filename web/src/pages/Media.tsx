@@ -1,13 +1,15 @@
-import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, Link2, Palette as PaletteIcon, Plus, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
+import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, LayoutTemplate, Link2, Palette as PaletteIcon, Plus, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
 import { confirmDialog } from '../ui/dialogs';
+import { Segmented } from '../ui/fields';
 import { loadFonts, useFonts } from '../engine/fonts';
 import { locale, t, tn } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
 import { addPalette, ColorsPanel } from './ColorsPanel';
 import { useColors } from '../colors';
 import { LogicFlowsPanel } from './LogicFlowsPanel';
+import { LibraryGrid, useTemplateLibrary, type LibTemplate } from '../designer/templateLibrary';
 import { useLogicFlows } from '../logicFlows';
 
 type Kind = MediaFile['kind'];
@@ -117,7 +119,8 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (!families.length) void loadFonts();
   }, [families.length]);
-  const [kind, setKind] = useState<Kind | 'all' | 'colors' | 'logic'>('all');
+  const [kind, setKind] = useState<Kind | 'all' | 'colors' | 'logic' | 'templates'>('all');
+  const tlib = useTemplateLibrary(projectId);
   const sharedFlows = useLogicFlows((s) => s.shared.length);
   const flowsLoaded = useLogicFlows((s) => s.loaded);
   useEffect(() => {
@@ -208,6 +211,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const fonts = kind === 'font';
   const colors = kind === 'colors';
   const logic = kind === 'logic';
+  const tpls = kind === 'templates';
   const label = KINDS.find((k) => k.kind === kind)?.label ?? 'All files';
 
   const nav = (
@@ -220,6 +224,8 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       <NavItem on={kind === 'font'} icon={<Type size={15} />} label={t('Fonts')} count={families.length} onClick={() => setKind('font')} />
       <NavSection>{t('Colours')}</NavSection>
       <NavItem on={colors} icon={<PaletteIcon size={15} />} label={t('Colours')} count={palettes.reduce((n, p) => n + p.colors.length, projectColors)} onClick={() => setKind('colors')} />
+      <NavSection>{t('Templates')}</NavSection>
+      <NavItem on={tpls} icon={<LayoutTemplate size={15} />} label={t('All templates')} count={tlib?.length ?? 0} onClick={() => setKind('templates')} />
       <NavSection>{t('Logic')}</NavSection>
       <NavItem on={logic} icon={<Link2 size={15} />} label={t('Flows of logic')} count={sharedFlows + projectFlows} onClick={() => setKind('logic')} />
       <div className="lib-nav-foot">
@@ -260,15 +266,15 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       }
     >
       <PageHead
-        title={logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
-        sub={colors || logic ? undefined : fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
+        title={tpls ? t('Templates') : logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
+        sub={colors || logic || tpls ? undefined : fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
       >
         {colors && canDelete && (
           <button className="btn primary" onClick={addPalette}>
             <Plus size={14} /> {t('Palette')}
           </button>
         )}
-        {!colors && !logic && canUpload && (
+        {!colors && !logic && !tpls && canUpload && (
           <label className="btn primary">
             <Upload size={14} /> {fonts ? t('Add fonts') : t('Upload')}
             <input type="file" multiple hidden accept={fonts ? '.ttf,.otf,.woff,.woff2,.ttc' : undefined} onChange={(e) => e.target.files && void upload(e.target.files)} />
@@ -276,7 +282,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         )}
       </PageHead>
 
-      {!fonts && !colors && !logic && (
+      {!fonts && !colors && !logic && !tpls && (
         <div className="media-toolbar">
           <label className="search">
             <Search size={14} />
@@ -316,7 +322,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         </div>
       )}
 
-      {logic ? (
+      {tpls ? (
+        <TemplatesPanel list={tlib} projectId={projectId} />
+      ) : logic ? (
         <LogicFlowsPanel projectId={projectId} canEdit={canDelete} />
       ) : colors ? (
         <ColorsPanel projectId={projectId} canEdit={canDelete} />
@@ -376,5 +384,35 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         </div>
       )}
     </SidePage>
+  );
+}
+
+/** Library › Templates: the shared ones, and those kept with the project (in a project's library). */
+function TemplatesPanel({ list, projectId }: { list: LibTemplate[] | null; projectId?: string | null }) {
+  const user = useApp((s) => s.auth?.user);
+  const [tab, setTab] = useState<'shared' | 'project'>('shared');
+  if (!list) return <div className="loading">{t('Loading…')}</div>;
+  const shared = list.filter((e) => !e.project);
+  const own = list.filter((e) => !!e.project);
+  const shown = projectId && tab === 'project' ? own : shared;
+  const canRemove = (e: LibTemplate) => !!user && (user.role === 'admin' || e.author === user.id || (!!e.project && can.design(user)));
+  return (
+    <>
+      {projectId && (
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'shared', label: `${t('Shared')} · ${shared.length}` },
+            { value: 'project', label: `${t('Of the project')} · ${own.length}` },
+          ]}
+        />
+      )}
+      {shown.length ? (
+        <LibraryGrid list={shown} canRemove={canRemove} />
+      ) : (
+        <p className="muted tlib-empty">{t('No template')}</p>
+      )}
+    </>
   );
 }

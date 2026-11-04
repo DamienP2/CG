@@ -22981,3 +22981,77 @@ textarea.tx-grow {
   color: var(--text-3);
   white-space: nowrap;
 }
+
+/* Templates in the library */
+.tlib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.tlib-card {
+  position: relative;
+  flex: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.tlib-card.tlib-pick {
+  cursor: pointer;
+}
+.tlib-card.tlib-pick:hover {
+  border-color: var(--accent);
+}
+.tlib-thumb {
+  display: block;
+  max-height: 160px;
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel-3) 0% 50%) 50% / 16px 16px;
+}
+.tlib-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.tlib-meta {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 10px;
+  min-width: 0;
+}
+.tlib-meta b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tlib-meta span {
+  font-size: var(--fs-11);
+  color: var(--text-3);
+}
+.tlib-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--panel);
+}
+.new-tpl-lib {
+  flex: none;
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 12px;
+  max-height: 300px;
+  overflow: auto;
+}
+.new-tpl-lib .tlib-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  margin-top: 8px;
+}
+.tlib-empty {
+  margin-top: 16px;
+}
+.tlib-save {
+  width: min(420px, 94vw);
+}
