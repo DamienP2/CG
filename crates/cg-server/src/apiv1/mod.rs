@@ -237,10 +237,11 @@ fn find_playlist<'a>(p: &'a Project, key: &str) -> Option<&'a cg_core::Playlist>
                 .find(|l| l.name.trim().eq_ignore_ascii_case(key))
         })
         .or_else(|| {
+            // Numbers count the shared playlists (personal ones do not shift them).
             key.parse::<usize>()
                 .ok()
                 .filter(|n| *n >= 1)
-                .and_then(|n| p.playlists.get(n - 1))
+                .and_then(|n| p.playlists.iter().filter(|l| l.shared()).nth(n - 1))
         })
 }
 
@@ -341,7 +342,12 @@ pub fn next_target<'a>(
     }
     let first = playlist
         .map(str::to_string)
-        .or_else(|| p.playlists.first().map(|l| l.id.clone()))
+        .or_else(|| {
+            p.playlists
+                .iter()
+                .find(|l| l.shared())
+                .map(|l| l.id.clone())
+        })
         .unwrap_or_default();
     playlist_items(p, &first).first().copied()
 }

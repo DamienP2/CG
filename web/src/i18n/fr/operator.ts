@@ -552,4 +552,14 @@ export const operator: Record<string, string> = {
   'Address:port expected': 'Adresse:port attendue',
   'Sound cards are played on macOS and Windows.': 'Cartes son : macOS et Windows uniquement.',
   'No sound card found.': 'Aucune carte son trouvée.',
+  // Personal / shared playlists
+  'New personal playlist': 'Nouvelle playlist personnelle',
+  'New shared playlist': 'Nouvelle playlist partagée',
+  'Personal playlist of {name}': 'Playlist personnelle de {name}',
+  'Personal playlist (you and the admins see it)': 'Playlist personnelle (visible par vous et les admins)',
+  'Share with everyone': 'Partager avec tous',
+  'Duplicate as personal': 'Dupliquer en personnelle',
+  'another user': 'un autre utilisateur',
+  'Shared playlist': 'Playlist partagée',
+  'Personal playlist': 'Playlist personnelle',
 };

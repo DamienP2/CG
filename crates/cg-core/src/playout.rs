@@ -3206,6 +3206,7 @@ mod tests {
             auto_next: true,
             looping: false,
             outputs: vec![],
+            owner: String::new(),
         });
         let item = |id: &str, t: &str, secs: Option<f64>, hold: bool| RundownItem {
             id: id.into(),
@@ -4719,6 +4720,7 @@ mod tests {
             auto_next: true,
             looping: false,
             outputs: vec!["screen".into()],
+            owner: String::new(),
         });
         let item = |id: &str| RundownItem {
             id: id.into(),
@@ -4769,6 +4771,7 @@ mod tests {
                 auto_next: auto,
                 looping: false,
                 outputs: vec![],
+                owner: String::new(),
             });
         }
         let item = |id: &str, t: &str, pl: &str| RundownItem {
@@ -4872,6 +4875,7 @@ mod tests {
                 auto_next: false,
                 looping: false,
                 outputs: vec![],
+                owner: String::new(),
             });
         }
         let item = |id: &str, t: &str, pl: &str| RundownItem {

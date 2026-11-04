@@ -22966,3 +22966,18 @@ textarea.tx-grow {
   color: var(--pvw);
   font-size: 12px;
 }
+
+/* Personal playlists (Operator) */
+.opx-pl-mine {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  flex: none;
+  display: inline-block;
+}
+.opx-pl-author {
+  font-size: 10px;
+  color: var(--text-3);
+  white-space: nowrap;
+}

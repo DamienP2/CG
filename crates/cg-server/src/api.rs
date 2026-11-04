@@ -660,7 +660,17 @@ async fn get_project(
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Project>> {
-    Ok(Json((*visible_project(&s, &me, &id).await?).clone()))
+    let p = visible_project(&s, &me, &id).await?;
+    Ok(Json((*mine(&p, &me)).clone()))
+}
+
+/// The project as `me` sees it: without the personal playlists of others
+/// (an admin sees them all).
+pub(crate) fn mine(p: &std::sync::Arc<Project>, me: &User) -> std::sync::Arc<Project> {
+    match p.for_user(&me.id, me.is_admin()) {
+        std::borrow::Cow::Borrowed(_) => p.clone(),
+        std::borrow::Cow::Owned(o) => std::sync::Arc::new(o),
+    }
 }
 
 #[derive(Deserialize)]
@@ -1733,9 +1743,33 @@ async fn put_rundown(
     let _edit = s.edits.lock().await;
     require(me.can_edit_rundown(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    // Playlists this user does not see: their graphics stay as they are,
+    // and none of theirs goes there.
+    let hidden: std::collections::HashSet<String> = p
+        .playlists
+        .iter()
+        .filter(|l| !l.seen_by(&me.id, me.is_admin()))
+        .map(|l| l.id.clone())
+        .collect();
+    let keep = |v: Vec<RundownItem>| -> Vec<RundownItem> {
+        v.into_iter()
+            .filter(|x| !hidden.contains(&x.playlist))
+            .collect()
+    };
     p.rundown = match r {
-        RundownPut::Full(r) => r,
-        RundownPut::Change { base, rundown } => cg_core::merge_rundown(&p.rundown, &base, &rundown),
+        RundownPut::Full(r) => {
+            let mut all = keep(r);
+            all.extend(
+                p.rundown
+                    .iter()
+                    .filter(|x| hidden.contains(&x.playlist))
+                    .cloned(),
+            );
+            all
+        }
+        RundownPut::Change { base, rundown } => {
+            cg_core::merge_rundown(&p.rundown, &keep(base), &keep(rundown))
+        }
     };
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
@@ -1801,14 +1835,62 @@ async fn put_playlists(
     let _edit = s.edits.lock().await;
     require(me.can_edit_rundown(&id))?;
     let mut ids = std::collections::HashSet::new();
-    if lists.is_empty()
-        || lists
-            .iter()
-            .any(|l| l.name.trim().is_empty() || !valid_id(&l.id) || !ids.insert(l.id.clone()))
+    if lists
+        .iter()
+        .any(|l| l.name.trim().is_empty() || !valid_id(&l.id) || !ids.insert(l.id.clone()))
     {
         return Err(bad("playlists need a unique id and a name"));
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let admin = me.is_admin();
+    // The lists this user sees are replaced; the personal ones of others stay.
+    let mut lists = lists;
+    for l in &mut lists {
+        let before = p.playlists.iter().find(|x| x.id == l.id);
+        match before {
+            // Someone else's: only an admin touches it, and only shares it.
+            Some(b) if !b.seen_by(&me.id, false) && !admin => return Err(forbidden()),
+            Some(b) if !b.shared() && !l.owner.is_empty() => l.owner = b.owner.clone(),
+            // Made personal: theirs (a shared one cannot be taken over).
+            Some(b) if b.shared() && !l.owner.is_empty() => {
+                return Err(bad("a shared playlist stays shared: duplicate it"))
+            }
+            None if !l.owner.is_empty() => l.owner = me.id.clone(),
+            _ => {}
+        }
+    }
+    let hidden: Vec<cg_core::Playlist> = p
+        .playlists
+        .iter()
+        .filter(|x| !x.seen_by(&me.id, admin) && !lists.iter().any(|l| l.id == x.id))
+        .cloned()
+        .collect();
+    lists.extend(hidden);
+    if !lists.iter().any(|l| l.shared()) {
+        return Err(bad("at least one shared playlist is needed"));
+    }
+    // The graphics of a removed playlist: to the first one of the same
+    // owner (a personal one's never to a shared one: they are removed).
+    let gone: Vec<cg_core::Playlist> = p
+        .playlists
+        .iter()
+        .filter(|x| !lists.iter().any(|l| l.id == x.id))
+        .cloned()
+        .collect();
+    for g in &gone {
+        let to = lists
+            .iter()
+            .find(|l| l.owner == g.owner)
+            .map(|l| l.id.clone());
+        match to {
+            Some(to) => p
+                .rundown
+                .iter_mut()
+                .filter(|r| r.playlist == g.id)
+                .for_each(|r| r.playlist = to.clone()),
+            None => p.rundown.retain(|r| r.playlist != g.id),
+        }
+    }
     p.playlists = lists;
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
@@ -3640,6 +3722,10 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
         Some(id) => s.project(id).await,
         None => None,
     } {
+        let p = match &viewer.user {
+            Some(u) => mine(&p, u),
+            None => p,
+        };
         if send(&mut tx, &Event::Project { project: p }).await.is_err() {
             return;
         }
@@ -3713,6 +3799,10 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                 // What this viewer may see of a list; None: all of it (the
                 // JSON written once for every client is sent).
                 let own = match ev {
+                    // Without the personal playlists of others.
+                    Event::Project { project } if viewer.user.as_ref().is_some_and(|u| !std::sync::Arc::ptr_eq(&mine(project, u), project)) => {
+                        viewer.user.as_ref().map(|u| Event::Project { project: mine(project, u) })
+                    }
                     Event::Channels { channels } if !channels.iter().all(|c| viewer.sees_channel(&c.id)) => Some(Event::Channels { channels: channels.iter().filter(|c| viewer.sees_channel(&c.id)).cloned().collect() }),
                     Event::Presence { present } if !present.iter().all(|p| viewer.sees_channel(&p.channel_id)) => Some(Event::Presence { present: present.iter().filter(|p| viewer.sees_channel(&p.channel_id)).cloned().collect() }),
                     Event::Schedule { channel_id, items } => {

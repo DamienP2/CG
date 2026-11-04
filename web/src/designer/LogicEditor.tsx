@@ -304,7 +304,8 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
   const user = useApp((s) => s.auth?.user);
   const projectId = useApp((s) => s.project?.id);
   const projectFlows = useApp((s) => s.project?.logicFlows) ?? [];
-  const projectLists = useApp((s) => s.project?.playlists);
+  // The shared playlists only (a personal one is played by hand by its author).
+  const projectLists = useApp(useShallow((s) => s.project?.playlists.filter((l) => !l.owner)));
   const toast = useApp((s) => s.toast);
   const shared = useLogicFlows((s) => s.shared);
   const flowsLoaded = useLogicFlows((s) => s.loaded);

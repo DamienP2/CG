@@ -2076,6 +2076,21 @@ pub struct Playlist {
     /// outputs, « main » the antenne); none: the antenne.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<String>,
+    /// A personal playlist: the id of the user it belongs to (seen by them
+    /// and the admins). Empty: shared with everyone on the project.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner: String,
+}
+
+impl Playlist {
+    pub fn shared(&self) -> bool {
+        self.owner.is_empty()
+    }
+
+    /// Someone sees it: shared, theirs, or they are an admin.
+    pub fn seen_by(&self, user: &str, admin: bool) -> bool {
+        admin || self.shared() || self.owner == user
+    }
 }
 
 /// What happens when a graphic is taken in a zone that is already on air.
@@ -2295,6 +2310,24 @@ pub struct Palette {
 }
 
 impl Project {
+    /// The project as a user sees it: without the personal playlists of
+    /// others (and their graphics), but for an admin.
+    pub fn for_user(&self, user: &str, admin: bool) -> std::borrow::Cow<'_, Project> {
+        if admin || self.playlists.iter().all(|l| l.seen_by(user, false)) {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut p = self.clone();
+        let hidden: std::collections::HashSet<String> = p
+            .playlists
+            .iter()
+            .filter(|l| !l.seen_by(user, false))
+            .map(|l| l.id.clone())
+            .collect();
+        p.playlists.retain(|l| !hidden.contains(&l.id));
+        p.rundown.retain(|r| !hidden.contains(&r.playlist));
+        std::borrow::Cow::Owned(p)
+    }
+
     /// The project format closest in aspect ratio to a `width` × `height`
     /// output: (format id, design width, design height).
     pub fn format_for(&self, width: u32, height: u32) -> (&str, u32, u32) {
@@ -2422,20 +2455,34 @@ impl Project {
         changed | self.ensure_playlists()
     }
 
-    /// At least one playlist, and every rundown item in an existing one.
+    /// At least one shared playlist, and every rundown item in an existing one.
     pub fn ensure_playlists(&mut self) -> bool {
         let mut changed = false;
-        if self.playlists.is_empty() {
-            self.playlists.push(Playlist {
-                id: "main".into(),
-                name: "Principal".into(),
-                auto_next: Default::default(),
-                looping: Default::default(),
-                outputs: Default::default(),
-            });
+        if !self.playlists.iter().any(Playlist::shared) {
+            let id = if self.playlists.iter().any(|p| p.id == "main") {
+                crate::new_id()
+            } else {
+                "main".into()
+            };
+            self.playlists.insert(
+                0,
+                Playlist {
+                    id,
+                    name: "Principal".into(),
+                    auto_next: Default::default(),
+                    looping: Default::default(),
+                    outputs: Default::default(),
+                    owner: String::new(),
+                },
+            );
             changed = true;
         }
-        let first = self.playlists[0].id.clone();
+        let first = self
+            .playlists
+            .iter()
+            .find(|p| p.shared())
+            .map(|p| p.id.clone())
+            .unwrap_or_default();
         for r in &mut self.rundown {
             if !self.playlists.iter().any(|p| p.id == r.playlist) {
                 r.playlist = first.clone();
@@ -2569,6 +2616,53 @@ pub fn new_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn personal_playlists_are_seen_by_their_author_and_the_admins() {
+        let mut p = crate::sample::demo_project();
+        let shared = p.playlists[0].id.clone();
+        p.playlists.push(Playlist {
+            id: "mine".into(),
+            name: "Mes essais".into(),
+            auto_next: false,
+            looping: false,
+            outputs: vec![],
+            owner: "marie".into(),
+        });
+        let mut row = p.rundown[0].clone();
+        row.id = "r-mine".into();
+        row.playlist = "mine".into();
+        p.rundown.push(row);
+        // Marie and an admin see it, Paul does not (nor its graphics).
+        assert!(p
+            .for_user("marie", false)
+            .playlists
+            .iter()
+            .any(|l| l.id == "mine"));
+        assert!(matches!(
+            p.for_user("paul", true),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        let paul = p.for_user("paul", false);
+        assert!(!paul.playlists.iter().any(|l| l.id == "mine"));
+        assert!(!paul.rundown.iter().any(|r| r.id == "r-mine"));
+        assert!(paul.playlists.iter().any(|l| l.id == shared));
+        // A project of personal playlists only gets a shared one, its loose graphics in it.
+        let mut q = p.clone();
+        q.playlists.retain(|l| l.id == "mine");
+        q.rundown[0].playlist = "gone".into();
+        assert!(q.ensure_playlists());
+        let first = q.playlists.iter().find(|l| l.shared()).unwrap().id.clone();
+        assert_eq!(q.rundown[0].playlist, first);
+        assert_eq!(
+            q.rundown
+                .iter()
+                .find(|r| r.id == "r-mine")
+                .unwrap()
+                .playlist,
+            "mine"
+        );
+    }
 
     #[test]
     fn an_analog_clock_becomes_a_timer_with_an_analog_face() {

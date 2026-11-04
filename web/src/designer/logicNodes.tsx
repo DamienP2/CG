@@ -103,7 +103,7 @@ export interface Entry {
 /** The id of the stand-in template the Logic canvas edits for the project's Logic. */
 export const PROJECT_LOGIC = '__project__';
 export const isProjectLogic = (t: Template | undefined) => t?.id === PROJECT_LOGIC;
-const hasPlaylists = () => (useApp.getState().project?.playlists.length ?? 0) > 0;
+const hasPlaylists = () => (useApp.getState().project?.playlists.filter((l) => !l.owner).length ?? 0) > 0;
 
 /** Layers an event or an action can watch or drive. */
 export const timerLayer = (l: Layer) => l.type === 'clock' && !!((l as { timerMode?: string }).timerMode || ['countdown', 'stopwatch'].includes((l as { mode?: string }).mode ?? ''));
@@ -220,7 +220,8 @@ function projectEntries(tpl: Template): Entry[] {
   const graphics = (p?.templates ?? []).map(
     (x): Entry => ({ key: `tpl:${x.id}`, fam: 'graphic', label: x.name, icon: SquareStack, make: (_t, x0, y0) => ({ ...base(x0, y0), type: 'template', template: x.id }) }),
   );
-  const lists = (p?.playlists ?? []).map(
+  // The shared playlists (a personal one is played by hand by its author).
+  const lists = (p?.playlists ?? []).filter((l) => !l.owner).map(
     (l): Entry => ({
       key: `pl:${l.id}`,
       fam: 'playlist',

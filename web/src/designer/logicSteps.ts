@@ -65,7 +65,7 @@ export function momentsOf(src: LogicNode | undefined, tpl: Template): Opt[] {
 export function subjectsOf(tpl: Template): Opt[] {
   const p = useApp.getState().project;
   const graphics = (p?.templates ?? []).filter((x) => x.id !== tpl.id).map((x) => ({ value: `tpl:${x.id}`, label: x.name, group: 'Templates' }));
-  if (isProjectLogic(tpl)) return [...graphics, ...(p?.playlists ?? []).map((l) => ({ value: `pl:${l.id}`, label: l.name, group: 'Playlists' }))];
+  if (isProjectLogic(tpl)) return [...graphics, ...(p?.playlists ?? []).filter((l) => !l.owner).map((l) => ({ value: `pl:${l.id}`, label: l.name, group: 'Playlists' }))];
   const names = [...new Set((tpl.logic?.nodes ?? []).flatMap((n) => (n.type === 'setVar' && n.name.trim() ? [n.name.trim()] : [])))];
   return [
     ...tpl.fields.map((f) => ({ value: `field:${f.key}`, label: f.label || f.key, group: 'Data' })),

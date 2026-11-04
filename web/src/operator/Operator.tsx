@@ -2,7 +2,7 @@ import { withSettings } from '../engine/settings';
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Eraser, Clock, Copy, CopyPlus, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Eraser, Share2, UserRound, Clock, Copy, CopyPlus, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { busItems, busOf } from '../engine/buses';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
@@ -589,19 +589,15 @@ export function Operator({ channelId }: { channelId: string | null }) {
               ))}
             </PlaylistTabs>
             {canEdit && (
-              <button
-                className="opx-add"
-                title={t('New playlist')}
-                onClick={async () => {
-                  const name = await promptDialog({ title: t('New playlist'), label: t('Name'), value: t('Playlist {n}', { n: playlists.length + 1 }), confirm: t('Create') });
+              <AddPlaylist
+                onAdd={async (personal) => {
+                  const name = await promptDialog({ title: personal ? t('New personal playlist') : t('New shared playlist'), label: t('Name'), value: t('Playlist {n}', { n: playlists.length + 1 }), confirm: t('Create') });
                   if (!name) return;
                   const id = newId();
-                  await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, [...playlists, { id, name }]).catch((e) => toast((e as Error).message, 'error'));
+                  await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, [...playlists, { id, name, ...(personal ? { owner: auth?.user?.id ?? 'me' } : {}) }]).catch((e) => toast((e as Error).message, 'error'));
                   setPlaylistId(id);
                 }}
-              >
-                <Plus size={15} />
-              </button>
+              />
             )}
           </div>
           <header className="opx-head">
@@ -1119,6 +1115,7 @@ function PlaylistTabs({ project, active, onSelect, children }: { project: Projec
           <div ref={listRef} className="menu project-menu clip-menu opx-pl-menu" style={{ position: 'fixed', left: list.left, top: list.top, right: 'auto', width: 220 }}>
             {project.playlists.map((p) => (
               <button key={p.id} className={p.id === active ? 'on' : ''} onClick={() => (setList(null), onSelect(p.id))}>
+                {p.owner && <span className="opx-pl-mine" />}
                 <span className="opx-pl-menu-n">{p.name}</span>
                 <em>{project.rundown.filter((r) => r.playlist === p.id).length}</em>
               </button>
@@ -1153,10 +1150,16 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
   }, [menu]);
   const p = project.playlists.find((x) => x.id === id)!;
   const count = project.rundown.filter((r) => r.playlist === id).length;
+  const me = useApp((s) => s.auth?.user?.id ?? '');
+  const personal = !!p.owner;
+  // Someone else's personal playlist (an admin sees them all): whose.
+  const author = useUserName(personal && p.owner !== me ? p.owner! : '');
+  // Where its graphics go when it is removed: a playlist of the same kind (a personal one's are removed).
+  const heir = project.playlists.find((x) => x.id !== id && (x.owner ?? '') === (p.owner ?? ''));
   const save = (lists: Project['playlists']) => api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, lists).catch((e) => toast((e as Error).message, 'error'));
   const run = (fn: () => unknown) => () => (setMenu(null), void fn());
-  const duplicate = async () => {
-    const copy = { ...structuredClone(p), id: newId(), name: t('{name} copy', { name: p.name }) };
+  const duplicate = async (mine = false) => {
+    const copy = { ...structuredClone(p), id: newId(), name: t('{name} copy', { name: p.name }), ...(mine ? { owner: me || 'me' } : {}) };
     const lists = [...project.playlists];
     lists.splice(lists.indexOf(p) + 1, 0, copy);
     await save(lists);
@@ -1190,7 +1193,9 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
         setMenu({ left: Math.max(8, Math.min(e.clientX, window.innerWidth - 228)), top: Math.min(e.clientY, window.innerHeight - 280) });
       }}
     >
+      {personal && <span className="opx-pl-mine" title={author ? t('Personal playlist of {name}', { name: author }) : t('Personal playlist (you and the admins see it)')} />}
       <span className="opx-name-cell">{p.name}</span>
+      {author && <span className="opx-pl-author">{author}</span>}
       <span className="opx-pl-n">{count}</span>
       {elsewhere && (
         <span className={`opx-pl-out ${goes.length > 1 ? 'many' : ''}`} title={t('Goes to: {outputs}', { outputs: goes.map((o) => outputs.find((x) => x.id === o)?.name ?? o).join(', ') })}>
@@ -1221,9 +1226,18 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
             >
               <Pencil size={13} /> {t('Rename…')}
             </button>
-            <button onClick={run(duplicate)}>
+            <button onClick={run(() => duplicate())}>
               <Copy size={13} /> {t('Duplicate')}
             </button>
+            {personal ? (
+              <button onClick={run(() => save(project.playlists.map((x) => (x.id === id ? { ...x, owner: undefined } : x))))}>
+                <Share2 size={13} /> {t('Share with everyone')}
+              </button>
+            ) : (
+              <button onClick={run(() => duplicate(true))}>
+                <UserRound size={13} /> {t('Duplicate as personal')}
+              </button>
+            )}
             {outputs.length > 1 && (
               <>
                 <div className="menu-sep" />
@@ -1246,14 +1260,14 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
             >
               <Eraser size={13} /> {t('Empty…')}
             </button>
-            {project.playlists.length > 1 && (
+            {(personal || heir) && (
               <>
                 <div className="menu-sep" />
                 <button
                   className="danger"
                   onClick={run(async () => {
-                    const other = project.playlists.find((x) => x.id !== id)!;
-                    if (await confirmDialog({ title: t('Remove the playlist “{name}”?', { name: p.name }), message: tn(count, 'Its {n} graphic moves to “{name}”.', 'Its {n} graphics move to “{name}”.', { name: other.name }), confirm: t('Remove'), danger: true })) save(project.playlists.filter((x) => x.id !== id));
+                    const message = !count ? '' : heir ? tn(count, 'Its {n} graphic moves to “{name}”.', 'Its {n} graphics move to “{name}”.', { name: heir.name }) : tn(count, 'Its {n} graphic is removed.', 'Its {n} graphics are removed.');
+                    if (await confirmDialog({ title: t('Remove the playlist “{name}”?', { name: p.name }), message, confirm: t('Remove'), danger: true })) save(project.playlists.filter((x) => x.id !== id));
                   })}
                 >
                   <Trash2 size={13} /> {t('Remove…')}
@@ -2442,3 +2456,63 @@ const OutputSelect = memo(function OutputSelect({ channelId }: { channelId: stri
   ];
   return <Dropdown value={channelId ?? ''} options={options} title={t('Output')} className="opx-output" onChange={(v) => void pick(v)} />;
 });
+
+/** User names by id, read once (admins: to name the authors of personal playlists). */
+let userNames: Promise<Record<string, string>> | null = null;
+function useUserName(id: string): string {
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!id) return;
+    userNames ??= api<{ id: string; username: string; displayName: string }[]>('GET', '/api/users')
+      .then((l) => Object.fromEntries(l.map((u) => [u.id, u.displayName || u.username])))
+      .catch(() => ({}));
+    let live = true;
+    void userNames.then((n) => live && setNames(n));
+    return () => void (live = false);
+  }, [id]);
+  return id ? (names[id] ?? t('another user')) : '';
+}
+
+/** The + of the playlists: a shared one, or a personal one. */
+function AddPlaylist({ onAdd }: { onAdd: (personal: boolean) => void }) {
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!at) return;
+    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setAt(null);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setAt(null));
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('keydown', esc);
+    };
+  }, [at]);
+  const pick = (personal: boolean) => () => (setAt(null), onAdd(personal));
+  return (
+    <>
+      <button
+        className={`opx-add ${at ? 'open' : ''}`}
+        title={t('New playlist')}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setAt(at ? null : { left: Math.max(8, Math.min(r.right - 220, window.innerWidth - 228)), top: r.bottom + 4 });
+        }}
+      >
+        <Plus size={15} />
+      </button>
+      {at &&
+        createPortal(
+          <div ref={ref} className="menu project-menu clip-menu opx-pl-menu" style={{ position: 'fixed', left: at.left, top: at.top, right: 'auto', width: 220 }}>
+            <button onClick={pick(false)}>
+              <Plus size={13} /> {t('Shared playlist')}
+            </button>
+            <button onClick={pick(true)}>
+              <span className="opx-pl-mine" /> {t('Personal playlist')}
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}

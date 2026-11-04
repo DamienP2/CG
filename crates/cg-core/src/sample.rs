@@ -1064,6 +1064,7 @@ pub fn demo_project() -> Project {
             auto_next: Default::default(),
             looping: Default::default(),
             outputs: Default::default(),
+            owner: String::new(),
         },
         Playlist {
             id: "widgets".into(),
@@ -1071,6 +1072,7 @@ pub fn demo_project() -> Project {
             auto_next: Default::default(),
             looping: Default::default(),
             outputs: Default::default(),
+            owner: String::new(),
         },
     ];
     for r in &mut p.rundown {

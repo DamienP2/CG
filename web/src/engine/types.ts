@@ -606,6 +606,8 @@ export interface Playlist {
   loop?: boolean;
   /** The outputs of the channel its graphics go to (« main »: the antenne); none: the antenne. */
   outputs?: string[];
+  /** A personal playlist: its user's id (seen by them and the admins); none: shared. */
+  owner?: string;
 }
 
 export type Phase = 'playing' | 'holding' | 'out' | 'outHold';
