@@ -7,6 +7,9 @@ import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { locale, t, tn } from '../i18n';
 import { chainOf } from '../designer/logicLibrary';
 
+/** The same empty list each time (a new one would render without end). */
+const NONE: never[] = [];
+
 /* Library › Logic: the flows saved from the Logic canvas, the project's own and the shared ones. */
 
 const NO_TEMPLATE = { id: '', name: '', layers: [], fields: [], datasets: [], markers: [] } as unknown as Template;
@@ -48,7 +51,7 @@ function FlowCard({ f, canEdit, onRename, onDelete }: { f: LogicFlow; canEdit: b
 export function LogicFlowsPanel({ projectId, canEdit }: { projectId?: string; canEdit: boolean }) {
   const shared = useLogicFlows((s) => s.shared);
   const loaded = useLogicFlows((s) => s.loaded);
-  const own = useApp((s) => (projectId ? (s.full[projectId]?.logicFlows ?? []) : []));
+  const own = useApp((s) => (projectId ? s.full[projectId]?.logicFlows : undefined)) ?? NONE;
   useEffect(() => {
     if (!loaded) void useLogicFlows.getState().load();
   }, [loaded]);

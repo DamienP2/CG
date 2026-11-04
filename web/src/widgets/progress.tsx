@@ -860,9 +860,12 @@ export default defineWidget({
   warnings: (l, { data, state }) => warnings(l, data, state),
 });
 
+/** The same empty list each time (a new one would render without end). */
+const NO_LAYERS: never[] = [];
+
 /** The timer or counter of the graphic a progress follows. */
 function FollowPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const layers = useDesigner((s) => s.template?.layers ?? []);
+  const layers = useDesigner((s) => s.template?.layers) ?? NO_LAYERS;
   const opts = layers
     .filter((l) => l.type === 'counter' || (l.type === 'clock' && ['countdown', 'stopwatch'].includes(T.eff(l as never, {}).mode)))
     .map((l) => ({ value: l.id, label: `${l.name} · ${t(l.type === 'counter' ? 'counter' : T.eff(l as never, {}).mode)}` }));
