@@ -18,7 +18,7 @@ export const operator: Record<string, string> = {
   'the next graphic': 'le graphique suivant',
   'F12: everything out at once': 'F12 : tout retirer de l’antenne d’un coup',
   'Clear all': 'Tout effacer',
-  'Empty the playlist “{name}”?': 'Vider la playlist « {name} » ?',
+  'Empty the playlist “{name}”?': 'Vider la playlist « {name} » ?',
   'Its {n} graphic is removed.': '{n} graphique est retiré.',
   'Its {n} graphics are removed.': 'Ses {n} graphiques sont retirés.',
   'Empty': 'Vider',
@@ -354,7 +354,7 @@ export const operator: Record<string, string> = {
   'No signal': 'Pas de signal',
   // MOS plugin (journalists)
   'Cannot reach Strata: {error}': 'Strata injoignable : {error}',
-  'Add ?key=pcg_… (an API key) to the plugin URL.': 'Ajoutez ?key=pcg_… (une clé d’API) à l’URL du plugin.',
+  'Add ?key=pcg_… (an API key) to the plugin URL.': 'Ajoutez ?key=pcg_… (une clé d’API) à l’URL du plugin.',
   'Item name in the rundown': 'Nom de l’élément dans le conducteur',
   'Drag into the story': 'Glisser dans le sujet',
   'Update the item': 'Mettre à jour l’élément',
@@ -475,12 +475,12 @@ export const operator: Record<string, string> = {
   'Pause · waits for its Logic': 'Pause · attend sa Logique',
   // Outputs of their own (a screen on set…)
   'Antenna': 'Antenne',
-  'Goes to: {outputs}': 'Va vers : {outputs}',
+  'Goes to: {outputs}': 'Va vers : {outputs}',
   'Send to': 'Envoyer vers',
   'Output {n}': 'Sortie {n}',
   Playlist: 'Playlist',
   'Duplicate into {list}': 'Dupliquer dans {list}',
-  '“{name}” duplicated into {list}': '« {name} » dupliqué dans {list}',
+  '“{name}” duplicated into {list}': '« {name} » dupliqué dans {list}',
   // Audio outputs (Flux sorties)
   'Channels {a}-{b}': 'Canaux {a}-{b}',
   'Sending': 'Envoie',
@@ -490,7 +490,7 @@ export const operator: Record<string, string> = {
   'Sound card': 'Carte son',
   'Multicast': 'Multicast',
   'Address:port expected': 'Adresse:port attendue',
-  'Sound cards are played on macOS and Windows.': 'Cartes son : macOS et Windows uniquement.',
+  'Sound cards are played on macOS and Windows.': 'Cartes son : macOS et Windows uniquement.',
   'No sound card found.': 'Aucune carte son trouvée.',
   'Network priority': 'Priorité réseau',
   // Personal / shared playlists

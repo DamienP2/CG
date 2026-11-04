@@ -4,8 +4,8 @@
 // same English word means elsewhere.
 export const controls: Record<string, string> = {
   'Next in {n} s': 'Suivante dans {n} s',
-  'Waits for Continue': 'Attend Continuer',
-  'Waits for the trigger “{name}”': 'Attend le déclencheur « {name} »',
+  'Waits for Continue': 'Attend CONTINUE',
+  'Waits for the trigger “{name}”': 'Attend le déclencheur « {name} »',
   'cc|trigger': 'déclencheur',
   'cc|Set': 'Régler',
   // Start / advance modes.

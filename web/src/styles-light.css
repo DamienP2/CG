@@ -189,11 +189,6 @@
 }
 
 /* ---------- small fixed tints that were made for dark ---------- */
-:root[data-theme='light'] .lock-banner {
-  background: #fdf3e2;
-  border-color: #e7c88f;
-  color: #7a4a06;
-}
 :root[data-theme='light'] .lock-card {
   border-color: #e7c88f;
 }
@@ -220,9 +215,6 @@
 /* Ink on the accent (dark on the dark theme's periwinkle, white on light). */
 :root[data-theme='light'] :is(.opl-undo, .opl-undo kbd, .asr-av) {
   color: var(--on-accent);
-}
-:root[data-theme='light'] .opl-undo kbd {
-  border-color: rgba(255, 255, 255, 0.5);
 }
 :root[data-theme='light'] .tb-preview th {
   background: var(--accent);
@@ -404,9 +396,6 @@
 }
 
 /* Logic wires being armed. */
-:root[data-theme='light'] .logic-canvas.arming .wire.data:hover {
-  stroke: var(--text);
-}
 
 /* Colours picked per zone or per kind, as icons or text on light: deepened. */
 :root[data-theme='light'] .tpl-zones button svg {

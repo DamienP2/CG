@@ -16,7 +16,7 @@ export const widgetsC: Record<string, string> = {
   'Transparent': 'Transparent',
   'The page\'s': 'De la page',
   'Loaded by the browser itself: the page cannot be made transparent.': 'Chargée par le navigateur lui-même : la page ne peut pas être rendue transparente.',
-  'On Reload': 'Sur Recharger',
+  'On Reload': 'Au rechargement',
   'Grid between rows': 'Grille entre les lignes',
   'Reference line': 'Ligne de référence',
   'Colour of the texts': 'Couleur des textes',

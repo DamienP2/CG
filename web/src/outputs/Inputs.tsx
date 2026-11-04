@@ -214,9 +214,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
             </div>
           );
         })}
-        <button className="oc-channel vs-item add" onClick={add}>
-          <Plus size={13} /> {t('Add an input')}
-        </button>
       </aside>
 
       <main className="oc-main">
@@ -241,9 +238,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
               <div className="vs-empty">
                 <VideoOff size={28} />
                 <p>{t('No input')}</p>
-                <button className="btn primary" onClick={add}>
-                  <Plus size={14} /> {t('Add an input')}
-                </button>
               </div>
             ) : (
               <div className="vs-grid">

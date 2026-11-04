@@ -382,26 +382,6 @@
 .perf-page .settings-head {
   flex-wrap: wrap;
 }
-.perf-head-gauges {
-  display: flex;
-  gap: 22px;
-  padding: 10px 16px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-.perf-gauge {
-  width: 190px;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: baseline;
-  gap: 6px 10px;
-  font-variant-numeric: tabular-nums;
-}
-.perf-gauge .perf-bar {
-  grid-column: 1 / -1;
-}
-.perf-gauge-k,
 .perf-tile-k,
 .perf-stat-k {
   display: inline-flex;
@@ -412,17 +392,6 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-3);
-}
-.perf-gauge-v {
-  justify-self: end;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-.perf-gauge-v.tone-ok,
-.perf-gauge-v.tone-warn,
-.perf-gauge-v.tone-bad {
-  color: var(--tone);
 }
 
 .perf-tiles {

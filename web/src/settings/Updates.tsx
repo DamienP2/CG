@@ -238,7 +238,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
                   {here ? (
                     <span className="badge">{t('Installed')}</span>
                   ) : (
-                    <button className={`btn small ${up ? 'primary' : ''}`} disabled={!!busy} onClick={() => install(r, !up)}>
+                    <button className="btn small" disabled={!!busy} onClick={() => install(r, !up)}>
                       {up ? <CloudDownload size={13} /> : <RotateCcw size={13} />} {up ? t('Install') : t('Roll back')}
                     </button>
                   )}

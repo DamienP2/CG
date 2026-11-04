@@ -9,7 +9,7 @@ export const socialSources: Record<string, string> = {
   'Idle · no project follows it': 'En veille · aucun projet ne la suit',
   '{n} msg/min': '{n} msg/min',
   '{n} / min': '{n} / min',
-  'Delete the connection “{name}”?': 'Supprimer la connexion « {name} » ?',
+  'Delete the connection “{name}”?': 'Supprimer la connexion « {name} » ?',
   Account: 'Compte',
   Posts: 'Publications',
   Comments: 'Commentaires',

@@ -13,11 +13,11 @@ export const ccD: Record<string, string> = {
   'Refresh every': 'Actualiser toutes les',
   // Scoreboard.
   'cc|Clock': 'Chrono',
-  'Clock format: mm:ss': 'Format du chrono : mm:ss',
+  'Clock format: mm:ss': 'Format du chrono : mm:ss',
   'Teams swapped': 'Équipes inversées',
   'feed': 'flux',
   'feed lost': 'flux perdu',
   'cc|manual': 'manuel',
-  'Added time: {n} min': 'Temps additionnel : {n} min',
-  'Added time: {n} min (click again to clear)': 'Temps additionnel : {n} min (cliquer encore pour l’annuler)',
+  'Added time: {n} min': 'Temps additionnel : {n} min',
+  'Added time: {n} min (click again to clear)': 'Temps additionnel : {n} min (cliquer encore pour l’annuler)',
 };

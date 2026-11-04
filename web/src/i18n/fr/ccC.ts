@@ -15,6 +15,6 @@ export const ccC: Record<string, string> = {
   'cc|Extra steps': 'Pas supplémentaires',
   // The Progress bar.
   'cc|by hand': 'à la main',
-  'follows “{name}”': 'suit « {name} »',
+  'follows “{name}”': 'suit « {name} »',
   'cc|Data': 'Données',
 };

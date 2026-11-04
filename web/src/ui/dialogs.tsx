@@ -70,9 +70,11 @@ export function DialogHost() {
         }}
       >
         <header>
-          <span className="dialog-icon">
-            <Icon size={16} />
-          </span>
+          {r.kind !== 'prompt' && (
+            <span className="dialog-icon">
+              <Icon size={16} />
+            </span>
+          )}
           <h2 id="dialog-title">{r.title}</h2>
           <button type="button" className="icon-btn ghost" title={t('Close')} onClick={() => close(false)}>
             <X size={16} />
