@@ -49,9 +49,9 @@ function badge(g: Group): string {
     case 'auto':
       return 'AUTO';
     case 'undo':
-      return t('UNDONE');
+      return 'UNDO';
     case 'clear':
-      return tc('asrun', 'CLEAR');
+      return 'CLEAR ALL';
     case 'trigger':
       return 'TRIGGER';
     case 'row':
@@ -62,7 +62,7 @@ function badge(g: Group): string {
 }
 
 function chipLabel(g: Group): string {
-  return g === 'undo' ? t('Undos') : badge(g);
+  return badge(g);
 }
 
 function kindLabel(k: Kind): string {
@@ -361,7 +361,11 @@ export function AsRun() {
     <SidePage nav={nav} className="asr-page">
       <PageHead title={t('As-run log')} sub={`${periodText()} · ${tn(shown.length, '{n} action', '{n} actions')}`}>
         <div className="asr-head-actions">
-          {live && <span className="asr-live" title={t('Live')} />}
+          {live && (
+            <span className="asr-live">
+              <i /> {t('Live')}
+            </span>
+          )}
           <a className="btn" href={csvHref()} download>
             <Download size={14} /> {t('Export CSV')}
           </a>

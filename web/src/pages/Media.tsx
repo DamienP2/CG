@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Segmented } from '../ui/fields';
+import { Dropdown } from '../ui/Dropdown';
 import { loadFonts, useFonts } from '../engine/fonts';
 import { locale, t, tn } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
@@ -44,10 +45,10 @@ async function uploadFonts(files: File[], toast: (m: string, k?: 'info' | 'error
 function FontsPanel({ canEdit }: { canEdit: boolean }) {
   const families = useFonts((s) => s.families);
   const toast = useApp((s) => s.toast);
-  const groups: [string, string, typeof families][] = [
-    [t('Uploaded'), t('Added here, for every project'), families.filter((f) => f.source === 'uploaded')],
-    [t('Built in'), t('Shipped with Strata'), families.filter((f) => f.source === 'bundled')],
-    [t('Server'), t('Installed on the machine'), families.filter((f) => f.source === 'system')],
+  const groups: [string, typeof families][] = [
+    [t('Uploaded'), families.filter((f) => f.source === 'uploaded')],
+    [t('Built in'), families.filter((f) => f.source === 'bundled')],
+    [t('Server'), families.filter((f) => f.source === 'system')],
   ];
   const remove = async (file: string, family: string) => {
     if (!(await confirmDialog({ title: t('Remove {family} ({file})?', { family, file }), message: t('Texts using it fall back to Inter.'), confirm: t('Remove'), danger: true }))) return;
@@ -61,12 +62,10 @@ function FontsPanel({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="fonts-panel">
       {groups
-        .filter(([, , l]) => l.length)
-        .map(([title, hint, list]) => (
+        .filter(([, l]) => l.length)
+        .map(([title, list]) => (
           <section key={title} className="fonts-group">
-            <h3>
-              {title} <span className="muted small">{hint}</span>
-            </h3>
+            <h3>{title}</h3>
             <div className="fonts-list">
               {list.map((f) => (
                 <div key={f.family} className="font-row">
@@ -209,6 +208,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     .filter((f) => (kind === 'all' || f.kind === kind) && f.name.toLowerCase().includes(q))
     .sort((a, b) => (sort === 'date' ? b.modified - a.modified : sort === 'size' ? b.size - a.size : 0) || a.name.localeCompare(b.name));
   const fonts = kind === 'font';
+  const colourCount = palettes.reduce((n, p) => n + p.colors.length, projectColors);
   const colors = kind === 'colors';
   const logic = kind === 'logic';
   const tpls = kind === 'templates';
@@ -223,7 +223,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       <NavSection>{t('Typography')}</NavSection>
       <NavItem on={kind === 'font'} icon={<Type size={15} />} label={t('Fonts')} count={families.length} onClick={() => setKind('font')} />
       <NavSection>{t('Colours')}</NavSection>
-      <NavItem on={colors} icon={<PaletteIcon size={15} />} label={t('Colours')} count={palettes.reduce((n, p) => n + p.colors.length, projectColors)} onClick={() => setKind('colors')} />
+      <NavItem on={colors} icon={<PaletteIcon size={15} />} label={t('Colours')} count={colourCount} onClick={() => setKind('colors')} />
       <NavSection>{t('Templates')}</NavSection>
       <NavItem on={tpls} icon={<LayoutTemplate size={15} />} label={t('All templates')} count={tlib?.length ?? 0} onClick={() => setKind('templates')} />
       <NavSection>{t('Logic')}</NavSection>
@@ -267,7 +267,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     >
       <PageHead
         title={tpls ? t('Templates') : logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
-        sub={colors || logic || tpls ? undefined : fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
+        sub={tpls ? tn(tlib?.length ?? 0, '{n} template', '{n} templates') : logic ? tn(sharedFlows + projectFlows, '{n} flow', '{n} flows') : colors ? tn(colourCount, '{n} colour', '{n} colours') : fonts ? tn(families.length, '{n} font', '{n} fonts') : tn(shown.length, '{n} file', '{n} files')}
       >
         {colors && canDelete && (
           <button className="btn primary" onClick={addPalette}>
@@ -291,11 +291,15 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
           <div className="spacer" />
           <label className="sort">
             {t('Sort')}
-            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-              <option value="name">{t('Name')}</option>
-              <option value="date">{t('Newest')}</option>
-              <option value="size">{t('Size')}</option>
-            </select>
+            <Dropdown
+              value={sort}
+              options={[
+                { value: 'name', label: t('Name') },
+                { value: 'date', label: t('Newest') },
+                { value: 'size', label: t('Size') },
+              ]}
+              onChange={setSort}
+            />
           </label>
         </div>
       )}
@@ -334,7 +338,6 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         <label className={`media-empty ${canUpload ? '' : 'static'}`}>
           <UploadCloud size={36} />
           <strong>{t('No media yet')}</strong>
-          <span className="muted">{canUpload ? t('Drop files here or click to upload: images, videos, audio, fonts…') : t('Nothing has been uploaded.')}</span>
           {canUpload && <input type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />}
         </label>
       ) : (

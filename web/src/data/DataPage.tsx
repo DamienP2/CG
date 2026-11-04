@@ -11,7 +11,8 @@ import { navigate } from '../router';
 import { DataHome } from './DataHome';
 import { locale, t } from '../i18n';
 import { errorProps } from '../ui/serverError';
-import { InfoTip } from '../ui/InfoTip';
+import { Dropdown } from '../ui/Dropdown';
+import { NumberField } from '../ui/fields';
 
 export const KINDS: { type: DataSource['type']; label: string; hint: string; icon: typeof Database }[] = [
   { type: 'json', label: 'JSON API', hint: 'Any web service answering JSON (scores, weather, elections…)', icon: Braces },
@@ -116,8 +117,8 @@ function ProjectData({ projectId }: { projectId: string }) {
             <button key={s.id} className={`data-item shared ${sel === s.id && !draft ? 'selected' : ''}`} onClick={() => (setDraft(null), setSel(s.id))}>
               <K.icon size={14} />
               <span>
-                <strong data-badge={t('shared')}>{s.name}</strong>
-                <em title={errorProps(s.error).title}>{s.error ? errorProps(s.error).text : hasWarnings(s) ? <WarnLine source={s} /> : t('{kind} · shared', { kind: t(K.label) })}</em>
+                <strong>{s.name}</strong>
+                <em title={errorProps(s.error).title}>{s.error ? errorProps(s.error).text : hasWarnings(s) ? <WarnLine source={s} /> : t(K.label)}</em>
               </span>
               <i className={`status-dot ${s.error ? 'err' : hasWarnings(s) ? 'dr-warn' : s.updatedAt ? 'ok' : 'idle'}`} />
             </button>
@@ -125,7 +126,7 @@ function ProjectData({ projectId }: { projectId: string }) {
         })}
         {!shared.length && (
           <div className="ux3-empty-mini">
-            <Database size={14} /> {t('No shared source')}
+            <Database size={14} /> {t('No data source')}
           </div>
         )}
       </aside>
@@ -138,12 +139,23 @@ function ProjectData({ projectId }: { projectId: string }) {
         ) : (
           <div className="data-empty">
             <Database size={28} />
-            <p>{t('Pick a source, or create one with +.')}</p>
+            <p>{t('No source selected')}</p>
           </div>
         )}
       </main>
     </div>
   );
+}
+
+/** The format of the data pushed to a source (read only: its name). */
+export function FormatPick({ value, editable, onChange }: { value: string; editable: boolean; onChange: (v: 'json' | 'csv' | 'xml') => void }) {
+  const options = [
+    { value: 'json', label: 'JSON' },
+    { value: 'csv', label: 'CSV' },
+    { value: 'xml', label: 'XML' },
+  ] as const;
+  if (!editable) return <input value={options.find((o) => o.value === value)?.label ?? value} disabled />;
+  return <Dropdown value={value as 'json'} options={options} onChange={onChange} />;
 }
 
 function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDeleted }: { source: DataSource; info?: DataSourceInfo; isNew?: boolean; editable: boolean; onSaved: (id: string) => void; onCancel?: () => void; onDeleted?: () => void }) {
@@ -243,7 +255,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
           <>
             <div className="se-head">
               <K.icon size={18} />
-              <input className="se-name" placeholder={t('Name (e.g. Live score)')} value={s.name} disabled={!editable} onChange={(e) => patch({ name: e.target.value })} />
+              <input className="se-name" placeholder={t('Live score')} value={s.name} disabled={!editable} onChange={(e) => patch({ name: e.target.value })} />
               {!isNew && info && (
                 <span className={`se-status ${info.error ? 'err' : ''}`} title={errorProps(info.error).title}>
                   {info.error ? (
@@ -259,10 +271,9 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             {isNew && (
               <div className="kind-picker">
                 {KINDS.map((k) => (
-                  <button key={k.type} className={k.type === s.type ? 'on' : ''} onClick={() => setS({ ...blank(k.type), name: s.name })}>
+                  <button key={k.type} className={k.type === s.type ? 'on' : ''} title={t(k.hint)} onClick={() => setS({ ...blank(k.type), name: s.name })}>
                     <k.icon size={15} />
                     <strong>{t(k.label)}</strong>
-                    <em>{t(k.hint)}</em>
                   </button>
                 ))}
               </div>
@@ -281,12 +292,10 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
                 )}
                 {(s.type === 'json' || s.type === 'xml') && (
                   <label>
-                    <span>
-                      {t('Headers')}
-                      <InfoTip text={t('One per line: “Name: value” (an API key…)')} />
-                    </span>
+                    {t('Headers')}
                     <textarea
                       rows={2}
+                      placeholder="Authorization: Bearer …"
                       disabled={!editable}
                       value={Object.entries(s.headers ?? {})
                         .map(([k, v]) => `${k}: ${v}`)
@@ -308,7 +317,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
                   <label>
                     {t('Check every')}
                     <span className="with-suffix">
-                      <input type="number" min={2} value={s.interval} disabled={!editable} onChange={(e) => patch({ interval: Math.max(2, +e.target.value) })} />
+                      {editable ? <NumberField value={s.interval} min={2} onChange={(v) => patch({ interval: Math.max(2, Math.round(v)) })} /> : <input value={s.interval} disabled />}
                       <em>s</em>
                     </span>
                   </label>
@@ -322,11 +331,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
               <>
                 <label>
                   {t('Format sent')}
-                  <select value={s.format ?? 'json'} disabled={!editable} onChange={(e) => patch({ format: e.target.value as 'json' } as Partial<DataSource>)}>
-                    <option value="json">JSON</option>
-                    <option value="csv">CSV</option>
-                    <option value="xml">XML</option>
-                  </select>
+                  <FormatPick value={s.format ?? 'json'} editable={editable} onChange={(format) => patch({ format } as Partial<DataSource>)} />
                 </label>
                 {!isNew && (
                   <div className="push-help">
@@ -403,7 +408,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
           </p>
         )}
         <SumIssues issues={issues} />
-        {preview && preview.value !== undefined && preview.value !== null ? raw ? <JsonTree value={preview.value} /> : <DataTable value={preview.value} issues={issues} /> : !preview?.error && <p className="muted small">{isNew ? t('Press Test to fetch it.') : t('No value yet.')}</p>}
+        {preview && preview.value !== undefined && preview.value !== null ? raw ? <JsonTree value={preview.value} /> : <DataTable value={preview.value} issues={issues} /> : !preview?.error && <p className="muted small">{t('No value yet.')}</p>}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@
 // Same picture as crates/cg-render/src/wid/pen.rs; geometry mirrors crates/cg-core/src/wid/pen.rs.
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { PenTool } from 'lucide-react';
+import { NumberField } from '../ui/fields';
 import { col, cssColor, holdFrame, num, propValue } from '../engine/evaluate';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
 import type { Layer } from '../engine/types';
@@ -303,7 +304,7 @@ function PointList({ layer, edit }: { layer: L; edit: Edit }) {
             {(['x', 'y'] as const).map((ax) => (
               <span key={ax} style={{ display: 'flex', alignItems: 'center', gap: 4, flex: '1 1 0', minWidth: 0 }}>
                 <span className="hint">{ax}</span>
-                <input type="number" step={1} style={{ width: '100%', minWidth: 0 }} title={t('{axis} in px from the box', { axis: ax.toUpperCase() })} value={Math.round(p[ax] * (ax === 'x' ? w : h))} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => e.target.value !== '' && setV(i, ax, +e.target.value)} />
+                <NumberField title={t('{axis} in px from the box', { axis: ax.toUpperCase() })} value={Math.round(p[ax] * (ax === 'x' ? w : h))} onChange={(v) => setV(i, ax, v)} />
               </span>
             ))}
             <span className="hint" style={{ flex: '0 0 58px', textAlign: 'right' }}>

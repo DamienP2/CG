@@ -3,6 +3,8 @@ import { t } from '../i18n';
 import { hardwareOf, speedLabel } from '../hardware/model';
 import { emptyNetwork, type HardwareInfo, type NetworkRoles, type Nic, type ServerConfig, type SystemInfo } from '../outputs/types';
 import { Card } from './ui';
+import { Dropdown, type DropOption } from '../ui/Dropdown';
+import { NumberField } from '../ui/fields';
 import { joinAddr, splitAddr } from './serverConfig';
 import '../hardware/hardware.css';
 
@@ -40,17 +42,18 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
       c.bind = joinAddr(v.startsWith('ip:') ? v.slice(3) : '0.0.0.0', bindPort || '8080');
     });
 
-  const picker = (value: string, onChange: (v: string) => void, none: string, label: string, extra?: React.ReactNode) => (
-    <select value={value} aria-label={label} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{none}</option>
-      {extra}
-      {value && !value.startsWith('ip:') && !usable.some((n) => n.name === value) && <option value={value}>{t('{name} (not found)', { name: value })}</option>}
-      {usable.map((n) => (
-        <option key={n.name} value={n.name}>
-          {[n.name, n.speed ? speedLabel(n.speed) : ipOf(n)].filter(Boolean).join(' · ')}
-        </option>
-      ))}
-    </select>
+  const picker = (value: string, onChange: (v: string) => void, none: string, label: string, extra?: DropOption<string>) => (
+    <Dropdown
+      value={value}
+      title={label}
+      options={[
+        { value: '', label: none },
+        ...(extra ? [extra] : []),
+        ...(value && !value.startsWith('ip:') && !usable.some((n) => n.name === value) ? [{ value, label: value, note: t('not found') }] : []),
+        ...usable.map((n) => ({ value: n.name, label: n.name, note: n.speed ? speedLabel(n.speed) : ipOf(n) })),
+      ]}
+      onChange={onChange}
+    />
   );
   const address = (name: string, every: boolean) => (name ? (ipOf(nicOf(name)) ?? '—') : every ? all.join(' · ') || '—' : '—');
 
@@ -58,9 +61,9 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
     {
       key: 'control',
       label: t('Web interface and API'),
-      cell: picker(control, setControl, t('Every interface'), t('Web interface and API'), control.startsWith('ip:') ? <option value={control}>{control.slice(3)}</option> : null),
+      cell: picker(control, setControl, t('Every interface'), t('Web interface and API'), control.startsWith('ip:') ? { value: control, label: control.slice(3) } : undefined),
       addr: [...new Set([control.startsWith('ip:') ? control.slice(3) : address(net.control, true), '127.0.0.1'])].join(' · '),
-      port: <input type="number" min={1} max={65535} value={bindPort} aria-label={t('Port')} onChange={(e) => edit((c) => void (c.bind = joinAddr(control.startsWith('ip:') ? control.slice(3) : '0.0.0.0', e.target.value)))} />,
+      port: <NumberField value={Number(bindPort) || 8080} min={1} max={65535} title={t('Port')} onChange={(v) => edit((c) => void (c.bind = joinAddr(control.startsWith('ip:') ? control.slice(3) : '0.0.0.0', String(Math.round(v)))))} />,
     },
     { key: 'ndi', label: 'NDI', cell: picker(net.ndi, (v) => set('ndi', v), t('Every interface'), 'NDI'), addr: address(net.ndi, true), port: <span className="muted">—</span> },
     { key: 'mediaRed', label: t('2110 red'), cell: picker(net.mediaRed, (v) => set('mediaRed', v), t('Not set'), t('2110 red')), addr: address(net.mediaRed, false), port: <span className="muted">—</span> },
@@ -72,8 +75,8 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
       addr: address(net.mos ?? '', true),
       port: (
         <span className="net-ports">
-          <input type="number" min={1} max={65535} value={cfg.mos.lowerPort} aria-label={t('MOS lower port')} onChange={(e) => edit((c) => void (c.mos.lowerPort = +e.target.value))} />
-          <input type="number" min={1} max={65535} value={cfg.mos.upperPort} aria-label={t('MOS upper port')} onChange={(e) => edit((c) => void (c.mos.upperPort = +e.target.value))} />
+          <NumberField value={cfg.mos.lowerPort} min={1} max={65535} title={t('MOS lower port')} onChange={(v) => edit((c) => void (c.mos.lowerPort = Math.round(v)))} />
+          <NumberField value={cfg.mos.upperPort} min={1} max={65535} title={t('MOS upper port')} onChange={(v) => edit((c) => void (c.mos.upperPort = Math.round(v)))} />
         </span>
       ),
     },
@@ -85,8 +88,8 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
       addr: address('', true),
       port: (
         <span className="net-ports">
-          <input type="number" min={1} max={65535} value={cfg.control?.oscPort ?? 9000} aria-label={t('OSC port')} onChange={(e) => edit((c) => void (c.control = { oscEnabled: false, tcpEnabled: false, tcpPort: 9001, allow: [], ...c.control, oscPort: +e.target.value }))} />
-          <input type="number" min={1} max={65535} value={cfg.control?.tcpPort ?? 9001} aria-label={t('TCP port')} onChange={(e) => edit((c) => void (c.control = { oscEnabled: false, oscPort: 9000, tcpEnabled: false, allow: [], ...c.control, tcpPort: +e.target.value }))} />
+          <NumberField value={cfg.control?.oscPort ?? 9000} min={1} max={65535} title={t('OSC port')} onChange={(v) => edit((c) => void (c.control = { oscEnabled: false, tcpEnabled: false, tcpPort: 9001, allow: [], ...c.control, oscPort: Math.round(v) }))} />
+          <NumberField value={cfg.control?.tcpPort ?? 9001} min={1} max={65535} title={t('TCP port')} onChange={(v) => edit((c) => void (c.control = { oscEnabled: false, oscPort: 9000, tcpEnabled: false, allow: [], ...c.control, tcpPort: Math.round(v) }))} />
         </span>
       ),
     },

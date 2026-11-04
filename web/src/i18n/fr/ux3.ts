@@ -43,16 +43,12 @@ export const ux3: Record<string, string> = {
   'Modified {n} month ago': 'Modifié il y a {n} mois',
   'Modified {n} months ago': 'Modifié il y a {n} mois',
   'Recent': 'Récents',
-  'Click the projects to select': 'Cliquez sur les projets à sélectionner',
   'Move…': 'Déplacer…',
   'Esc': 'Échap',
   'Close (Esc)': 'Fermer (Échap)',
   // Data
   'Headers': 'En-têtes',
-  'shared': 'partagée',
   'No source in this project': 'Aucune source dans ce projet',
-  'No shared source': 'Aucune source partagée',
-  'One per line: “Name: value” (an API key…)': 'Un par ligne : « Nom: valeur » (une clé d’API…)',
   // Video streams
   'Properties': 'Propriétés',
   'Close the panel': 'Fermer le panneau',
@@ -81,7 +77,19 @@ export const ux3: Record<string, string> = {
   'The machine uses {cpu} of {max} ({cores})': 'La machine utilise {cpu} sur {max} ({cores})',
   // As-run log
   'Search…': 'Rechercher…',
-  'asrun|CLEAR': 'TOUT EFFACER',
   // Social
   'No message': 'Aucun message',
+  // Video streams, Hardware, Settings, Health (short labels)
+  'No input': 'Aucune entrée',
+  'Frames per second · render time': 'Images par seconde · temps de rendu',
+  'Add a {ratio} format ({size})': 'Ajouter un format {ratio} ({size})',
+  'Add a sound card output': 'Ajouter une sortie carte son',
+  'Drag to a format': 'Glissez vers un format',
+  'Drag to a source or a format': 'Glissez vers une source ou un format',
+  'Drag to an output': 'Glissez vers une sortie',
+  'No incident': 'Aucun incident',
+  'Client ID': 'ID client',
+  'SDI input {name}': 'Entrée SDI {name}',
+  'sdi|Fill': 'Fill',
+  'sdi|Key': 'Key',
 };

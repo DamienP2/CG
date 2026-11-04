@@ -1,4 +1,4 @@
-import { CloudDownload, History, KeyRound, RefreshCw, RotateCcw, Upload } from 'lucide-react';
+import { CloudDownload, History, KeyRound, RefreshCw, RotateCcw, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
@@ -258,24 +258,22 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
         <label className="set-field">
           <span className="set-label">{t('GitHub repository')}</span>
           <input value={repo} onChange={(e) => setRepo(e.target.value)} onBlur={() => repo !== info.repo && saveSettings({})} placeholder="owner/name" />
-          <span className="set-hint">{t('Releases are downloaded from here.')}</span>
         </label>
         <label className="set-field">
           <span className="set-label">
             {t('Access token')} {info.hasToken && <span className="badge">{t('saved')}</span>}
           </span>
           <div className="row">
-            <input type="password" value={token} placeholder={info.hasToken ? `••••••••  (${t('leave empty to keep')})` : 'github_pat_…'} autoComplete="off" onChange={(e) => setToken(e.target.value)} />
+            <input type="password" value={token} placeholder={info.hasToken ? '••••••••' : 'github_pat_…'} autoComplete="off" onChange={(e) => setToken(e.target.value)} />
             <button className="btn small" disabled={!token} onClick={() => saveSettings({ token })} title={t('Save the token')}>
               <KeyRound size={13} />
             </button>
             {info.hasToken && (
               <button className="btn small" onClick={() => saveSettings({ token: '' })} title={t('Remove the token')}>
-                ✕
+                <X size={13} />
               </button>
             )}
           </div>
-          <span className="set-hint">{t('Private repository: a fine-grained token with read-only “Contents” on it. Kept on the server, never shown again.')}</span>
         </label>
         <label className="set-field">
           <span className="set-label">{t('Automatic check')}</span>
@@ -283,7 +281,6 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
             <input type="checkbox" checked={info.autoCheck} onChange={(e) => saveSettings({ autoCheck: e.target.checked })} />
             {t('Look for new versions every 6 hours')}
           </label>
-          <span className="set-hint">{t('Installing always stays a manual decision.')}</span>
         </label>
       </div>
 
@@ -291,7 +288,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
         <div>
           <strong>{t('Offline update')}</strong>
           <span className="muted small">
-            {t('Upload the file from the release page — for servers without internet access:')} <code>{info.package ?? `Strata-<version>-${info.platform}`}</code>
+            <code>{info.package ?? `Strata-<version>-${info.platform}`}</code>
           </span>
         </div>
         <label className="check small">
@@ -318,7 +315,6 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
           </button>
         )}
       </div>
-      {!info.supervised && <p className="hint">{t('This server runs in the foreground: it relaunches itself after an update.')}</p>}
     </Card>
   );
 }

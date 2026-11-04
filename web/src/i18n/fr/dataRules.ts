@@ -13,7 +13,6 @@ export const dataRules: Record<string, string> = {
   'characters': 'caractères',
   'decimals at most': 'décimales au plus',
   'Pattern (regular expression)': 'Motif (expression régulière)',
-  'Allowed values, separated by commas': 'Valeurs autorisées, séparées par des virgules',
   '{min} to {max} characters': '{min} à {max} caractères',
   'at least {n} characters': 'au moins {n} caractères',
   'at most {n} characters': 'au plus {n} caractères',

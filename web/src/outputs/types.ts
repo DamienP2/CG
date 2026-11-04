@@ -504,6 +504,22 @@ export interface OutputState {
   detail?: string;
 }
 
+/** The colour of each kind of node, output and input (Video streams, Performance). */
+export const KIND_COLOR = {
+  program: '#bfcaff',
+  picture: '#38bdf8',
+  source: '#94a3b8',
+  html5: '#22c55e',
+  sdi: '#f5a524',
+  st2110: '#e879f9',
+  ndi: '#14b8a6',
+  stream: '#fb7185',
+  audio: '#34d399',
+  input: '#a78bfa',
+  /** An output of its own (an « Écran plateau »). */
+  output: '#f59e0b',
+} as const;
+
 export const VIDEO_FORMATS: { label: string; width: number; height: number; rate: FrameRate; interlaced?: boolean }[] = [
   { label: '1080p 50', width: 1920, height: 1080, rate: { num: 50, den: 1 } },
   { label: '1080i 50', width: 1920, height: 1080, rate: { num: 50, den: 1 }, interlaced: true },

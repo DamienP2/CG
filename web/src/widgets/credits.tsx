@@ -637,7 +637,6 @@ function warningsOf(l: CL, data: Data, state: unknown, w: number, h: number): Wa
     const per = 1 / Math.max(1e-6, (live && st.rate ? st.rate : nominal(k, g.x)) * Math.max(1, g.x));
     if (per < 1.5) out.push({ level: 'error', text: t('{secs} s per card is too short to read (min 1.5 s).', { secs: per.toFixed(1) }), op: true });
   }
-  if (g.short) out.push({ level: 'info', text: k.shortMode === 'center' ? t('Content shorter than the screen: it stops centred — no empty scroll.') : t('Content shorter than the screen: it passes and exits — no empty scroll.') });
   if (!es.length) out.push({ level: 'warn', text: t('No content.'), op: true });
   return out;
 }

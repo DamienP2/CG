@@ -119,11 +119,10 @@ function useShortcuts() {
       if (e.defaultPrevented || document.querySelector('.logic-editor, .modal-back')) return;
       const st = useDesigner.getState();
       const t = st.template;
-      // Esc: out of the safe area editing, off the selected layers, then off the template (overview).
+      // Esc: out of the safe area editing, then off the selected layers (the template stays open).
       if (e.key === 'Escape' && useGuidesView.getState().editSafe) return useGuidesView.getState().set({ editSafe: false });
       if (e.key === 'Escape' && t) {
         if (st.selected.length || st.selectedKeys.length) st.set({ selected: [], selectedKeys: [] });
-        else st.load(null);
         return;
       }
       if (!t) return;
@@ -276,7 +275,7 @@ function TemplateList({ project }: { project: Project }) {
     await saveTemplate(tpl);
   };
   return (
-    // A click beside the templates leaves the open one, like Esc.
+    // A click beside the templates leaves the open one.
     <div className="template-list" onClick={() => template && load(null)}>
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
@@ -613,11 +612,11 @@ export const Designer = memo(function Designer() {
           <FormatBar project={project} />
           <div className="spacer" />
           {template ? (
-            <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Values, conditions and what happens on air: events, triggers, actions, variables')}>
+            <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Events, triggers, actions, variables')}>
               <Link2 size={13} /> {t('Logic')}
             </button>
           ) : (
-            <button className={`btn small ${project.logic?.nodes.length ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Rules between the graphics and the playlists, while the project is loaded')}>
+            <button className={`btn small ${project.logic?.nodes.length ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Rules between graphics and playlists')}>
               <Link2 size={13} /> {t('Logic · project')}
             </button>
           )}

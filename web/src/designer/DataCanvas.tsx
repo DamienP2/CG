@@ -1,5 +1,5 @@
 import { widgetOf } from '../widgets';
-import { HexColorField } from '../ui/fields';
+import { HexColorField, NumberField } from '../ui/fields';
 import { useShallow } from 'zustand/react/shallow';
 import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X, } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
@@ -1062,7 +1062,7 @@ export function useDataLayer(o: DataLayerOpts) {
                 <Database size={14} />
                 <span>
                   <strong>{s.name}</strong>
-                  <em>{s.type.toUpperCase()}</em>
+                  <em>{s.type === 'push' ? t('Push (API / file)') : s.type.toUpperCase()}</em>
                 </span>
               </button>
             </span>
@@ -1072,8 +1072,7 @@ export function useDataLayer(o: DataLayerOpts) {
               {t('No source yet:')}{' '}
               <a href="#" onClick={(e) => (e.preventDefault(), projectId && navigate(projectPath(projectId, 'data')))}>
                 {t('add one in Connectors')}
-              </a>{' '}
-              {t('(this project) or in the main menu, Data (shared).')}
+              </a>
             </p>
           )}
 
@@ -1126,14 +1125,14 @@ export function useDataLayer(o: DataLayerOpts) {
                     <div className="ln-head" style={{ height: HEAD }}>
                       <Database size={12} />
                       <span>{s?.name ?? t('Missing: {source}', { source: n.source })}</span>
-                      <button className="ln-del" title={used ? t('Remove (and its wires)') : t('Remove')} onClick={() => removeFlowNode(n.id)}>
+                      <button className="ln-del" title={used ? t('Remove (and its wires)') : t('Delete')} onClick={() => removeFlowNode(n.id)}>
                         <Trash2 size={11} />
                       </button>
                       <span className="port out" data-wire={`o:${n.id}`} title={t('Drag to a filter, a sort, a transform or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
                     </div>
                     <div className="ln-body">
                       <span className="dc-meta">
-                        <span className={`live-dot ${s?.error ? 'err' : ''}`} /> {s ? t('{type} · every {n} s', { type: s.type.toUpperCase(), n: s.interval }) : t('not found')}
+                        <span className={`live-dot ${s?.error ? 'err' : ''}`} /> {s ? (s.type === 'push' ? t('Push (API / file)') : t('{type} · every {n} s', { type: s.type.toUpperCase(), n: s.interval })) : t('not found')}
                       </span>
                       <SourceBody node={n} version={s?.updatedAt ?? 0} data={values} onList={(list) => setFlowNode(n.id, (x) => void ((x as { list: string }).list = list))} />
                     </div>
@@ -1149,7 +1148,7 @@ export function useDataLayer(o: DataLayerOpts) {
                       <span className="port in" data-flow={n.id} data-wire={`i:${n.id}`} title={t('Drop a source or a step here')} />
                       <Rows3 size={12} />
                       <input className="dc-title" value={n.name} onChange={(e) => setFlowNode(n.id, (x) => void ((x as { name: string }).name = e.target.value), `ds-name-${n.id}`)} title={t('Key: {key}', { key: n.key })} />
-                      <button className="ln-del" title={t('Remove')} onClick={() => removeFlowNode(n.id)}>
+                      <button className="ln-del" title={t('Delete')} onClick={() => removeFlowNode(n.id)}>
                         <Trash2 size={11} />
                       </button>
                     </div>
@@ -1178,7 +1177,7 @@ export function useDataLayer(o: DataLayerOpts) {
                     <span className="port out" data-wire={`o:${n.id}`} title={t('Drag to a step or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
                   </div>
                   <div className="ln-body">
-                    {chain ? <StepBody source={chain.source} steps={chain.steps} data={values} node={n as FlowNode & DataStep} onChange={(fn) => setFlowNode(n.id, fn as (x: FlowNode) => void, `flow-${n.id}`)} /> : <span className="dc-meta">{t('Wire a source (or a step) into it.')}</span>}
+                    {chain ? <StepBody source={chain.source} steps={chain.steps} data={values} node={n as FlowNode & DataStep} onChange={(fn) => setFlowNode(n.id, fn as (x: FlowNode) => void, `flow-${n.id}`)} /> : <span className="dc-meta">{t('Not wired')}</span>}
                   </div>
                   {resizer(n.id)}
                 </div>
@@ -1508,12 +1507,12 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
         <div className="dc-sec">
           <span className="dc-sec-title">{t('Rows')}</span>
           <div className="row">
-            <label className="dc-inline" title={t('1 = the first, −1 = the last; 0 = from the first')}>
-              {t('From')} <input type="number" value={node.from} onChange={(e) => onChange((n) => void ((n as typeof node).from = +e.target.value))} />
-            </label>
-            <label className="dc-inline" title={t('0 = all')}>
-              {t('Count')} <input type="number" min={0} value={node.count} onChange={(e) => onChange((n) => void ((n as typeof node).count = Math.max(0, +e.target.value)))} />
-            </label>
+            <div className="dc-inline" title={t('1 = the first, −1 = the last; 0 = from the first')}>
+              {t('From')} <NumberField value={node.from} onChange={(v) => onChange((n) => void ((n as typeof node).from = v))} />
+            </div>
+            <div className="dc-inline" title={t('0 = all')}>
+              {t('Count')} <NumberField min={0} value={node.count} onChange={(v) => onChange((n) => void ((n as typeof node).count = v))} />
+            </div>
           </div>
         </div>
         <div className="dc-sec">
@@ -1633,7 +1632,7 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
         );
       })}
       <div className="ln-body">
-        {!chain && <span className="dc-meta">{t('Wire a source (or a step) into it.')}</span>}
+        {!chain && <span className="dc-meta">{t('Not wired')}</span>}
         {chain && res === null && <span className="dc-meta">{t('No data at this place.')}</span>}
         {chain && tbl && (
           <div className="ds-cursor">
@@ -1697,7 +1696,7 @@ function TransformSteps({ steps, onChange }: { steps: DataFilter[]; onChange: (s
 /** The settings of a filter. */
 function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f: DataFilter) => void }) {
   const text = (key: string, placeholder: string) => <input placeholder={placeholder} value={String((f as Record<string, unknown>)[key] ?? '')} onChange={(e) => onChange({ ...f, [key]: e.target.value } as DataFilter)} />;
-  const number = (key: string, title: string, min?: number) => <input type="number" title={title} min={min} value={Number((f as Record<string, unknown>)[key] ?? 0)} onChange={(e) => onChange({ ...f, [key]: +e.target.value } as DataFilter)} />;
+  const number = (key: string, title: string, min?: number, precision = 0) => <NumberField title={title} min={min} precision={precision} value={Number((f as Record<string, unknown>)[key] ?? 0)} onChange={(v) => onChange({ ...f, [key]: v } as DataFilter)} />;
   let body: React.ReactNode = null;
   switch (f.type) {
     case 'prefix':
@@ -1724,13 +1723,13 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
       );
       break;
     case 'truncate':
-      body = <label className="dc-inline">{t('Max')} {number('max', t('Characters'), 1)}</label>;
+      body = <div className="dc-inline">{t('Max')} {number('max', t('Characters'), 1)}</div>;
       break;
     case 'lines':
       body = (
         <div className="row">
-          <label className="dc-inline">{t('From')} {number('from', t('First line (1 = first, −1 = last)'))}</label>
-          <label className="dc-inline">{t('Count')} {number('count', t('0 = all'), 0)}</label>
+          <div className="dc-inline">{t('From')} {number('from', t('First line (1 = first, −1 = last)'))}</div>
+          <div className="dc-inline">{t('Count')} {number('count', t('0 = all'), 0)}</div>
         </div>
       );
       break;
@@ -1740,7 +1739,7 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
     case 'number':
       body = (
         <div className="row">
-          <label className="dc-inline">{t('Decimals')} {number('decimals', t('Decimals'), 0)}</label>
+          <div className="dc-inline">{t('Decimals')} {number('decimals', t('Decimals'), 0)}</div>
           <label className="dc-inline">
             <input type="checkbox" checked={f.grouping} onChange={(e) => onChange({ ...f, grouping: e.target.checked })} /> 1 000
           </label>
@@ -1760,7 +1759,7 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
             ]}
             onChange={(op) => onChange({ ...f, op })}
           />
-          {number('value', t('Value'))}
+          {number('value', t('Value'), undefined, 4)}
         </div>
       );
       break;
@@ -1781,15 +1780,17 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
         <>
           <div className="row">
             <input type="range" min={min} max={max} step={(max - min) / 200 || 1} value={parseFloat(f.default) || 0} onChange={(e) => set(e.target.value)} />
-            <input type="number" className="dc-num" value={f.default} onChange={(e) => set(e.target.value)} />
+            <span className="dc-num">
+              <NumberField precision={4} value={parseFloat(f.default) || 0} onChange={(v) => set(String(v))} />
+            </span>
           </div>
           <div className="row dc-range">
-            <label className="dc-inline">
-              {t('Min')} <input type="number" value={min} onChange={(e) => onChange((x) => void (x.min = +e.target.value), `min-${f.key}`)} />
-            </label>
-            <label className="dc-inline">
-              {t('Max')} <input type="number" value={max} onChange={(e) => onChange((x) => void (x.max = +e.target.value), `max-${f.key}`)} />
-            </label>
+            <div className="dc-inline">
+              {t('Min')} <NumberField precision={4} value={min} onChange={(v) => onChange((x) => void (x.min = v), `min-${f.key}`)} />
+            </div>
+            <div className="dc-inline">
+              {t('Max')} <NumberField precision={4} value={max} onChange={(v) => onChange((x) => void (x.max = v), `max-${f.key}`)} />
+            </div>
           </div>
         </>
       );

@@ -34,5 +34,5 @@ export const controls: Record<string, string> = {
   'cc|Highlighted row': 'Ligne en surbrillance',
   'Refresh the data': 'Actualiser les données',
   'cc|Go to page': 'Aller à la page',
-  'How it starts on air: at the In, on Continue (F2), or on a trigger (also the API action widget)': 'Comment il démarre à l’antenne\u00a0: dès le IN, sur Continuer (F2) ou sur un déclencheur (aussi l’action widget de l’API)',
+  'Start on air: In, Continue (F2) or a trigger': 'Démarrage à l’antenne : IN, Continuer (F2) ou déclencheur',
 };

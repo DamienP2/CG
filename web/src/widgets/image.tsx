@@ -13,6 +13,7 @@ import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { Bound, Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, Row, Section, Seg, Toggle, useBound, useCentreMode, useExposable, useKeys, type Warning, withDefaults } from './kit';
 import { Centre, StartRow, WaitsContinue, WaitsTrigger } from './centre';
 import { confirmDialog } from '../ui/dialogs';
+import { Dropdown } from '../ui/Dropdown';
 import { lang, t, tc, tn } from '../i18n';
 
 export interface Crop {
@@ -855,7 +856,7 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
   return (
     <Section id="image-anim" title={n ? tn(n, 'Animation · {n} frame', 'Animation · {n} frames') : t('Animation')} closed={!n}>
       <Row label={t('Import')}>
-        <label className={`btn small ${busy ? 'disabled' : ''}`} title={t("An animated GIF or PNG (APNG): split into frames in the project's media")}>
+        <label className={`btn small ${busy ? 'disabled' : ''}`} title={t('Animated GIF or PNG (APNG), split into frames')}>
           {busy ? t('Splitting…') : t('Animated GIF / PNG…')}
           <input type="file" accept="image/gif,image/png,image/apng" hidden disabled={busy} onChange={(e) => (e.target.files?.[0] && void importFile(e.target.files[0]), (e.target.value = ''))} />
         </label>
@@ -863,7 +864,7 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
       <Row label={t('PNG sequence')}>
         <label
           className={`btn small ${busy ? 'disabled' : ''}`}
-          title={t('A folder or a zip of numbered PNG pictures (with transparency): choose the pictures of the folder, or drop it here')}
+          title={t('Folder or zip of numbered PNG pictures')}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => (e.preventDefault(), void dropped(e.dataTransfer.items))}
         >
@@ -1032,14 +1033,11 @@ function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLay
       {input ? (
         <>
           <Row label={t('Input')}>
-            <select value={input} onChange={(e) => ed((x) => void (x.input = e.target.value))}>
-              {!info && <option value={input}>{t('(missing: {id})', { id: input })}</option>}
-              {inputs.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name} · {i.kind.toUpperCase()}
-                </option>
-              ))}
-            </select>
+            <Dropdown
+              value={input}
+              options={[...(info ? [] : [{ value: input, label: t('(missing: {id})', { id: input }) }]), ...inputs.map((i) => ({ value: i.id, label: i.name, note: i.kind.toUpperCase() }))]}
+              onChange={(v) => ed((x) => void (x.input = v))}
+            />
           </Row>
           <div className="video-live">
             {live.url ? <img src={live.url} alt="" /> : <span>{t('No signal')}</span>}
@@ -1047,7 +1045,6 @@ function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLay
               <i /> {info ? inputMessage(info.message) : t('This input does not exist any more')}
             </em>
           </div>
-          <Note>{t('Live inputs are set in Broadcast › Video inputs. The engine draws their latest picture on every output.')}</Note>
         </>
       ) : (
         <>
@@ -1059,7 +1056,7 @@ function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLay
           </Row>
           {k.frames.length > 0 && (
             <>
-              <Note>{tn(k.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: k.fps })} · {t('the video is played as pictures (alpha kept), at most a minute')}</Note>
+              <Note>{tn(k.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: k.fps })}</Note>
               <ClipPoints k={k} ed={ed} />
               <Playback k={k} />
             </>

@@ -313,8 +313,11 @@
   padding-top: 2px;
   padding-bottom: 2px;
 }
-.fio-num {
+.fio-kv .num-field {
+  display: inline-flex;
   width: 64px;
+}
+.fio-kv .num-field input {
   padding-top: 2px;
   padding-bottom: 2px;
 }
@@ -351,17 +354,17 @@
 }
 .fio-pill.ok {
   border-color: rgba(34, 197, 94, 0.45);
-  color: #86efac;
+  color: var(--t-green, #86efac);
   background: rgba(34, 197, 94, 0.08);
 }
 .fio-pill.warn {
   border-color: rgba(245, 165, 36, 0.5);
-  color: #fcd34d;
+  color: var(--t-yellow, #fcd34d);
   background: rgba(245, 165, 36, 0.08);
 }
 .fio-pill.err {
   border-color: rgba(255, 59, 92, 0.5);
-  color: #fda4af;
+  color: var(--t-red, #fda4af);
   background: rgba(255, 59, 92, 0.08);
 }
 .fio-legend {
@@ -505,8 +508,11 @@
   flex: 1;
   min-width: 0;
 }
-.fio-ref input {
+.fio-ref .num-field {
+  flex: none;
   width: 72px;
+}
+.fio-ref input {
   padding-top: 4px;
   padding-bottom: 4px;
 }
@@ -526,15 +532,15 @@
 }
 .fio-tag.key {
   background: rgba(167, 139, 250, 0.16);
-  color: #d8ccff;
+  color: var(--t-violet, #d8ccff);
 }
 .fio-tag.input {
   background: rgba(34, 197, 94, 0.13);
-  color: #86efac;
+  color: var(--t-green, #86efac);
 }
 .fio-tag.ref {
   background: rgba(245, 197, 66, 0.14);
-  color: #fde68a;
+  color: var(--t-yellow, #fde68a);
 }
 .fio-sig {
   display: flex;
@@ -626,12 +632,12 @@
 .fio-chip.red {
   border-color: rgba(255, 59, 92, 0.55);
   background: rgba(255, 59, 92, 0.1);
-  color: #fda4af;
+  color: var(--t-red, #fda4af);
 }
 .fio-chip.blue {
   border-color: rgba(56, 189, 248, 0.55);
   background: rgba(56, 189, 248, 0.1);
-  color: #7dd3fc;
+  color: var(--t-blue, #7dd3fc);
 }
 .fio-chips {
   display: flex;
@@ -687,11 +693,12 @@
   flex-direction: column;
   gap: 16px;
 }
-.net-table td select {
+.net-table td .dd-btn {
   width: 260px;
   max-width: 100%;
+  height: 32px;
 }
-.net-table td input[type='number'] {
+.net-table td .num-field {
   width: 90px;
 }
 .net-table td input.net-discovery {

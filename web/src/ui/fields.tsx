@@ -348,15 +348,18 @@ export function Segmented<T extends string>({
   value,
   options,
   onChange,
+  className,
 }: {
   value: T;
-  options: { value: T; label: React.ReactNode; title?: string }[];
+  options: { value: T; label: React.ReactNode; title?: string; disabled?: boolean }[];
   onChange: (v: T) => void;
+  /** More classes on the group. */
+  className?: string;
 }) {
   return (
-    <div className="segmented">
+    <div className={className ? `segmented ${className}` : 'segmented'}>
       {options.map((o) => (
-        <button key={o.value} type="button" title={o.title} className={o.value === value ? 'on' : ''} onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" title={o.title} disabled={o.disabled} className={o.value === value ? 'on' : ''} onClick={() => onChange(o.value)}>
           {o.label}
         </button>
       ))}

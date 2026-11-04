@@ -34,7 +34,7 @@ function Scope({ label, all, value, onChange }: { label: string; all: { id: stri
               {x.name}
             </label>
           ))}
-          {all.length === 0 && <span className="muted">{t('None yet.')}</span>}
+          {all.length === 0 && <span className="muted">{t('None')}</span>}
         </div>
       )}
     </div>
@@ -68,7 +68,7 @@ function UserDialog({ initial, onClose, onSaved }: { initial: Draft; onClose: ()
       <form className="modal wide" onSubmit={save} onPointerDown={(e) => e.stopPropagation()}>
         <header>
           <h2>{isNew ? t('New user') : t('Edit {name}', { name: initial.username })}</h2>
-          <button type="button" className="icon-btn ghost" onClick={onClose}>
+          <button type="button" className="icon-btn ghost" title={t('Close')} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
@@ -104,16 +104,15 @@ function UserDialog({ initial, onClose, onSaved }: { initial: Draft; onClose: ()
           <span className="set-label">{t('Role')}</span>
           <div className="role-pick">
             {ROLES.map((r) => (
-              <button type="button" key={r.value} className={d.role === r.value ? 'on' : ''} onClick={() => setD({ ...d, role: r.value })}>
+              <button type="button" key={r.value} className={d.role === r.value ? 'on' : ''} title={t(r.hint)} onClick={() => setD({ ...d, role: r.value })}>
                 <strong>{t(r.label)}</strong>
-                <span>{t(r.hint)}</span>
               </button>
             ))}
           </div>
           {(d.sso || ssoOn) && (
-            <label className="check">
+            <label className="check" title={t('Role set by hand (the directory groups do not change it)')}>
               <input type="checkbox" checked={!!d.roleFixed} onChange={(e) => setD({ ...d, roleFixed: e.target.checked })} />
-              {t('Role set by hand (the directory groups do not change it)')}
+              {t('Role set by hand')}
             </label>
           )}
         </div>
@@ -167,10 +166,9 @@ export function Users() {
       <NavItem on={view.kind === 'all'} icon={<UsersIcon size={15} />} label={t('All users')} count={users.length} onClick={() => setView({ kind: 'all' })} />
       <NavSection>{t('Roles')}</NavSection>
       {ROLES.map((r) => (
-        <NavItem key={r.value} on={view.kind === 'role' && view.role === r.value} icon={<r.icon size={15} />} label={t(r.plural)} count={users.filter((u) => u.role === r.value).length} onClick={() => setView({ kind: 'role', role: r.value })} />
+        <NavItem key={r.value} on={view.kind === 'role' && view.role === r.value} icon={<r.icon size={15} />} label={t(r.plural)} title={t(r.hint)} count={users.filter((u) => u.role === r.value).length} onClick={() => setView({ kind: 'role', role: r.value })} />
       ))}
       {disabled > 0 && <NavItem on={view.kind === 'disabled'} icon={<Ban size={15} />} label={t('Disabled')} count={disabled} onClick={() => setView({ kind: 'disabled' })} />}
-      {view.kind === 'role' && <p className="lib-nav-hint">{t(role(view.role).hint)}</p>}
     </>
   );
 
@@ -235,14 +233,10 @@ export function Users() {
                   <Ban size={12} /> {t('Account disabled')}
                 </span>
               )}
-              {u.role === 'admin' ? (
-                <p className="user-all muted">{t('Every project and channel, users and server settings.')}</p>
-              ) : (
-                <div className="user-scopes">
-                  <Scopes icon={<FolderOpen size={13} />} ids={u.projects} all={projects} />
-                  <Scopes icon={<MonitorPlay size={13} />} ids={u.channels} all={channels} />
-                </div>
-              )}
+              <div className="user-scopes">
+                <Scopes icon={<FolderOpen size={13} />} ids={u.role === 'admin' ? null : u.projects} all={projects} />
+                <Scopes icon={<MonitorPlay size={13} />} ids={u.role === 'admin' ? null : u.channels} all={channels} />
+              </div>
               <div className="user-card-actions" onClick={(e) => e.stopPropagation()}>
                 <button className="btn small" onClick={() => setEditing({ ...u, password: '' })}>
                   <Pencil size={13} /> {t('Edit')}
@@ -271,7 +265,7 @@ export function Users() {
         {shown.length === 0 && q && (
           <div className="empty big">
             <UsersIcon size={22} />
-            <p>{t('No user matches.')}</p>
+            <p>{t('No match')}</p>
           </div>
         )}
       </div>

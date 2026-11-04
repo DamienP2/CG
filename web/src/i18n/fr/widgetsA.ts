@@ -12,7 +12,7 @@ export const widgetsA: Record<string, string> = {
   'Reload': 'Recharger',
   'PNG sequence': 'Séquence PNG',
   'Folder or zip…': 'Dossier ou zip…',
-  'A folder or a zip of numbered PNG pictures (with transparency): choose the pictures of the folder, or drop it here': 'Un dossier ou un zip d’images PNG numérotées (avec transparence) : choisissez les images du dossier, ou déposez-le ici',
+  'Folder or zip of numbered PNG pictures': 'Dossier ou zip d’images PNG numérotées',
   'No PNG picture in this folder': 'Aucune image PNG dans ce dossier',
   'In point': 'Entrée',
   'Out point': 'Sortie',

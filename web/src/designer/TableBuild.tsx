@@ -163,7 +163,6 @@ export function BuildCard({ layer, template, values, onClose }: { layer: Layer; 
               <X size={13} />
             </button>
           </h4>
-          <p className="tb-note">{t('Columns, labels, types and the sort are set. A new column in the data will be offered here, never added on its own.')}</p>
           <div className="tb-foot">
             <button className="btn small" onClick={() => setBuilt(false)}>
               {t('Back')}

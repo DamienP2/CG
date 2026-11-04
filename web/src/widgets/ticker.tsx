@@ -669,7 +669,7 @@ export default defineWidget({
   group: 'Data',
   icon: ArrowLeftRight,
   create: () => ({
-    text: 'First headline\nSecond headline',
+    text: `${t('First headline')}\n${t('Second headline')}`,
     separator: '—',
     speed: 140,
     fontFamily: 'Inter',

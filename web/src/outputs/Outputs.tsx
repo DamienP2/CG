@@ -1,8 +1,9 @@
 import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Volume2, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe, MonitorPlay } from 'lucide-react';
-import { HexColorField } from '../ui/fields';
+import { HexColorField, NumberField } from '../ui/fields';
+import { Dropdown } from '../ui/Dropdown';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
-import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type AudioOutput, type AudioState, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
+import { KIND_COLOR, VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type AudioOutput, type AudioState, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
 import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, sdiPorts, usedHardware } from '../hardware/model';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { navigate } from '../router';
@@ -33,20 +34,20 @@ type DestKind = Exclude<Kind, 'program' | 'picture' | 'source' | 'audio'>;
 
 /** Labels translated where shown. */
 const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = {
-  program: { label: 'Program', color: '#bfcaff', icon: Play },
-  picture: { label: 'Format', color: '#38bdf8', icon: Frame },
-  source: { label: 'Source', color: '#94a3b8', icon: ArrowRightToLine },
-  html5: { label: 'HTML5', color: '#22c55e', icon: Globe },
-  sdi: { label: 'SDI', color: '#f5a524', icon: Tv },
-  st2110: { label: 'ST 2110', color: '#e879f9', icon: Network },
-  ndi: { label: 'NDI', color: '#14b8a6', icon: Radio },
-  stream: { label: 'Stream', color: '#fb7185', icon: RadioTower },
-  audio: { label: 'Sound', color: '#34d399', icon: Volume2 },
+  program: { label: 'Program', color: KIND_COLOR.program, icon: Play },
+  picture: { label: 'Format', color: KIND_COLOR.picture, icon: Frame },
+  source: { label: 'Source', color: KIND_COLOR.source, icon: ArrowRightToLine },
+  html5: { label: 'HTML5', color: KIND_COLOR.html5, icon: Globe },
+  sdi: { label: 'SDI', color: KIND_COLOR.sdi, icon: Tv },
+  st2110: { label: 'ST 2110', color: KIND_COLOR.st2110, icon: Network },
+  ndi: { label: 'NDI', color: KIND_COLOR.ndi, icon: Radio },
+  stream: { label: 'Stream', color: KIND_COLOR.stream, icon: RadioTower },
+  audio: { label: 'Sound', color: KIND_COLOR.audio, icon: Volume2 },
 };
 
 const DEST_KINDS: DestKind[] = ['html5', 'ndi', 'stream', 'sdi', 'st2110'];
 /** An output of its own (an « Écran plateau »): its colour on the canvas. */
-const OUTPUT_COLOR = '#f59e0b';
+const OUTPUT_COLOR = KIND_COLOR.output;
 
 /** Live inputs placed as sources, by family (a stream is SRT, UDP, RTMP, HLS, RTSP or a URL). */
 type SrcFamily = 'sdi' | 'ndi' | 'st2110' | 'stream';
@@ -74,8 +75,8 @@ const audioSub = (a: AudioOutput) => (a.kind === 'aes67' ? `${a.dest ?? '239.69.
 const streamBadge = (o: StreamOutput) => (o.protocol === 'srt' ? `SRT · ${tc('short', o.listen ? 'Listener' : 'Caller')}` : protocolLabel(o.protocol));
 /** SRT outputs: Strata calls the receiver, or waits for the receivers. Labels translated where shown. */
 const SRT_MODES = [
-  { listen: false, label: 'Caller', hint: 'Strata connects to the receiver, which must be listening.' },
-  { listen: true, label: 'Listener', hint: 'Strata waits for the receivers to connect.' },
+  { listen: false, label: 'Caller' },
+  { listen: true, label: 'Listener' },
 ];
 
 /** Where Strata serves an HLS stream output. */
@@ -460,7 +461,7 @@ export function Outputs({ mode }: { mode: Mode }) {
     if (!chMetrics) return undefined;
     if (id.startsWith('pic:')) {
       const p = chMetrics.pictures.find((x) => x.id === id.slice(4));
-      return p && { text: `${fpsText(p.fps)} fps · ${pct(p.load)}`, tone: pictureTone(p, chMetrics.rate), title: t('Frames rendered per second · render time, % of the frame time') };
+      return p && { text: `${fpsText(p.fps)} fps · ${pct(p.load)}`, tone: pictureTone(p, chMetrics.rate), title: t('Frames per second · render time') };
     }
     const o = outMetrics(id);
     return o && { text: `${fpsText(o.fps)} fps`, tone: outputTone(o, chMetrics.rate), title: o.dropped ? t('{n} frames dropped in the last 10 s', { n: o.dropped }) : t('Frames sent per second') };
@@ -950,10 +951,7 @@ export function Outputs({ mode }: { mode: Mode }) {
         <div className="outputs-page">
           <aside className="lib-nav">
             <div className="lib-nav-section">
-              <span className="grow">
-                {t('Locations')}
-                <InfoTip text={t('A location groups the channels of one place: a studio, a truck, the web desk… Each channel is an independent playout.')} />
-              </span>
+              <span className="grow">{t('Locations')}</span>
               <button className="icon-btn ghost" title={t('Add a location')} onClick={addLocation}>
                 <Plus size={14} />
               </button>
@@ -1020,7 +1018,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                   <div className="oc-tool-group" role="group" aria-label={t('Formats')}>
                     <span className="oc-tool-label">{t('Formats')}</span>
                     {PICTURE_PRESETS.slice(0, TOOLBAR_PRESETS).map((p) => (
-                      <button key={p.id} className="oc-tool" onClick={() => addPicture(p)} title={t('Add a {ratio} format ({size}): the same program in another shape', { ratio: p.name, size: `${p.width}×${p.height}` })}>
+                      <button key={p.id} className="oc-tool" onClick={() => addPicture(p)} title={t('Add a {ratio} format ({size})', { ratio: p.name, size: `${p.width}×${p.height}` })}>
                         <Plus size={13} color={KIND.picture.color} /> {p.name}
                       </button>
                     ))}
@@ -1042,7 +1040,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                   <span className="oc-tool-sep" aria-hidden="true" />
                   <div className="oc-tool-group" role="group" aria-label={t('Outputs')}>
                     <span className="oc-tool-label">{t('Outputs')}</span>
-                    <button className="oc-tool" onClick={addOutput} title={t('Add an output of its own (a screen on set…): it shows the playlists sent to it')}>
+                    <button className="oc-tool" onClick={addOutput} title={t('Add an output')}>
                       <Plus size={13} color={OUTPUT_COLOR} /> {t('Output')}
                     </button>
                   </div>
@@ -1079,7 +1077,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                     <button className="oc-tool" onClick={() => addAudio('aes67')} title={t('Add an AES67 / ST 2110-30 audio output')}>
                       <Volume2 size={15} color={KIND.audio.color} /> AES67
                     </button>
-                    <button className="oc-tool" onClick={() => addAudio('device')} title={t('Add a sound card output (Dante Virtual Soundcard…)')}>
+                    <button className="oc-tool" onClick={() => addAudio('device')} title={t('Add a sound card output')}>
                       <Volume2 size={15} color={KIND.audio.color} /> {t('Sound card')}
                     </button>
                   </div>
@@ -1238,12 +1236,12 @@ export function Outputs({ mode }: { mode: Mode }) {
                           {n.kind === 'picture' && <span className="oc-port in" />}
                           {n.kind === 'audio' && <span className="oc-port in" />}
                           {n.kind !== 'program' && n.kind !== 'picture' && n.kind !== 'source' && n.kind !== 'audio' && (
-                            <span className="oc-port in grab" title={t('Drag to a format to feed this output from it')} onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
+                            <span className="oc-port in grab" title={t('Drag to a format')} onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
                           )}
-                          {n.kind === 'program' && (srcIds.length > 0 ? <span className="oc-port out grab" title={t('Drag to a source to put its video under the graphics, or to a format for the graphics only')} onPointerDown={(e) => startWire(e, 'program')} /> : <span className="oc-port out" />)}
+                          {n.kind === 'program' && (srcIds.length > 0 ? <span className="oc-port out grab" title={t('Drag to a source or a format')} onPointerDown={(e) => startWire(e, 'program')} /> : <span className="oc-port out" />)}
                           {n.kind === 'source' && <span className="oc-port in" />}
-                          {n.kind === 'source' && <span className="oc-port out grab" title={t('Drag to a format to send it the graphics over this video')} onPointerDown={(e) => startWire(e, n.id)} />}
-                          {n.kind === 'picture' && <span className="oc-port out grab" title={t('Drag to an output to feed it, or into the empty canvas to add one')} onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
+                          {n.kind === 'source' && <span className="oc-port out grab" title={t('Drag to a format')} onPointerDown={(e) => startWire(e, n.id)} />}
+                          {n.kind === 'picture' && <span className="oc-port out grab" title={t('Drag to an output')} onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
                           <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setWidth(n.id, w))} />
                         </div>
                       );
@@ -1301,7 +1299,6 @@ export function Outputs({ mode }: { mode: Mode }) {
                       </button>
                     </div>
                   )}
-                  {selDest && !selDest.picture && note(t('Not connected: this destination is kept but not started. Drag a wire from a format to its input to send it again.'))}
 
                   {selAudio &&
                     (() => {
@@ -1315,22 +1312,18 @@ export function Outputs({ mode }: { mode: Mode }) {
                             <input value={a.name} onChange={(e) => set((x) => void (x.name = e.target.value))} />
                           </Field>
                           <Field label={t('Type')}>
-                            <select
+                            <Dropdown
                               value={a.kind}
-                              onChange={(e) =>
+                              title={t('Type')}
+                              options={AUDIO_KINDS.map((k) => ({ value: k.value, label: t(k.label) }))}
+                              onChange={(v) =>
                                 set((x) => {
-                                  x.kind = e.target.value as AudioOutput['kind'];
+                                  x.kind = v;
                                   if (x.kind === 'aes67') x.dest ??= '239.69.10.10:5004';
                                   else (x.device ??= ''), (x.firstChannel ??= 1);
                                 })
                               }
-                            >
-                              {AUDIO_KINDS.map((k) => (
-                                <option key={k.value} value={k.value}>
-                                  {t(k.label)}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </Field>
                           {a.kind === 'aes67' && (
                             <>
@@ -1339,21 +1332,25 @@ export function Outputs({ mode }: { mode: Mode }) {
                                 {!destOk && <span className="set-error">{t('Address:port expected')}</span>}
                               </Field>
                               <Field label={t('Network interface')}>
-                                <select value={a.interface ?? ''} onChange={(e) => set((x) => void (x.interface = e.target.value || null))}>
-                                  <option value="">{t('System default')}</option>
-                                  {info.interfaces.map((i) => (
-                                    <option key={i.ip} value={i.ip}>
-                                      {i.name} — {i.ip}
-                                    </option>
-                                  ))}
-                                </select>
+                                <Dropdown
+                                  value={a.interface ?? ''}
+                                  title={t('Network interface')}
+                                  options={[{ value: '', label: t('System default') }, ...(a.interface && !info.interfaces.some((i) => i.ip === a.interface) ? [{ value: a.interface, label: a.interface, note: t('not found') }] : []), ...info.interfaces.map((i) => ({ value: i.ip, label: i.name, note: i.ip }))]}
+                                  onChange={(v) => set((x) => void (x.interface = v || null))}
+                                />
                               </Field>
-                              <Field label={t('Network priority')} hint={t('DSCP marking: switches with QoS send these packets first. AES67 asks for 34, Dante uses 46.')}>
-                                <select value={a.dscp ?? 34} onChange={(e) => set((x) => void (x.dscp = +e.target.value))}>
-                                  <option value={34}>AES67 · AF41 (34)</option>
-                                  <option value={46}>Dante · EF (46)</option>
-                                  <option value={0}>{t('None (0)')}</option>
-                                </select>
+                              <Field label={t('Network priority')}>
+                                <Dropdown
+                                  value={String(a.dscp ?? 34)}
+                                  title={t('Network priority')}
+                                  options={[
+                                    ...(![34, 46, 0].includes(a.dscp ?? 34) ? [{ value: String(a.dscp), label: `DSCP ${a.dscp}` }] : []),
+                                    { value: '34', label: 'AES67 · AF41', note: '34' },
+                                    { value: '46', label: 'Dante · EF', note: '46' },
+                                    { value: '0', label: t('None'), note: '0' },
+                                  ]}
+                                  onChange={(v) => set((x) => void (x.dscp = Number(v)))}
+                                />
                               </Field>
                               <dl className="oc-hw-sum">
                                 <dt>{t('Format')}</dt>
@@ -1376,23 +1373,20 @@ export function Outputs({ mode }: { mode: Mode }) {
                           {a.kind === 'device' && (
                             <>
                               <Field label={t('Sound card')}>
-                                <select value={a.device ?? ''} onChange={(e) => set((x) => void (x.device = e.target.value))}>
-                                  <option value="">{t('System default')}</option>
-                                  {[...new Set([...cards, ...(a.device ? [a.device] : [])])].map((d) => (
-                                    <option key={d} value={d}>
-                                      {d}
-                                    </option>
-                                  ))}
-                                </select>
+                                <Dropdown
+                                  value={a.device ?? ''}
+                                  title={t('Sound card')}
+                                  options={[{ value: '', label: t('System default') }, ...[...new Set([...cards, ...(a.device ? [a.device] : [])])].map((d) => ({ value: d, label: d }))]}
+                                  onChange={(v) => set((x) => void (x.device = v))}
+                                />
                               </Field>
                               <Field label={t('Channels')}>
-                                <select value={a.firstChannel ?? 1} onChange={(e) => set((x) => void (x.firstChannel = +e.target.value))}>
-                                  {Array.from({ length: 32 }, (_, i) => i * 2 + 1).map((c) => (
-                                    <option key={c} value={c}>
-                                      {c}-{c + 1}
-                                    </option>
-                                  ))}
-                                </select>
+                                <Dropdown
+                                  value={String(a.firstChannel ?? 1)}
+                                  title={t('Channels')}
+                                  options={Array.from({ length: 32 }, (_, i) => i * 2 + 1).map((c) => ({ value: String(c), label: `${c}-${c + 1}` }))}
+                                  onChange={(v) => set((x) => void (x.firstChannel = Number(v)))}
+                                />
                               </Field>
                               {soundCards && !soundCards.length && note(info.os === 'linux' ? t('Sound cards are played on macOS and Windows.') : t('No sound card found.'))}
                             </>
@@ -1411,29 +1405,29 @@ export function Outputs({ mode }: { mode: Mode }) {
                       return (
                         <>
                           <Field label={t('Input')}>
-                            <select
+                            <Dropdown
                               value={selSrc.id}
-                              onChange={(e) => {
-                                const next = e.target.value;
+                              title={t('Input')}
+                              options={choices.map((i) => ({ value: i.id, label: i.name }))}
+                              onChange={(next) => {
                                 editCh((c) => {
                                   c.sources = (c.sources ?? []).map((x) => (x === selSrc.id ? next : x));
                                   if (c.background === selSrc.id) c.background = next;
                                 });
                                 setSel(`src:${next}`);
                               }}
-                            >
-                              {choices.map((i) => (
-                                <option key={i.id} value={i.id}>
-                                  {i.name}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </Field>
                           <Field label={t('Program')}>
-                            <select value={wired ? 'under' : ''} onChange={(e) => editCh((c) => void (e.target.value ? (c.background = selSrc.id) : delete c.background))}>
-                              <option value="under">{t('Under the graphics')}</option>
-                              <option value="">{t('Not connected')}</option>
-                            </select>
+                            <Dropdown
+                              value={wired ? 'under' : ''}
+                              title={t('Program')}
+                              options={[
+                                { value: 'under', label: t('Under the graphics') },
+                                { value: '', label: t('Not connected') },
+                              ]}
+                              onChange={(v) => editCh((c) => void (v ? (c.background = selSrc.id) : delete c.background))}
+                            />
                           </Field>
                           {(() => {
                             const c = srcCheck(selSrc.id);
@@ -1469,7 +1463,6 @@ export function Outputs({ mode }: { mode: Mode }) {
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/inputs')}>
                             <Pencil size={13} /> {t('Edit in Inputs')}
                           </button>
-                          {note(t('The server keys the graphics over this video for the formats wired after the source; a format wired straight to the program gets the graphics only.'))}
                         </>
                       );
                     })()}
@@ -1480,20 +1473,21 @@ export function Outputs({ mode }: { mode: Mode }) {
                         <input value={ch.name} onChange={(e) => editCh((c) => void (c.name = e.target.value))} />
                       </Field>
                       <Field label={t('Location')}>
-                        <select value={ch.location || locations[0].id} onChange={(e) => edit((c) => void ((c.locations = c.locations?.length ? c.locations : [...locations]), (c.channels[chIndex].location = e.target.value)))}>
-                          {locations.map((l) => (
-                            <option key={l.id} value={l.id}>
-                              {l.name}
-                            </option>
-                          ))}
-                        </select>
+                        <Dropdown
+                          value={ch.location || locations[0].id}
+                          title={t('Location')}
+                          options={locations.map((l) => ({ value: l.id, label: l.name }))}
+                          onChange={(v) => edit((c) => void ((c.locations = c.locations?.length ? c.locations : [...locations]), (c.channels[chIndex].location = v)))}
+                        />
                       </Field>
-                      <Field label={t('Video format')} hint={t('Every format and destination of the channel runs at this rate.')}>
-                        <select
-                          value={videoFormatIndex(ch)}
-                          onChange={(e) =>
+                      <Field label={t('Video format')}>
+                        <Dropdown
+                          value={String(videoFormatIndex(ch))}
+                          title={t('Video format')}
+                          options={[...(videoFormatIndex(ch) < 0 ? [{ value: '-1', label: formatLabel(ch), disabled: true }] : []), ...VIDEO_FORMATS.map((f, i) => ({ value: String(i), label: f.label }))]}
+                          onChange={(v) =>
                             editCh((c) => {
-                              const f = VIDEO_FORMATS[+e.target.value];
+                              const f = VIDEO_FORMATS[Number(v)];
                               if (!f) return;
                               c.width = f.width;
                               c.height = f.height;
@@ -1502,57 +1496,38 @@ export function Outputs({ mode }: { mode: Mode }) {
                               else delete c.interlaced;
                             })
                           }
-                        >
-                          <option value={-1} disabled>
-                            {formatLabel(ch)}
-                          </option>
-                          {VIDEO_FORMATS.map((f, i) => (
-                            <option key={f.label} value={i}>
-                              {f.label}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </Field>
                       {liveCh && (
-                        <Field label={t('Project on air')} hint={t('Takes effect at once (not with Apply).')}>
-                          <select
+                        <Field label={t('Project on air')}>
+                          <Dropdown
                             value={liveCh.projectId ?? ''}
-                            onChange={async (e) => {
+                            title={t('Project on air')}
+                            options={[{ value: '', label: t('— no project —') }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+                            onChange={async (v) => {
                               const onAir = Object.keys(liveState[ch.id]?.state.layers ?? {}).length;
                               if (onAir && !(await confirmDialog({ title: t('Load another project?'), message: tn(onAir, 'The {n} graphic on air on {channel} is cleared.', 'The {n} graphics on air on {channel} are cleared.', { channel: ch.name }), confirm: t('Load'), danger: true }))) return;
-                              await loadOnChannel(ch.id, e.target.value || null);
+                              await loadOnChannel(ch.id, v || null);
                             }}
-                          >
-                            <option value="">{t('— no project —')}</option>
-                            {projects.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </Field>
                       )}
-                      <Field label={t('Render ahead')} hint={t('Frames rendered ahead, each on its own thread: absorbs slow frames; adds that many frames of delay.')}>
-                        <select value={ch.renderAhead ?? 2} onChange={(e) => editCh((c) => void (c.renderAhead = +e.target.value))}>
-                          {RENDER_AHEAD.map((n) => (
-                            <option key={n} value={n}>
-                              {tn(n, '{n} frame', '{n} frames')}
-                              {` · ${Math.round((n * 1000 * ch.frameRate.den) / ch.frameRate.num)} ms`}
-                            </option>
-                          ))}
-                        </select>
+                      <Field label={t('Render ahead')}>
+                        <Dropdown
+                          value={String(ch.renderAhead ?? 2)}
+                          title={t('Render ahead')}
+                          options={RENDER_AHEAD.map((n) => ({ value: String(n), label: tn(n, '{n} frame', '{n} frames'), note: `${Math.round((n * 1000 * ch.frameRate.den) / ch.frameRate.num)} ms` }))}
+                          onChange={(v) => editCh((c) => void (c.renderAhead = Number(v)))}
+                        />
                       </Field>
-                      <Field label={t('Clock reference')} hint={t('What the channel clock follows. PTP: frames on the ST 2059 grid of the PTP-locked system clock. DeckLink: the genlock of its first SDI destination.')}>
-                        <select value={ch.clock ?? ''} onChange={(e) => editCh((c) => void (c.clock = (e.target.value || null) as ChannelConfig['clock']))}>
-                          <option value="">{t('Default ({reference})', { reference: clockLabel(hardwareOf(cfg).sync?.reference ?? 'auto') })}</option>
-                          {CLOCKS.map((r) => (
-                            <option key={r} value={r}>
-                              {clockLabel(r)}
-                            </option>
-                          ))}
-                        </select>
+                      <Field label={t('Clock reference')}>
+                        <Dropdown
+                          value={ch.clock ?? ''}
+                          title={t('Clock reference')}
+                          options={[{ value: '', label: t('Default ({reference})', { reference: clockLabel(hardwareOf(cfg).sync?.reference ?? 'auto') }) }, ...CLOCKS.map((r) => ({ value: r, label: clockLabel(r) }))]}
+                          onChange={(v) => editCh((c) => void (c.clock = (v || null) as ChannelConfig['clock']))}
+                        />
                       </Field>
-                      {note(t('The playout of this channel: what the operator takes goes to every format and destination wired to it.'))}
                       {cfg.channels.length > 1 && (
                         <button className="btn small danger" onClick={removeChannel}>
                           <Trash2 size={13} /> {t('Remove the channel')}
@@ -1563,48 +1538,37 @@ export function Outputs({ mode }: { mode: Mode }) {
 
                   {selPic && (
                     <>
-                      {selPic.id === 'main' ? (
-                        note(t("The channel's main format, {size} (its video format, set on the Program).", { size: `${selPic.width}×${selPic.height}` }))
-                      ) : (
+                      {selPic.id !== 'main' && (
                         <>
                           <Field label={t('Name')}>
                             <input value={selPic.name} onChange={(e) => editCh((c) => void (c.renditions!.find((r) => r.id === selPic.id)!.name = e.target.value))} />
                           </Field>
                           <Field label={t('Size')}>
-                            <select
-                              value={PICTURE_PRESETS.findIndex((p) => p.width === selPic.width && p.height === selPic.height)}
-                              aria-label={t('Size')}
-                              onChange={(e) =>
+                            <Dropdown
+                              value={String(PICTURE_PRESETS.findIndex((p) => p.width === selPic.width && p.height === selPic.height))}
+                              title={t('Size')}
+                              options={[{ value: '-1', label: t('Custom') }, ...PICTURE_PRESETS.map((p, i) => ({ value: String(i), label: p.name, note: `${p.width}×${p.height}` }))]}
+                              onChange={(v) =>
                                 editCh((c) => {
-                                  const p = PICTURE_PRESETS[+e.target.value];
+                                  const p = PICTURE_PRESETS[Number(v)];
                                   const r = c.renditions!.find((x) => x.id === selPic.id)!;
                                   if (p) Object.assign(r, { width: p.width, height: p.height });
                                 })
                               }
-                            >
-                              <option value={-1}>{t('Custom')}</option>
-                              {PICTURE_PRESETS.map((p, i) => (
-                                <option key={p.id} value={i}>
-                                  {p.name} · {p.width}×{p.height}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </Field>
-                          <div className="oc-pair">
-                            <Field label={t('Width')}>
-                              <input type="number" min={16} max={7680} value={selPic.width} onChange={(e) => editCh((c) => void (c.renditions!.find((x) => x.id === selPic.id)!.width = +e.target.value))} />
-                            </Field>
-                            <Field label={t('Height')}>
-                              <input type="number" min={16} max={7680} value={selPic.height} onChange={(e) => editCh((c) => void (c.renditions!.find((x) => x.id === selPic.id)!.height = +e.target.value))} />
-                            </Field>
+                          <div className="oc-pair vs-pair">
+                            <Group label={t('Width')}>
+                              <NumberField value={selPic.width} min={16} max={7680} onChange={(v) => editCh((c) => void (c.renditions!.find((x) => x.id === selPic.id)!.width = Math.round(v)))} />
+                            </Group>
+                            <Group label={t('Height')}>
+                              <NumberField value={selPic.height} min={16} max={7680} onChange={(v) => editCh((c) => void (c.renditions!.find((x) => x.id === selPic.id)!.height = Math.round(v)))} />
+                            </Group>
                           </div>
                         </>
                       )}
                       <div className="set-field">
-                        <span className="set-label">
-                          {t('Still picture without project')}
-                          <InfoTip text={t("Shown full frame on this format's outputs while no project is loaded.")} />
-                        </span>
+                        <span className="set-label">{t('Still picture without project')}</span>
                         <div className="easing-picks">
                           {SLATES.map((sl) => {
                             const on = slateStyleOf(selPic) === sl.id;
@@ -1654,7 +1618,6 @@ export function Outputs({ mode }: { mode: Mode }) {
                           </div>
                         )}
                       </div>
-                      {note(t("One take drives every format. Each one uses the project format closest in aspect ratio (a template's 9:16 layout, if it has one), letterboxed to fit."))}
                     </>
                   )}
 
@@ -1676,13 +1639,12 @@ export function Outputs({ mode }: { mode: Mode }) {
                             {err && <span className="set-error">{err}</span>}
                           </Field>
                           <Field label={t('Background')}>
-                            <select value={o.background} onChange={(e) => editDest<Html5Output>((d) => void (d.background = e.target.value))}>
-                              {BACKGROUNDS.map((b) => (
-                                <option key={b.value} value={b.value}>
-                                  {t(b.label)}
-                                </option>
-                              ))}
-                            </select>
+                            <Dropdown
+                              value={o.background}
+                              title={t('Background')}
+                              options={[...(BACKGROUNDS.some((b) => b.value === o.background) ? [] : [{ value: o.background, label: o.background }]), ...BACKGROUNDS.map((b) => ({ value: b.value, label: t(b.label) }))]}
+                              onChange={(v) => editDest<Html5Output>((d) => void (d.background = v))}
+                            />
                           </Field>
                           <div className="set-field">
                             <span className="set-label">{t('Web link')}</span>
@@ -1696,7 +1658,6 @@ export function Outputs({ mode }: { mode: Mode }) {
                               </a>
                             </div>
                           </div>
-                          {note(cfg.publicOutputs ? t('A web page playing the graphics live: browser source in OBS, vMix, CasparCG, a web player or a screen. No login needed.') : t('A web page playing the graphics live. Output pages need a login (Settings › Public output pages).'))}
                         </>
                       );
                     })()}
@@ -1723,41 +1684,32 @@ export function Outputs({ mode }: { mode: Mode }) {
                             return (
                               <>
                                 <Field label={t('Card')}>
-                                  <select
+                                  <Dropdown
                                     value={cardId}
-                                    onChange={(e) => {
-                                      const next = free(e.target.value)[0];
+                                    title={t('Card')}
+                                    options={[
+                                      ...(def ? [] : [{ value: '', label: t('— choose —') }]),
+                                      ...hw.sdi.cards.map((c) => {
+                                        const full = !free(c.id).length && c.id !== cardId;
+                                        return { value: c.id, label: c.name, disabled: full, note: full ? t('no free output') : undefined };
+                                      }),
+                                    ]}
+                                    onChange={(v) => {
+                                      const next = free(v)[0];
                                       if (next) editDest<SdiOutput>((d) => pick(d, next));
                                     }}
-                                  >
-                                    {!def && <option value="">{t('— choose —')}</option>}
-                                    {hw.sdi.cards.map((c) => {
-                                      const n = free(c.id).length;
-                                      return (
-                                        <option key={c.id} value={c.id} disabled={!n && c.id !== cardId}>
-                                          {c.name}
-                                          {!n && c.id !== cardId ? ` (${t('no free output')})` : ''}
-                                        </option>
-                                      );
-                                    })}
-                                  </select>
+                                  />
                                 </Field>
-                                <Field label={t('Output')} hint={t('The outputs set on the card in Hardware.')}>
-                                  <select
+                                <Field label={t('Output')}>
+                                  <Dropdown
                                     value={o.hardware ?? ''}
-                                    disabled={!cardId}
-                                    onChange={(e) => {
-                                      const next = hw.sdi.outputs.find((x) => x.id === e.target.value);
+                                    title={t('Output')}
+                                    options={[...(def ? [] : [{ value: '', label: t('— choose —') }]), ...(cardId ? free(cardId) : []).map((d) => ({ value: d.id, label: sdiPorts(d), note: modeLabel(d.mode) }))]}
+                                    onChange={(v) => {
+                                      const next = hw.sdi.outputs.find((x) => x.id === v);
                                       if (next) editDest<SdiOutput>((d) => pick(d, next));
                                     }}
-                                  >
-                                    {!def && <option value="">{t('— choose —')}</option>}
-                                    {free(cardId).map((d) => (
-                                      <option key={d.id} value={d.id}>
-                                        {sdiPorts(d)} · {modeLabel(d.mode)}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  />
                                 </Field>
                               </>
                             );
@@ -1773,7 +1725,6 @@ export function Outputs({ mode }: { mode: Mode }) {
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware')}>
                             <Cpu size={13} /> {t('Edit in Hardware')}
                           </button>
-                          {note(t('Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.'))}
                         </>
                       );
                     })()}
@@ -1790,39 +1741,33 @@ export function Outputs({ mode }: { mode: Mode }) {
                           <Field label={t('Name')}>
                             <input value={o.name} onChange={(e) => editDest<St2110Output>((d) => void (d.name = e.target.value))} />
                           </Field>
-                          <Field label={t('ST 2110 flow')} hint={t('The multicast addresses are set in Hardware.')}>
-                            <select
+                          <Field label={t('ST 2110 flow')}>
+                            <Dropdown
                               value={o.hardware ?? ''}
-                              onChange={(e) =>
+                              title={t('ST 2110 flow')}
+                              options={[...(flow ? [] : [{ value: '', label: t('— choose —') }]), ...outFlows.map((f) => ({ value: f.id, label: f.name, note: f.id !== o.hardware && usedHw.has(f.id) ? t('in use') : f.fill }))]}
+                              onChange={(v) =>
                                 editDest<St2110Output>((d) => {
                                   const prev = outFlows.find((x) => x.id === d.hardware);
-                                  const next = outFlows.find((x) => x.id === e.target.value);
+                                  const next = outFlows.find((x) => x.id === v);
                                   if (prev && d.name === prev.name && next) d.name = next.name;
-                                  d.hardware = e.target.value;
+                                  d.hardware = v;
                                   fillSt2110(d, hw);
                                 })
                               }
-                            >
-                              {!flow && <option value="">{t('— choose —')}</option>}
-                              {outFlows.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.name} — {f.fill}
-                                  {f.id !== o.hardware && usedHw.has(f.id) ? ` (${t('in use')})` : ''}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </Field>
                           {flow && (
                             <dl className="oc-hw-sum">
                               <dt>{t('Encoding')}</dt>
                               <dd>{t(ENCODINGS.find((x) => x.value === enc)?.label ?? enc)}</dd>
-                              <dt>{two ? 'Fill' : t('Stream')}</dt>
+                              <dt>{two ? tc('sdi', 'Fill') : t('Stream')}</dt>
                               <dd>
                                 <code>{o.fill}</code>
                               </dd>
                               {two && (
                                 <>
-                                  <dt>Key</dt>
+                                  <dt>{tc('sdi', 'Key')}</dt>
                                   <dd>{o.key ? <code>{o.key}</code> : t('no key')}</dd>
                                 </>
                               )}
@@ -1848,7 +1793,6 @@ export function Outputs({ mode }: { mode: Mode }) {
                               <span className="muted small">{t('Apply to generate the SDP files.')}</span>
                             )}
                           </div>
-                          {note(two ? t('Two ST 2110-20 streams, what most vision mixers and keyers expect. RTP timing follows the system clock: keep this server PTP-disciplined.') : t('One stream carrying the alpha, for receivers that read this sampling (check your mixer accepts it). RTP timing follows the system clock: keep this server PTP-disciplined.'))}
                         </>
                       );
                     })()}
@@ -1861,21 +1805,20 @@ export function Outputs({ mode }: { mode: Mode }) {
                       const nameErr = !key ? t('Name required') : taken ? t('Name already used') : '';
                       return (
                         <>
-                          <Field label={t('Source name')} hint={t('Receivers see it as “SERVER (name)”.')}>
+                          <Field label={t('Source name')}>
                             <input value={o.name} aria-invalid={!!nameErr} onChange={(e) => editDest<NdiOutput>((d) => void (d.name = e.target.value))} />
                             {nameErr && <span className="set-error">{nameErr}</span>}
                           </Field>
-                          <Field label={t('Groups')} hint={t('Comma-separated; empty = public.')}>
+                          <Field label={t('Groups')}>
                             <input value={o.groups} placeholder="public" onChange={(e) => editDest<NdiOutput>((d) => void (d.groups = e.target.value))} />
                           </Field>
                           <label className="check">
                             <input type="checkbox" checked={o.alpha} onChange={(e) => editDest<NdiOutput>((d) => void (d.alpha = e.target.checked))} />
                             {t('Send the alpha channel')}
                           </label>
-                          <Field label={t('NDI runtime (all NDI outputs)')} hint={t('Leave empty to use the NDI runtime installed with Strata. Only to force another libndi.')}>
+                          <Field label={t('NDI runtime (all NDI outputs)')}>
                             <input value={cfg.ndiLibrary ?? ''} placeholder={info.os === 'macos' ? '/usr/local/lib/libndi.dylib' : info.os === 'windows' ? 'C:\\Program Files\\NDI\\…\\Processing.NDI.Lib.x64.dll' : '/usr/lib/libndi.so.6'} onChange={(e) => edit((c) => void (c.ndiLibrary = e.target.value))} />
                           </Field>
-                          {note(t('Seen by every NDI receiver on the network (TriCaster, vMix, OBS, Studio Monitor…). The NDI runtime comes with the Strata installers (macOS, Windows).'))}
                         </>
                       );
                     })()}
@@ -1910,7 +1853,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                             </div>
                           </Group>
                           {o.protocol === 'srt' && (
-                            <Group label={t('Mode')} hint={t(SRT_MODES.find((m) => m.listen === !!o.listen)!.hint)}>
+                            <Group label={t('Mode')}>
                               <div className="seg vs-seg">
                                 {SRT_MODES.map((m) => (
                                   <button
@@ -1937,10 +1880,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                           )}
                           {o.protocol === 'hls' ? (
                             <div className="set-field">
-                              <span className="set-label">
-                                {t('Playback address')}
-                                {savedDest(o.id) ? <InfoTip text={t('Served by this server, for players and CDNs that pull HLS.')} /> : <InfoTip text={t('Apply to start the stream.')} />}
-                              </span>
+                              <span className="set-label">{t('Playback address')}</span>
                               <div className="oc-link">
                                 <code title={hls}>{hls}</code>
                                 <button className="icon-btn" title={t('Copy')} onClick={() => void copy(hls)}>
@@ -1949,30 +1889,24 @@ export function Outputs({ mode }: { mode: Mode }) {
                               </div>
                             </div>
                           ) : (
-                            <Field
-                              label={t('Address')}
-                              hint={
-                                o.protocol === 'srt'
-                                  ? o.listen
-                                    ? t('srt://0.0.0.0:9000 listens on every interface: the receivers call srt://{host}:{port}.', { host: location.hostname, port: /:(\d+)(?:[/?]|$)/.exec(o.url)?.[1] ?? '9000' })
-                                    : t("The receiver's address, e.g. srt://host:9000 (it must be listening).")
-                                  : o.protocol === 'udp'
-                                    ? t('A multicast group (udp://239.1.1.1:5000) or a host (udp://10.0.0.20:5000).')
-                                    : t('The server and stream key given by the platform, e.g. rtmp://a.rtmp.youtube.com/live2/<key>.')
-                              }
-                            >
+                            <Field label={t('Address')}>
                               <input value={o.url} placeholder={o.protocol === 'srt' && o.listen ? 'srt://0.0.0.0:9000' : proto.placeholder} spellCheck={false} onChange={(e) => editDest<StreamOutput>((d) => void (d.url = e.target.value))} />
                             </Field>
                           )}
                           <div className="oc-pair">
-                            <Field label={t('Bit rate (kbit/s)')}>
-                              <input type="number" min={100} max={100000} step={500} value={o.bitrate} onChange={(e) => editDest<StreamOutput>((d) => void (+e.target.value > 0 && (d.bitrate = Math.round(+e.target.value))))} />
-                            </Field>
+                            <Group label={t('Bit rate (kbit/s)')}>
+                              <NumberField value={o.bitrate} min={100} max={100000} step={500} onChange={(v) => editDest<StreamOutput>((d) => void (v > 0 && (d.bitrate = Math.round(v))))} />
+                            </Group>
                             <Field label={t('Codec')}>
-                              <select value={o.codec} onChange={(e) => editDest<StreamOutput>((d) => void (d.codec = e.target.value as StreamOutput['codec']))}>
-                                <option value="h264">H.264</option>
-                                <option value="hevc">HEVC</option>
-                              </select>
+                              <Dropdown
+                                value={o.codec}
+                                title={t('Codec')}
+                                options={[
+                                  { value: 'h264', label: 'H.264' },
+                                  { value: 'hevc', label: 'HEVC' },
+                                ]}
+                                onChange={(v) => editDest<StreamOutput>((d) => void (d.codec = v))}
+                              />
                             </Field>
                           </div>
                           <Group label={t('Background colour')}>
@@ -1988,10 +1922,8 @@ export function Outputs({ mode }: { mode: Mode }) {
                           <div className="set-field">
                             <span className="ux3-row">
                               <OnSwitch on={!!o.hwEncode} onChange={(v) => editDest<StreamOutput>((d) => void (d.hwEncode = v))} label={t('Hardware encoding (GPU)')} />
-                              <InfoTip text={t('VideoToolbox on a Mac, NVENC / Quick Sync / AMF elsewhere; falls back to the processor when none works.')} />
                             </span>
                           </div>
-                          {note(`${t('Streams carry no transparency: the graphics are laid over the background colour.')} ${t('Encoded by ffmpeg, which must be installed on the server.')}`)}
                         </>
                       );
                     })()}
@@ -2118,26 +2050,20 @@ function ratioOf(w: number, h: number): string {
 
 const bitrateLabel = (kbps: number) => (kbps >= 1000 ? `${+(kbps / 1000).toFixed(1)} Mbit/s` : `${kbps} kbit/s`);
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="set-field">
-      <span className="set-label">
-        {label}
-        {hint && <InfoTip text={hint} />}
-      </span>
+      <span className="set-label">{label}</span>
       {children}
     </label>
   );
 }
 
 /** A field holding buttons (a `<label>` would click the first one). */
-function Group({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="set-field">
-      <span className="set-label">
-        {label}
-        {hint && <InfoTip text={hint} />}
-      </span>
+      <span className="set-label">{label}</span>
       {children}
     </div>
   );

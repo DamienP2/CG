@@ -12,7 +12,7 @@ import { findLayer, useDesigner } from '../designer/designerStore';
 import { holdFrame, num as vnum, resolveLayer } from '../engine/evaluate';
 import type { Data, Layer, Template } from '../engine/types';
 import { CanvasHeader } from '../ui/CanvasHeader';
-import { ColorField } from '../ui/fields';
+import { ColorField, Segmented } from '../ui/fields';
 import { parseHex, toHex } from '../engine/evaluate';
 import { Dropdown } from '../ui/Dropdown';
 import { FontPick, WEIGHT_NAMES } from '../ui/FontPick';
@@ -147,14 +147,15 @@ function Editor({ layer, template, data, onClose }: { layer: TL; template: Templ
     <div className="logic-editor te-full" role="dialog" aria-label={t('Table editor: {name}', { name: layer.name })}>
       <CanvasHeader icon={<TableIcon size={15} />} title={layer.name} subject={template.name} onClose={onClose}>
         <span className={`te-chip ${ds || k.link.trim() ? 'data' : ''}`}>{source}</span>
-        <div className="segmented te-seg" title={t('Preview the table with its data, or with sample rows')}>
-          <button className={!sample ? 'on' : ''} onClick={() => setSample(false)}>
-            {t('Live data')}
-          </button>
-          <button className={sample ? 'on' : ''} onClick={() => setSample(true)} disabled={!cols.length}>
-            {t('Sample')}
-          </button>
-        </div>
+        <Segmented
+          className="te-seg"
+          value={sample ? 'sample' : 'live'}
+          onChange={(v) => setSample(v === 'sample')}
+          options={[
+            { value: 'live', label: t('Live data') },
+            { value: 'sample', label: t('Sample'), disabled: !cols.length },
+          ]}
+        />
         <button className="icon-btn ghost" title={t('Undo')} disabled={!past.length} onClick={undo}>
           <Undo2 size={15} />
         </button>
@@ -548,7 +549,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
             ))}
           </div>
         )}
-        {!m.rows.length && !m.cols.length && <p className="te-empty">{t("No columns yet: wire a data set's All rows to the table in the Data canvas, or type rows in Pages, animation, sort › Source.")}</p>}
+        {!m.rows.length && !m.cols.length && <p className="te-empty">{t('No columns yet')}</p>}
       </div>
       {tip && createPortal(<div className="te-readv" style={{ left: tip.x + 14, top: tip.y + 16 }}>{tip.text}</div>, document.body)}
     </div>
@@ -648,7 +649,6 @@ function LinesRows({ path, t: tx }: { path: string; t: CellText }) {
               ['clip', t('Cut')],
             ]}
           />
-          <Note>{tx.multi ? t('The text wraps up to the max lines, then gets smaller; what still does not fit ends with the choice above.') : t('The text first gets narrower, then smaller; what still does not fit ends with the choice above.')}</Note>
         </>
       )}
     </>
@@ -833,7 +833,6 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
               ]}
             />
           )}
-          <Note>{t("Each row takes the colour written in this column (#rrggbb), e.g. the team's colour.")}</Note>
         </Section>
         {k.headerColOn && (
           <Section id="te-rw-hcol" title={t('Header column')}>
@@ -897,11 +896,7 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
             </span>
           ),
         )}
-        {rank ? (
-          <Section id="te-rank" title={t('Column')}>
-            <Note>{t('The position of each row once sorted (1, 2, 3…). Top rows show it in their accent colour.')}</Note>
-          </Section>
-        ) : (
+        {rank ? null : (
           <Section id="te-col" title={t('Column')}>
             <Row label={t('Data')}>
               <Dropdown value={c!.src} options={srcs.length ? srcs.map((v) => ({ value: v, label: v })) : [{ value: '', label: '—' }]} onChange={(v) => set(`${cp}.src`, v)} />
@@ -1068,7 +1063,9 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
             <Row label={t('Rows')}>
               <span className="te-chip data">{dsName ? t('{name} · All rows', { name: dsName }) : t('Linked data')}</span>
             </Row>
-            <Note>{t('{rows} · {cols}. Wired in the Data canvas.', { rows: tn(live.rows.length, '{n} row', '{n} rows'), cols: tn(head.length, '{n} column', '{n} columns') })}</Note>
+            <Note>
+              {tn(live.rows.length, '{n} row', '{n} rows')} · {tn(head.length, '{n} column', '{n} columns')}
+            </Note>
           </>
         ) : (
           <>
@@ -1078,7 +1075,6 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
                 <div className="te-grid">
                   <GridEditor value={k.grid} onChange={setGrid} header csv />
                 </div>
-                {layer.settingBindings?.grid && <Note>{t('The Operator starts from these rows; the operator can type others or import a CSV.')}</Note>}
               </>
             )}
           </>

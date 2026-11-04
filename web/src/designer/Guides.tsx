@@ -1,10 +1,11 @@
-import { Eye, Move, Plus, Trash2 } from 'lucide-react';
+import { Move, Plus, Trash2 } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { newId } from '../engine/evaluate';
 import type { Area, Guides, Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { t } from '../i18n';
+import { NumberField } from '../ui/fields';
 import { displayPref, setDisplayPref, useDisplayPrefs } from '../displayPrefs';
 
 /*
@@ -390,30 +391,21 @@ export function SafeSettings({ project }: { project: Project }) {
   const [g, setG] = useProjectGuides(project);
   const W = project.width;
   const H = project.height;
-  const pctv = (v: number) => Math.round(v * 1000) / 10;
   return (
     <>
       <button className={`btn small ${view.editSafe ? 'primary' : ''}`} data-close onClick={() => view.set({ editSafe: !view.editSafe })}>
         <Move size={13} /> {view.editSafe ? t('Done editing') : t('Edit on the stage')}
       </button>
       <div className="gm-row">
-        <label title={t('Margin on every side; resets a safe area placed by hand')}>
-          {t('Action safe')}
-          <input type="number" min={0} max={40} step={0.5} value={pctv(g.actionSafe)} onChange={(e) => setG({ ...g, actionSafe: Math.max(0, Math.min(40, +e.target.value)) / 100, actionArea: undefined })} />%
-        </label>
-        <label title={t('Margin on every side; resets a safe area placed by hand')}>
-          {t('Title safe')}
-          <input type="number" min={0} max={40} step={0.5} value={pctv(g.titleSafe)} onChange={(e) => setG({ ...g, titleSafe: Math.max(0, Math.min(40, +e.target.value)) / 100, titleArea: undefined })} />%
-        </label>
+        <NumberField label={t('Action safe')} title={t('Margin on every side; resets a safe area placed by hand')} value={g.actionSafe} display={100} precision={1} step={0.5} min={0} max={0.4} suffix="%" onChange={(v) => setG({ ...g, actionSafe: v, actionArea: undefined })} />
+        <NumberField label={t('Title safe')} title={t('Margin on every side; resets a safe area placed by hand')} value={g.titleSafe} display={100} precision={1} step={0.5} min={0} max={0.4} suffix="%" onChange={(v) => setG({ ...g, titleSafe: v, titleArea: undefined })} />
       </div>
-      {(g.actionArea || g.titleArea) && <p className="hint">{t('Placed by hand on the stage; a margin above puts it back in the centre.')}</p>}
       <div className="gm-title">
         {t('Areas to keep clear')}
         <button className="icon-btn ghost" title={t('Add an area (a channel bug top right)')} onClick={() => setG({ ...g, exclusions: [...g.exclusions, { id: newId(), name: t('Channel bug'), x: 0.85, y: 0.05, width: 0.1, height: 0.09 }] })}>
           <Plus size={13} />
         </button>
       </div>
-      {!g.exclusions.length && <p className="hint">{t('None. Add the channel bug, a clock or a sign language box: graphics snap around them.')}</p>}
       {g.exclusions.map((x) => (
         <div key={x.id} className="gm-excl">
           <div className="row">
@@ -427,9 +419,6 @@ export function SafeSettings({ project }: { project: Project }) {
           </span>
         </div>
       ))}
-      <p className="hint">
-        <Eye size={11} /> {t('In px of the main format ({w}×{h}). Edit on the stage to move and resize them.', { w: W, h: H })}
-      </p>
     </>
   );
 }
@@ -453,16 +442,13 @@ export function AreaInspector({ project }: { project: Project }) {
     return (
       <div className="area-inspector">
         <div className="ai-title">{t('Safe areas')}</div>
-        <p className="hint">{t('Click an area on the stage (its label) to see and type its position and size. Esc or Done to leave.')}</p>
       </div>
     );
   const box = { x: area.x, y: area.y, width: area.width, height: area.height };
   const field = (label: string, key: keyof Area, size: number) => (
-    <label className="ai-field">
-      <span>{label}</span>
-      <input type="number" value={Math.round(box[key] * size)} onChange={(e) => set({ ...box, [key]: Math.max(0, Math.min(size, +e.target.value)) / size })} />
-      <em>px</em>
-    </label>
+    <div className="ai-field">
+      <NumberField label={label} value={box[key] * size} min={0} max={size} suffix="px" onChange={(v) => set({ ...box, [key]: v / size })} />
+    </div>
   );
   return (
     <div className="area-inspector">
@@ -479,9 +465,9 @@ export function AreaInspector({ project }: { project: Project }) {
         {field(t('W'), 'width', W)}
         {field('H', 'height', H)}
       </div>
-      <p className="hint">
-        {t('In px of the main format ({w}×{h}). {pw} % × {ph} % of the picture.', { w: W, h: H, pw: Math.round(box.width * 100), ph: Math.round(box.height * 100) })}
-      </p>
+      <span className="muted small">
+        {Math.round(box.width * 100)} % × {Math.round(box.height * 100)} %
+      </span>
       {x ? (
         <button
           className="btn small"

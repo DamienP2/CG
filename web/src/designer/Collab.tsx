@@ -105,7 +105,7 @@ export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock
         </h2>
         {confirm ? (
           <>
-            <p>{t('{user} switches to read only and is told that you took over. A change they made in the last second may be lost.', { user: holder.userName })}</p>
+            <p>{t('Their last-second change may be lost.')}</p>
             <div className="row end">
               <button className="btn" onClick={() => setConfirm(false)}>
                 {t('Cancel')}
@@ -117,7 +117,6 @@ export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock
           </>
         ) : (
           <>
-            <p>{t('You see their changes live. Take over to edit it yourself, or open another template.')}</p>
             <div className="row end">
               <button className="btn warn" onClick={() => (own ? onTakeOver() : setConfirm(true))}>
                 {own ? t('Take over') : t('Take over…')}

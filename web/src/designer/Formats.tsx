@@ -8,6 +8,7 @@ import { api, useApp } from '../store';
 import { useDesigner } from './designerStore';
 import { confirmDialog } from '../ui/dialogs';
 import { t, tn } from '../i18n';
+import { NumberField } from '../ui/fields';
 
 const PRESETS = [
   { id: 'vertical', name: '9:16', width: 1080, height: 1920, hint: 'Stories, Reels, TikTok, Shorts' },
@@ -88,7 +89,6 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
             <X size={16} />
           </button>
         </header>
-        <p className="hint">{t('Each template gets a first layout in the new format, made from the main one. Refine it afterwards: changes made in a format stay in that format.')}</p>
 
         <div className="fmt-grid">
           {PRESETS.map((p) => {
@@ -109,15 +109,15 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
             <span className="set-label">{t('Name')}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </label>
-          <label className="set-field">
+          <div className="set-field">
             <span className="set-label">{t('Width')}</span>
-            <input type="number" min={16} max={7680} value={w} onChange={(e) => (setW(+e.target.value), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
-          </label>
+            <NumberField min={16} max={7680} value={w} onChange={(v) => (setW(v), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
+          </div>
           <span className="fmt-x">×</span>
-          <label className="set-field">
+          <div className="set-field">
             <span className="set-label">{t('Height')}</span>
-            <input type="number" min={16} max={7680} value={h} onChange={(e) => (setH(+e.target.value), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
-          </label>
+            <NumberField min={16} max={7680} value={h} onChange={(v) => (setH(v), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
+          </div>
         </div>
 
         <div className="fmt-compare">
@@ -200,7 +200,7 @@ export function FormatBar({ project }: { project: Project }) {
           <button
             className="tool-link"
             disabled={readOnly}
-            title={t("Generate this template's layout again from the main format (replaces its changes in this format)")}
+            title={t('Regenerate from the main format (replaces its changes here)')}
             onClick={async () => {
               if (!(await confirmDialog({ title: t('Re-adapt “{name}” to {format}?', { name: base.name, format: current.name }), message: t('Its changes in {format} are replaced by a new layout made from the main format.', { format: current.name }), confirm: t('Re-adapt'), danger: true }))) return;
               const adapted = adaptTemplate(base, project, current);

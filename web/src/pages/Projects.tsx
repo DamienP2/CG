@@ -98,7 +98,7 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
       <form className="modal" onSubmit={create} onPointerDown={(e) => e.stopPropagation()}>
         <header>
           <h2>{from ? t('Duplicate “{name}”', { name: from.name }) : t('New project')}</h2>
-          <button type="button" className="icon-btn ghost" onClick={onClose}>
+          <button type="button" className="icon-btn ghost" title={t('Close')} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
@@ -114,7 +114,6 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
           <div className="set-field">
             <span className="set-label">{t('Design format')}</span>
             <FormatButtons width={size.width} height={size.height} rate={rate} onSize={(width, height) => setSize({ width, height })} onRate={setRate} />
-            <span className="set-hint">{t('Channels in another format scale the graphics to fit.')}</span>
           </div>
         )}
         <footer>
@@ -561,7 +560,7 @@ export function Projects() {
             ),
           ),
         )}
-        {!folders.folders.length && <p className="lib-nav-hint">{design ? t('Create folders to sort your shows, then drag projects onto them.') : t('No folder.')}</p>}
+        {!folders.folders.length && <p className="lib-nav-hint">{t('No folder')}</p>}
       </aside>
 
       <main className="library">
@@ -598,7 +597,6 @@ export function Projects() {
                   <CheckSquare size={13} /> {t('Select all ({n})', { n: shown.length })}
                 </button>
               )}
-              {selected.size === 0 && <span className="ux3-pick-hint">{t('Click the projects to select')}</span>}
               <div className="spacer" />
               <div className="menu-wrap">
                 <button className="btn small" disabled={busy || !selected.size} onClick={() => setMenu(menu === '@bulk' ? null : '@bulk')}>
@@ -813,7 +811,7 @@ export function Projects() {
             {shown.length === 0 && (
               <div className="empty big">
                 <Radio size={22} />
-                <p>{q ? t('No project matches.') : t('No project here.')}</p>
+                <p>{q ? t('No match') : t('No project')}</p>
               </div>
             )}
           </div>

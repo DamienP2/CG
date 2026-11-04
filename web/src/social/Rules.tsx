@@ -1,8 +1,9 @@
 import { Plus, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { locale, t, tc, tn } from '../i18n';
 import { promptDialog } from '../ui/dialogs';
 import { Dropdown } from '../ui/Dropdown';
+import { NumberField } from '../ui/fields';
 import { save, type Action, type Desk, type Rules } from './socialStore';
 
 /*
@@ -177,16 +178,11 @@ function Words({ items, label = (s) => s, onChange, onAdd, first }: { items: str
 
 /** A small number, saved when left. */
 function Num({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (n: number) => void }) {
-  const [v, setV] = useState(String(value));
-  useEffect(() => setV(String(value)), [value]);
-  const done = () => {
-    const n = Math.round(Number(v));
-    if (!Number.isFinite(n)) return setV(String(value));
-    const c = Math.min(max, Math.max(min, n));
-    setV(String(c));
-    if (c !== value) onChange(c);
-  };
-  return <input className="mod-num" type="number" min={min} max={max} value={v} onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />;
+  return (
+    <span className="mod-num">
+      <NumberField value={value} min={min} max={max} onChange={(n) => Math.round(n) !== value && onChange(Math.round(n))} />
+    </span>
+  );
 }
 
 /** Two handles on 0..1: "to check" from `low`, rejected from `high`. */

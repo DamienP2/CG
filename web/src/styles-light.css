@@ -58,7 +58,9 @@
     .seq-frame,
     .lib-im,
     .opx-addpic,
-    .dc-thumb
+    .dc-thumb,
+    .vs-preview,
+    .log-box
   ) {
   --bg: #0b0c12;
   --panel: #12141d;

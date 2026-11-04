@@ -713,7 +713,7 @@ export default defineWidget({
   group: 'Data',
   icon: Keyboard,
   create: () => ({
-    text: 'Le Parlement adopte la réforme après quatorze heures de débat.',
+    text: t('Parliament passes the reform after fourteen hours of debate.'),
     speed: 32,
     cursor: true,
     fontFamily: 'Inter',

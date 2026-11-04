@@ -2,9 +2,10 @@ import { Cpu, Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
-import { InfoTip } from '../ui/InfoTip';
+import { Dropdown } from '../ui/Dropdown';
+import { NumberField } from '../ui/fields';
 import { inputMessage as messageText, useLiveFrame } from '../engine/liveInputs';
-import type { InputConfig, InputInfo, InputKind, ServerConfig } from './types';
+import { KIND_COLOR, type InputConfig, type InputInfo, type InputKind, type ServerConfig } from './types';
 import { useMetrics, type InputMetrics } from '../engine/metrics';
 import { corePct, fps as fpsText, fpsTone, inputTone, num } from '../perf/format';
 import '../perf/perf.css';
@@ -20,7 +21,7 @@ import { NdiPicker } from './NdiPicker';
  * bar of the page); the server restarts only the inputs that changed.
  */
 
-const COLOR = '#a78bfa';
+const COLOR = KIND_COLOR.input;
 
 /** Labels translated where shown. */
 const KINDS: { value: InputKind; label: string; badge: string }[] = [
@@ -47,14 +48,14 @@ const LATENCIES = [20, 40, 80, 120, 200, 300, 500, 1000, 2000];
 const canListen = (k: InputKind) => k === 'srt' || k === 'rtmp';
 
 /** SRT: Strata calls the sender, or waits for it; RTMP: Strata pulls, or the encoder pushes. Labels translated where shown. */
-const MODES: Partial<Record<InputKind, { listen: boolean; label: string; hint: string }[]>> = {
+const MODES: Partial<Record<InputKind, { listen: boolean; label: string }[]>> = {
   srt: [
-    { listen: false, label: 'Caller', hint: 'Strata connects to the sender, which must be listening.' },
-    { listen: true, label: 'Listener', hint: 'Strata waits for the sender to connect.' },
+    { listen: false, label: 'Caller' },
+    { listen: true, label: 'Listener' },
   ],
   rtmp: [
-    { listen: false, label: 'Pull', hint: 'Strata pulls the stream from a server.' },
-    { listen: true, label: 'Listen', hint: 'The encoder pushes the stream to Strata.' },
+    { listen: false, label: 'Pull' },
+    { listen: true, label: 'Listen' },
   ],
 };
 const modeOf = (c: Pick<InputConfig, 'kind' | 'listen'>) => MODES[c.kind]?.find((m) => m.listen === !!c.listen);
@@ -90,24 +91,6 @@ function modeDefault(c: Pick<InputConfig, 'kind' | 'listen' | 'url'>): string {
   const port = /:(\d+)(?:[/?]|$)/.exec(c.url)?.[1] ?? '9000';
   if (c.kind === 'srt') return c.listen ? `srt://0.0.0.0:${port}` : `srt://host:${port}`;
   return placeholder(c);
-}
-
-function addressHint(c: InputConfig): string {
-  const host = location.hostname;
-  switch (c.kind) {
-    case 'srt':
-      return t("The sender's address, e.g. srt://host:9000 (it must be listening).");
-    case 'udp':
-      return t('udp://@239.1.1.1:5000 to join a multicast group, or udp://0.0.0.0:5000 for packets sent to this server.');
-    case 'rtmp':
-      return c.listen ? t('Senders push to rtmp://{host}:1935/live/cam1: set the address to rtmp://0.0.0.0:1935/live/cam1.', { host }) : t('The stream to pull, e.g. rtmp://server/app/key.');
-    case 'hls':
-      return t('The playlist, e.g. https://…/index.m3u8.');
-    case 'rtsp':
-      return t("The camera's stream, e.g. rtsp://camera/stream.");
-    default:
-      return t('Anything ffmpeg reads: an address (http, rtp, srt…) or a file on the server.');
-  }
 }
 
 
@@ -209,10 +192,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
     <div className="outputs-page">
       <aside className="lib-nav">
         <div className="lib-nav-section">
-          <span className="grow">
-            {t('Inputs')}
-            <InfoTip text={t('Cameras, encoders, NDI or SDI sources coming into the server. The Video widget shows them in the graphics.')} />
-          </span>
+          <span className="grow">{t('Inputs')}</span>
           <button className="icon-btn ghost" title={t('Add an input')} onClick={add}>
             <Plus size={14} />
           </button>
@@ -260,7 +240,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
             {inputs.length === 0 ? (
               <div className="vs-empty">
                 <VideoOff size={28} />
-                <p>{t('No input yet. Add an SRT, RTMP or NDI source, a camera… and show it with the Video widget.')}</p>
+                <p>{t('No input')}</p>
                 <button className="btn primary" onClick={add}>
                   <Plus size={14} /> {t('Add an input')}
                 </button>
@@ -293,7 +273,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
           </div>
 
           <aside className="oc-inspector">
-            {current ? (
+            {current && (
               <Inspector
                 input={current}
                 state={stateOf(current)}
@@ -304,8 +284,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                 setKind={setKind}
                 remove={remove}
               />
-            ) : (
-              <p className="oc-hint">{t('Add an input to set it up here.')}</p>
             )}
           </aside>
         </div>
@@ -381,27 +359,25 @@ function Inspector({
         </div>
       )}
 
-      <Field label={t('Name')} hint={t('How the Video widget lists it.')}>
+      <Field label={t('Name')}>
         <input value={i.name} onChange={(e) => editInput((x) => void (x.name = e.target.value))} />
       </Field>
       <Field label={t('Type')}>
-        <select value={i.kind} onChange={(e) => setKind(e.target.value as InputKind)}>
-          {KINDS.map((k) => {
+        <Dropdown
+          value={i.kind}
+          title={t('Type')}
+          options={KINDS.map((k) => {
             const missing = needsHardware(k.value) && !hwChoices(k.value).length && k.value !== i.kind;
-            return (
-              <option key={k.value} value={k.value} disabled={missing}>
-                {t(k.label)}
-                {missing ? ` — ${k.value === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware')}` : ''}
-              </option>
-            );
+            return { value: k.value, label: t(k.label), disabled: missing, sub: missing ? (k.value === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware')) : undefined };
           })}
-        </select>
+          onChange={setKind}
+        />
       </Field>
 
       {isStream(i.kind) && (
         <>
           {canListen(i.kind) && (
-            <Group label={t('Mode')} hint={t(modeOf(i)?.hint ?? '')}>
+            <Group label={t('Mode')}>
               <div className="seg vs-seg">
                 {MODES[i.kind]!.map((m) => (
                   <button
@@ -431,24 +407,22 @@ function Inspector({
             </Group>
           )}
           {byPort(i) ? (
-            <Field label={t('Port')} hint={t('The sender calls srt://{host}:{port}.', { host: location.hostname, port })}>
-              <input type="number" min={1} max={65535} value={port} onChange={(e) => editInput((x) => void ((x.port = Math.max(1, Math.min(65535, Math.round(+e.target.value) || 0))), (x.url = '')))} />
-            </Field>
+            <Group label={t('Port')}>
+              <NumberField value={port} min={1} max={65535} title={`srt://${location.hostname}:${port}`} onChange={(v) => editInput((x) => void ((x.port = Math.max(1, Math.min(65535, Math.round(v) || 0))), (x.url = '')))} />
+            </Group>
           ) : (
-            <Field label={t('Address')} hint={addressHint(i)}>
+            <Field label={t('Address')}>
               <input value={i.url} placeholder={placeholder(i)} spellCheck={false} onChange={(e) => editInput((x) => void (x.url = e.target.value))} />
             </Field>
           )}
           {i.kind === 'srt' && (
-            <Field label={t('Latency')} hint={t('SRT latency: the time allowed to recover lost packets (about 3–4× the network round trip).')}>
-              <select value={i.latency ?? 120} onChange={(e) => editInput((x) => void (x.latency = +e.target.value))}>
-                {!LATENCIES.includes(i.latency ?? 120) && <option value={i.latency}>{i.latency} ms</option>}
-                {LATENCIES.map((ms) => (
-                  <option key={ms} value={ms}>
-                    {ms} ms
-                  </option>
-                ))}
-              </select>
+            <Field label={t('Latency')}>
+              <Dropdown
+                value={String(i.latency ?? 120)}
+                title={t('Latency')}
+                options={[...(LATENCIES.includes(i.latency ?? 120) ? [] : [i.latency ?? 120]), ...LATENCIES].map((ms) => ({ value: String(ms), label: `${ms} ms` }))}
+                onChange={(v) => editInput((x) => void (x.latency = Number(v)))}
+              />
             </Field>
           )}
         </>
@@ -480,37 +454,36 @@ function Inspector({
 
       {needsHardware(i.kind) && (
         <>
-          <Field label={i.kind === 'sdi' ? t('SDI input') : t('ST 2110 flow')} hint={i.kind === 'sdi' ? t('The connectors declared in Hardware.') : t('The multicast addresses are set in Hardware.')}>
-            <select value={i.hardware ?? ''} onChange={(e) => editInput((x) => void (x.hardware = e.target.value))}>
-              {!choices.some((c) => c.id === i.hardware) && <option value="">{t('— choose —')}</option>}
-              {choices.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+          <Field label={i.kind === 'sdi' ? t('SDI input') : t('ST 2110 flow')}>
+            <Dropdown
+              value={i.hardware ?? ''}
+              title={i.kind === 'sdi' ? t('SDI input') : t('ST 2110 flow')}
+              options={[...(choices.some((c) => c.id === i.hardware) ? [] : [{ value: '', label: t('— choose —') }]), ...choices.map((c) => ({ value: c.id, label: c.name }))]}
+              onChange={(v) => editInput((x) => void (x.hardware = v))}
+            />
           </Field>
           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate(i.kind === 'st2110' ? '/hardware#st2110' : '/hardware')}>
             <Cpu size={13} /> {t('Edit in Hardware')}
           </button>
-          <Hint>{i.kind === 'sdi' ? t('SDI inputs need a server built with DeckLink support.') : t('Receiving ST 2110 is not available yet.')}</Hint>
+          {i.kind === 'st2110' && <Hint>{t('Receiving ST 2110 is not available yet.')}</Hint>}
         </>
       )}
 
-      <Field label={t('Jitter buffer')} hint={t('Absorbs network jitter: each frame adds one frame of delay.')}>
-        <select value={i.buffer ?? 2} onChange={(e) => editInput((x) => void (x.buffer = +e.target.value))}>
-          {!BUFFERS.includes(i.buffer ?? 2) && <option value={i.buffer}>{tn(i.buffer, '{n} frame', '{n} frames')}</option>}
-          {BUFFERS.map((b) => (
-            <option key={b} value={b}>
-              {b === 0 ? t('0 (lowest latency)') : tn(b, '{n} frame', '{n} frames')}
-              {b > 0 && isStream(i.kind) && (state.info?.fps ?? 0) > 0 ? ` · ${Math.round((b * 1000) / state.info!.fps!)} ms` : ''}
-            </option>
-          ))}
-        </select>
+      <Field label={t('Jitter buffer')}>
+        <Dropdown
+          value={String(i.buffer ?? 2)}
+          title={t('Jitter buffer')}
+          options={[...(BUFFERS.includes(i.buffer ?? 2) ? [] : [i.buffer ?? 2]), ...BUFFERS].map((b) => ({
+            value: String(b),
+            label: b === 0 ? t('0 (lowest latency)') : tn(b, '{n} frame', '{n} frames'),
+            note: b > 0 && isStream(i.kind) && (state.info?.fps ?? 0) > 0 ? `${Math.round((b * 1000) / state.info!.fps!)} ms` : undefined,
+          }))}
+          onChange={(v) => editInput((x) => void (x.buffer = Number(v)))}
+        />
       </Field>
 
       {isStream(i.kind) && (
-        <Group label={t('Decoding: GPU / CPU')} hint={i.hwDecode ? t('Frees the processor. When the machine has no GPU decoder for this stream, ffmpeg falls back to the processor.') : t('Decoded by the processor.')}>
+        <Group label={t('Decoding: GPU / CPU')}>
           <div className="seg vs-seg">
             {[true, false].map((gpu) => (
               <button key={String(gpu)} type="button" className={!!i.hwDecode === gpu ? 'on' : ''} onClick={() => editInput((x) => void (x.hwDecode = gpu))}>
@@ -547,26 +520,20 @@ function Preview({ id, live }: { id: string; live: boolean }) {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="set-field">
-      <span className="set-label">
-        {label}
-        {hint && <InfoTip text={hint} />}
-      </span>
+      <span className="set-label">{label}</span>
       {children}
     </label>
   );
 }
 
 /** A field holding buttons (a `<label>` would click the first one). */
-function Group({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="set-field">
-      <span className="set-label">
-        {label}
-        {hint && <InfoTip text={hint} />}
-      </span>
+      <span className="set-label">{label}</span>
       {children}
     </div>
   );

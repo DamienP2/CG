@@ -128,7 +128,7 @@ function Overview() {
           ))}
         </div>
       ) : (
-        <div className="hl-empty">{t('No incident: no crash in 30 days, no error or warning in 24 hours.')}</div>
+        <div className="hl-empty">{t('No incident')}</div>
       )}
     </>
   );

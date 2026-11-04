@@ -1,7 +1,6 @@
 import { BookOpen, Download, FileJson, Hash, KeyRound, LayoutGrid } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t, tc, tn } from '../i18n';
-import { InfoTip } from '../ui/InfoTip';
 import { api } from '../store';
 import { ApiButtons } from './ApiButtons';
 import { ApiOverview, ApiTag, useApiSpec } from './ApiDocs';
@@ -46,12 +45,7 @@ export function ApiPage() {
       <>
         <PageHead
           title={t('API keys')}
-          sub={
-            <>
-              {t('Permanent keys for Companion, newsroom systems and scripts.')}
-              <InfoTip text={`${t('For automation (Companion / Stream Deck, newsroom systems, scripts): send')} Authorization: Bearer pcg_…. ${t('A key acts with the rights of its user — create a dedicated operator account scoped to the right channels for each system.')}`} />
-            </>
-          }
+          sub={tn(keys.length, '{n} key', '{n} keys')}
         />
         <ApiKeys keys={keys} reload={loadKeys} />
       </>
@@ -70,7 +64,7 @@ export function ApiPage() {
           }
           sub={
             <>
-              OpenAPI 3.1: <a href="/api/openapi.json">/api/openapi.json</a> — {t('import it into Postman, Insomnia or a code generator.')}
+              OpenAPI 3.1: <a href="/api/openapi.json">/api/openapi.json</a>
             </>
           }
         />

@@ -4,6 +4,7 @@ import type { Data, Field, FieldBinding, Template } from '../engine/types';
 import { navigate } from '../router';
 import { api, useApp } from '../store';
 import { JsonTree } from './JsonTree';
+import { Dropdown } from '../ui/Dropdown';
 import { readBinding, useData, useProjectSources } from './dataStore';
 import { t } from '../i18n';
 
@@ -61,29 +62,25 @@ export function BindingEditor({
     <div className="binding">
       <div className="row">
         <Link2 size={12} className="binding-icon" />
-        <select value={b.source} onChange={(e) => onChange({ ...b, source: e.target.value })}>
-          {!sources.some((s) => s.id === b.source) && <option value={b.source}>{b.source ? t('(missing: {source})', { source: b.source }) : t('— source —')}</option>}
-          {sources.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          value={b.source}
+          options={[...(sources.some((s) => s.id === b.source) ? [] : [{ value: b.source, label: b.source ? t('(missing: {source})', { source: b.source }) : t('— source —') }]), ...sources.map((s) => ({ value: s.id, label: s.name }))]}
+          onChange={(source) => onChange({ ...b, source })}
+        />
         <button className="icon-btn ghost" title={t('Unlink')} onClick={() => onChange(null)}>
           <Link2Off size={12} />
         </button>
       </div>
       {!sources.length && (
         <p className="hint">
-          {t('No data source yet: create one in Connectors (this project) or in the main menu,')}{' '}
+          {t('No data source')} ·{' '}
           <a href="/data" onClick={(e) => (e.preventDefault(), navigate('/data'))}>
             {t('Data')}
-          </a>{' '}
-          {t('(shared).')}
+          </a>
         </p>
       )}
       <div className="row">
-        <input className="mono" placeholder={t('path, e.g. items[0].title')} value={b.path} onChange={(e) => onChange({ ...b, path: e.target.value })} onKeyDown={(e) => e.stopPropagation()} />
+        <input className="mono" placeholder="items[0].title" value={b.path} onChange={(e) => onChange({ ...b, path: e.target.value })} onKeyDown={(e) => e.stopPropagation()} />
         <button className="icon-btn ghost" title={t("Pick in the source's value")} disabled={!b.source} onClick={() => setPicking(true)}>
           <ListTree size={13} />
         </button>
@@ -130,7 +127,7 @@ export function PickDialog({ source, path, onPick, onClose }: { source: string; 
           <ListTree size={15} />
           <h2>{t('{name}: pick a value', { name })}</h2>
           <div className="spacer" />
-          <button className="icon-btn ghost" onClick={onClose}>
+          <button className="icon-btn ghost" title={t('Close')} onClick={onClose}>
             <X size={15} />
           </button>
         </header>

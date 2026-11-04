@@ -45,7 +45,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { childrenMap } from '../engine/Scene';
 import { newId, num, propValue } from '../engine/evaluate';
 import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template } from '../engine/types';
-import { NumberField } from '../ui/fields';
+import { NumberField, Segmented } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
 import { onTimeline, setOnTimeline } from '../engine/timelineProps';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
@@ -716,11 +716,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             <SkipForward size={15} />
           </button>
         </div>
-        <button className={`btn small tl-loop ${loop ? 'on' : ''}`} title={t('Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (K resumes).')} aria-label={t('Loop')} onClick={() => st.set({ loop: !loop })}>
+        <button className={`btn small tl-loop ${loop ? 'on' : ''}`} title={t('Loop (off: stops on On air, Pause and Out)')} aria-label={t('Loop')} onClick={() => st.set({ loop: !loop })}>
           <Repeat size={13} />
         </button>
         <KeysMenu />
-        <button className="btn small mk-pause" title={t('Add a pause at the playhead: playback stops there and resumes on Continue, after a delay or on a trigger (click the marker to set it)')} onClick={addPause}>
+        <button className="btn small mk-pause" title={t('Add a pause at the playhead')} onClick={addPause}>
           <Flag size={13} /> {t('Pause')}
         </button>
         {/* The playhead's time, in the middle of the room between Pause and Zoom. */}
@@ -797,7 +797,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                     key={m.id}
                     className={`tl-marker ${role} ${moving ? 'moving' : ''} ${editing?.id === m.id ? 'editing' : ''}`}
                     style={{ left: Math.min(m.frame, template.duration) * zoom }}
-                    title={t('{name} · {time} — drag to move, click to edit, double-click to go there', { name: role === 'onair' ? t('End of IN, start of OUT: the take holds here on air') : m.name, time: formatTime(m.frame, fps) })}
+                    title={`${role === 'onair' ? t('End of IN, start of OUT: the take holds here on air') : m.name} · ${formatTime(m.frame, fps)}`}
                     onPointerDown={(e) => dragMarker(e, m.id)}
                     onDoubleClick={() => st.setFrame(m.frame)}
                   >
@@ -906,29 +906,21 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
       <>
           <div className="me-field">
             <span>{onAir ? tc('marker', 'Out') : t('Resume')}</span>
-            <div className="seg">
-              {(
-                [
-                  ['manual', 'Operator'],
-                  ['after', 'After'],
-                  ['trigger', 'Trigger'],
-                ] as const
-              ).map(([k, label]) => (
-                <button
-                  key={k}
-                  className={resume.type === k || (k === 'trigger' && resume.type === 'triggers') ? 'on' : ''}
-                  onClick={() =>
-                    edit((x) => {
-                      if (k === 'manual') delete x.resume;
-                      else if (k === 'after') x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : onAir ? 5 : 2 };
-                      else if (resume.type !== 'trigger' && resume.type !== 'triggers') x.resume = { type: 'trigger', name: 'next' };
-                    })
-                  }
-                >
-                  {t(label)}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              value={resume.type === 'triggers' ? 'trigger' : resume.type}
+              options={[
+                { value: 'manual', label: t('Operator') },
+                { value: 'after', label: t('After') },
+                { value: 'trigger', label: t('Trigger') },
+              ]}
+              onChange={(k) =>
+                edit((x) => {
+                  if (k === 'manual') delete x.resume;
+                  else if (k === 'after') x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : onAir ? 5 : 2 };
+                  else if (resume.type !== 'trigger' && resume.type !== 'triggers') x.resume = { type: 'trigger', name: 'next' };
+                })
+              }
+            />
           </div>
           {resume.type === 'after' && (
             <label className="me-field">
@@ -939,14 +931,14 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
           {(resume.type === 'trigger' || resume.type === 'triggers') && (
             <div className="me-field">
               <span>{t('By')}</span>
-              <div className="seg">
-                <button className={resume.type === 'trigger' ? 'on' : ''} onClick={() => edit((x) => void (x.resume = { type: 'trigger', name: 'next' }))}>
-                  {tc('trigger', 'Name')}
-                </button>
-                <button className={resume.type === 'triggers' ? 'on' : ''} onClick={() => resume.type !== 'triggers' && toLogic()}>
-                  {t('Logic')}
-                </button>
-              </div>
+              <Segmented
+                value={resume.type}
+                options={[
+                  { value: 'trigger', label: tc('trigger', 'Name') },
+                  { value: 'triggers', label: t('Logic') },
+                ]}
+                onChange={(v) => (v === 'trigger' ? edit((x) => void (x.resume = { type: 'trigger', name: 'next' })) : resume.type !== 'triggers' && toLogic())}
+              />
             </div>
           )}
           {resume.type === 'trigger' && (
@@ -967,21 +959,6 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               <Link2 size={14} /> {t('Open the Logic')}
               <small>{tn(events, '{n} event', '{n} events')}</small>
             </button>
-          )}
-          {resume.type !== 'triggers' && (
-          <p className="hint">
-            {onAir
-              ? resume.type === 'manual'
-                ? t('Stays on air until Take out.')
-                : resume.type === 'after'
-                  ? t('Goes out by itself after the delay.')
-                  : t('Stays on air until this trigger is fired, then goes out: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.')
-              : resume.type === 'manual'
-                ? t('Holds until the operator presses Continue.')
-                : resume.type === 'after'
-                  ? t('Holds, then plays on by itself after the delay.')
-                  : t('Holds until this trigger is fired: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.')}
-          </p>
           )}
           {!onAir && (
           <div className="row end">
@@ -1095,7 +1072,7 @@ const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Vi
   { type: 'progress', label: 'Progress bar' },
   { type: 'map', label: 'Map' },
   { type: 'qrCode', label: 'QR code' },
-  { label: 'Video', soon: Video, action: 'video', hint: 'A video file (mp4, mov, webm…; alpha kept) played as frames, at most a minute' },
+  { label: 'Video', soon: Video, action: 'video', hint: 'A video file (mp4, mov, webm…), at most a minute' },
   { type: 'web', label: 'Iframe', soon: Code, hint: 'A web page or your HTML code (HTML5 outputs)' },
   { label: 'Animation (Lottie)', soon: Sparkles, action: 'lottie', hint: 'A Lottie / Bodymovin file (.json, .zip, .lottie) added as layers' },
   { type: 'scoreboard', label: 'Scoreboard' },

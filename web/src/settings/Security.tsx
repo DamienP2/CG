@@ -7,7 +7,7 @@ import type { CertInfo, HttpsConfig, ServerConfig, SsoConfig, TlsStatus } from '
 import { api, useApp } from '../store';
 import { t } from '../i18n';
 import { Dropdown } from '../ui/Dropdown';
-import { Segmented } from '../ui/fields';
+import { NumberField, Segmented } from '../ui/fields';
 import { Card, Field } from './ui';
 
 const HTTPS_DEFAULT: HttpsConfig = { mode: 'off', port: 8443, http: 'redirect' };
@@ -172,14 +172,14 @@ export function SecurityPage({ cfg, edit }: { cfg: ServerConfig; edit: (fn: (c: 
           {https.mode !== 'off' && (
             <>
               <Field label={t('HTTPS port')}>
-                <input type="number" min={1} max={65535} value={https.port} onChange={(e) => setHttps((h) => void (h.port = Math.max(1, Math.min(65535, +e.target.value || 0))))} />
+                <NumberField value={https.port} min={1} max={65535} onChange={(v) => setHttps((h) => void (h.port = Math.max(1, Math.min(65535, Math.round(v) || 0))))} />
               </Field>
               <Field label="HTTP">
                 <Segmented
                   value={https.http}
                   onChange={(http) => setHttps((h) => void (h.http = http))}
                   options={[
-                    { value: 'redirect', label: t('To HTTPS, but this PC and HTML5 outputs'), title: t('Pages go to HTTPS; the server itself and the HTML5 output pages stay in HTTP.') },
+                    { value: 'redirect', label: t('To HTTPS, but this PC and HTML5 outputs') },
                     { value: 'httpsOnly', label: t('Everything in HTTPS') },
                     { value: 'open', label: t('HTTP stays open') },
                   ]}
@@ -200,7 +200,7 @@ export function SecurityPage({ cfg, edit }: { cfg: ServerConfig; edit: (fn: (c: 
             </Field>
           )}
           {https.mode === 'custom' && (
-            <Field label={t('My certificate')} hint={t('PEM files: the certificate (with its chain) and its private key.')}>
+            <Field label={t('My certificate')}>
               <div className="sec-row">
                 {tls?.custom && <Cert c={tls.custom} />}
                 <div className="sec-picks">
@@ -231,16 +231,16 @@ export function SecurityPage({ cfg, edit }: { cfg: ServerConfig; edit: (fn: (c: 
             <Field label={t('Provider')}>
               <Segmented value={sso.provider} onChange={(p) => setSso((s) => void (s.provider = p))} options={PROVIDERS.map((p) => ({ value: p.value, label: p.value === 'other' ? t('Other') : p.label }))} />
             </Field>
-            <Field label={t('Issuer')} hint={t('Its /.well-known/openid-configuration is read.')}>
+            <Field label={t('Issuer')}>
               <input value={sso.issuer} placeholder={provider.issuer} spellCheck={false} onChange={(e) => setSso((s) => void (s.issuer = e.target.value.trim()))} />
             </Field>
-            <Field label="Client ID">
+            <Field label={t('Client ID')}>
               <input value={sso.clientId} spellCheck={false} onChange={(e) => setSso((s) => void (s.clientId = e.target.value.trim()))} />
             </Field>
             <Field label={t('Secret')}>
               <input type="password" value={sso.clientSecret} autoComplete="new-password" onChange={(e) => setSso((s) => void (s.clientSecret = e.target.value))} />
             </Field>
-            <Field label={t('Return URL')} hint={t('To declare in the application of the directory.')}>
+            <Field label={t('Return URL')}>
               <div className="sec-row">
                 <code className="sec-url">{callback}</code>
                 <button
@@ -260,7 +260,7 @@ export function SecurityPage({ cfg, edit }: { cfg: ServerConfig; edit: (fn: (c: 
             <Field label={t('Groups claim')}>
               <input value={sso.groupsClaim} placeholder="groups" spellCheck={false} onChange={(e) => setSso((s) => void (s.groupsClaim = e.target.value.trim()))} />
             </Field>
-            <Field label={t('Roles by group')} hint={t('The group as the token gives it (Entra: its object ID, unless the application sends names).')}>
+            <Field label={t('Roles by group')}>
               <div className="sec-groups">
                 {sso.groups.map((g, i) => (
                   <div key={i} className="sec-group">
@@ -287,7 +287,7 @@ export function SecurityPage({ cfg, edit }: { cfg: ServerConfig; edit: (fn: (c: 
                 ]}
               />
             </Field>
-            <Field label={t('Local accounts')} hint={t('This server itself can always sign in with a password.')}>
+            <Field label={t('Local accounts')}>
               <Segmented
                 value={sso.localAccounts}
                 onChange={(v) => setSso((s) => void (s.localAccounts = v))}

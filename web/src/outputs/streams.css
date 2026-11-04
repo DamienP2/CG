@@ -130,8 +130,8 @@
   padding: 0;
   border-radius: 11px;
   overflow: hidden;
-  background: #151824;
-  border: 1px solid #2a2f44;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
   color: var(--text);
   font: inherit;
@@ -178,7 +178,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #4b5070;
+  color: var(--text-3);
   background: repeating-linear-gradient(135deg, #0b0d14 0 12px, #0e1019 12px 24px);
 }
 /* The last picture stays under the label when the signal goes. */
@@ -219,7 +219,7 @@
   flex: none;
   font-family: var(--mono);
   font-size: 11px;
-  color: #8b90aa;
+  color: var(--text-3);
 }
 .vs-big .vs-preview {
   border-radius: 9px;
@@ -549,7 +549,7 @@
   text-align: right;
 }
 .oc-src-check > div.bad > span:last-child {
-  color: #fcd38d;
+  color: var(--t-yellow, #fcd34d);
 }
 
 /* NDI source picker: a picture of each source, grouped by machine. */
@@ -740,4 +740,11 @@
 }
 .ndi-sel b {
   color: var(--text);
+}
+
+/* Drop-downs of the inspectors: the height of their text fields. */
+.oc-inspector .set-field > .dd-btn {
+  height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
 }

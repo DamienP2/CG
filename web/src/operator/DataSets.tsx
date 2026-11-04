@@ -31,6 +31,8 @@ import {
 import { useApp } from "../store";
 import { t } from "../i18n";
 import { Pager, usePaged } from "./Paged";
+import { Dropdown } from "../ui/Dropdown";
+import { NumberField } from "../ui/fields";
 
 /*
  * The data sets of a graphic in the Operator's Data block: its rows, the
@@ -360,8 +362,8 @@ export function DataSetPanel({
               disabled={!operate}
               onClick={() => set({ [changeKey(ds.key)]: x.id })}
             >
-              {/* OUT › IN and CUT keep their broadcast names. */}
-              {x.id === "fade" ? t(x.label) : x.label}
+              {/* Broadcast names, the same in every language. */}
+              {x.label}
             </button>
           ))}
         </div>
@@ -401,21 +403,20 @@ export function DataSetPanel({
           <span className="ods-knob" />
           {t("Auto next")}
         </button>
-        <input
-          className="ods-every"
-          type="number"
-          min={1}
-          max={3600}
-          value={every}
-          title={t("Seconds per row")}
-          onChange={(e) => {
-            const v = Math.max(1, +e.target.value || 1);
-            setEvery(v);
-            if (auto) set({ [autoKey(ds.key)]: String(v) });
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-        />
-        <span className="muted small">s</span>
+        <span className="ods-every">
+          <NumberField
+            value={every}
+            min={1}
+            max={3600}
+            suffix="s"
+            title={t("Seconds per row")}
+            onChange={(n) => {
+              const v = Math.max(1, Math.round(n) || 1);
+              setEvery(v);
+              if (auto) set({ [autoKey(ds.key)]: String(v) });
+            }}
+          />
+        </span>
         <button
           className={`ods-switch ${loop ? "on" : ""}`}
           title={t("After the last row, the first again")}
@@ -518,11 +519,11 @@ export function DataSetPanel({
 const CHANGES: { id: RowChange; label: string; hint: string }[] = [
   {
     id: "outIn",
-    label: "Out › In",
+    label: "OUT › IN",
     hint: "The graphic goes out, then comes in with the new row",
   },
-  { id: "fade", label: "Fade", hint: "Cross-fade to the new row" },
-  { id: "cut", label: "Cut", hint: "The values change at once" },
+  { id: "fade", label: "FADE", hint: "Cross-fade to the new row" },
+  { id: "cut", label: "CUT", hint: "The values change at once" },
 ];
 const changeKey = (k: string) => `${k}__change`;
 
@@ -608,16 +609,12 @@ export function DataSetHand({
         </span>
       </span>
       <div className="ods-line">
-        <select
+        <Dropdown
+          className="ods-target"
           value={target?.key ?? ""}
-          onChange={(e) => setOvKey(e.target.value)}
-        >
-          {targets.map((x) => (
-            <option key={x.key} value={x.key}>
-              {x.label}
-            </option>
-          ))}
-        </select>
+          options={targets.map((x) => ({ value: x.key, label: x.label }))}
+          onChange={setOvKey}
+        />
         <input
           placeholder={t("Value")}
           value={ovValue}
@@ -648,17 +645,9 @@ export function DataSetHand({
           </button>
         </div>
         {ovMode === "for" && (
-          <>
-            <input
-              type="number"
-              className="ods-num"
-              min={1}
-              value={ovSecs}
-              onChange={(e) => setOvSecs(Math.max(1, +e.target.value || 1))}
-              onKeyDown={(e) => e.stopPropagation()}
-            />
-            <span className="muted small">s</span>
-          </>
+          <span className="ods-num">
+            <NumberField value={ovSecs} min={1} suffix="s" onChange={(n) => setOvSecs(Math.max(1, Math.round(n) || 1))} />
+          </span>
         )}
         {ovMode === "trigger" && (
           <input

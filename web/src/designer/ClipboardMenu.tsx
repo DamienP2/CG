@@ -1,7 +1,7 @@
 // Right-click menu of the timeline's layer and property rows, and of the
 // layers on the stage: copy / paste layers and animations (clipboard.ts),
 // the layer's animation, its order and delete.
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, DiamondMinus, Sparkles, Shrink, SquareDashed, Trash2, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, DiamondMinus, Sparkles, Shrink, SquareDashed, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Prop } from '../engine/types';
@@ -144,7 +144,7 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
             if (folder)
               return (
                 <button disabled={ro} onClick={run(() => stopMasking(folder.id))}>
-                  <Undo2 size={13} /> {t('Stop masking')}
+                  <SquareDashed size={13} /> {t('Stop masking')}
                 </button>
               );
             return (

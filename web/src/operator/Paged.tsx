@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { t } from '../i18n';
+import { Dropdown } from '../ui/Dropdown';
 
 /*
  * Every list of data rows in the Operator (data set rows, row pickers, a
@@ -109,14 +110,7 @@ export function Pager<T>({ paged, placeholder }: { paged: Paged<T>; placeholder?
   return (
     <div className="opg">
       {columns.length > 1 && (
-        <select className="opg-col" value={column} title={t('Search in')} onChange={(e) => setColumn(+e.target.value)}>
-          <option value={-1}>{t('All columns')}</option>
-          {columns.map((c, i) => (
-            <option key={i} value={i}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <Dropdown className="opg-col" value={String(column)} title={t('Search in')} options={[{ value: '-1', label: t('All columns') }, ...columns.map((c, i) => ({ value: String(i), label: c }))]} onChange={(v) => setColumn(+v)} />
       )}
       <label className="opg-search">
         <Search size={12} />

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { DataSourceInfo } from '../engine/types';
 import { t, tn } from '../i18n';
 import { type DataIssue, type DataRule, invalidRows, issuesOf, num, warningCount } from './dataRules';
+import { Dropdown } from '../ui/Dropdown';
 
 const TYPES: { type: DataRule['type']; label: string }[] = [
   { type: 'text', label: 'Text' },
@@ -162,7 +163,7 @@ function RuleParams({ r, set, disabled }: { r: DataRule; set: (p: Partial<DataRu
         <div className="dr-params">
           <input
             className="dr-wide"
-            placeholder={t('Allowed values, separated by commas')}
+            placeholder="A, B, C"
             defaultValue={(r.values ?? []).join(', ')}
             disabled={disabled}
             onBlur={(e) =>
@@ -259,13 +260,7 @@ function RuleRow({ r, open, editable, onOpen, set, onDelete }: { r: DataRule; op
           <input className="mono" list="dr-fields" value={r.field} disabled={disabled} placeholder="score" onChange={(e) => set({ field: e.target.value })} />
         </td>
         <td>
-          <select value={r.type} disabled={disabled} onChange={(e) => set({ type: e.target.value as DataRule['type'] })}>
-            {TYPES.map((k) => (
-              <option key={k.type} value={k.type}>
-                {t(k.label)}
-              </option>
-            ))}
-          </select>
+          {editable ? <Dropdown value={r.type} options={TYPES.map((k) => ({ value: k.type, label: t(k.label) }))} onChange={(type) => set({ type })} /> : t(TYPES.find((k) => k.type === r.type)?.label ?? r.type)}
         </td>
         <td className="dr-req">{r.type !== 'calc' && (editable ? <input type="checkbox" checked={!!r.required} onChange={(e) => set({ required: e.target.checked })} /> : r.required && <Check size={13} />)}</td>
         <td className="dr-sum" onClick={r.type === 'image' ? undefined : onOpen}>

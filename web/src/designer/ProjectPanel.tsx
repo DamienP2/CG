@@ -173,7 +173,7 @@ function ProjectDialog({ project, readOnly, onClose }: { project: Project; readO
       <form className="modal pjp-dialog" onSubmit={save} onPointerDown={(e) => e.stopPropagation()}>
         <header>
           <h2>{t('Project')}</h2>
-          <button type="button" className="icon-btn ghost" onClick={onClose}>
+          <button type="button" className="icon-btn ghost" title={t('Close')} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
@@ -300,7 +300,7 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
               </span>
             </li>
             {versions === null && <li className="pjp-v-empty">{t('Loading…')}</li>}
-            {versions?.length === 0 && <li className="pjp-v-empty">{t('Each publish keeps a version here; Keep makes one now.')}</li>}
+            {versions?.length === 0 && <li className="pjp-v-empty">{t('No version yet')}</li>}
             {versions?.map((v) => (
               <li key={v.id} className={/^Publish/i.test(v.note) ? 'publish' : ''}>
                 <span className="pjp-dot" />

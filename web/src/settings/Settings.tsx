@@ -115,10 +115,10 @@ function ServerSettings() {
       {section === 'general' && (
         <Card icon={<Server size={16} />} title={t('General')}>
           <div className="set-grid">
-            <Field label={t('Server name')} hint={t('Shown in the UI and the menu bar app.')}>
+            <Field label={t('Server name')}>
               <input value={cfg.name} onChange={(e) => edit((c) => void (c.name = e.target.value))} />
             </Field>
-            <Field label={t('HTML5 outputs')} hint={t('Browser sources (OBS, vMix, CasparCG) can play the HTML5 outputs (/output/<address>) without logging in.')}>
+            <Field label={t('HTML5 outputs')}>
               <label className="check">
                 <input type="checkbox" checked={cfg.publicOutputs} onChange={(e) => edit((c) => void (c.publicOutputs = e.target.checked))} />
                 {t('Public output pages')}

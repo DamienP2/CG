@@ -678,11 +678,6 @@
 }
 
 /* capacity */
-.perf-intro {
-  margin: -6px 0 0;
-  color: var(--text-2);
-  font-size: 13px;
-}
 .perf-budget {
   padding: 16px 18px;
   display: flex;
@@ -833,26 +828,6 @@
   background: rgba(34, 197, 94, 0.14);
   color: var(--pvw);
 }
-.perf-note {
-  display: flex;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--panel-2);
-  color: var(--text-2);
-  font-size: 12.5px;
-}
-.perf-note svg {
-  flex: none;
-  margin-top: 1px;
-  color: var(--accent-2);
-}
-.perf-note p {
-  margin: 0;
-}
-.perf-note p + p {
-  margin-top: 4px;
-}
 
 /* ---------- the log ---------- */
 .perf-logs {
@@ -947,7 +922,7 @@
   background: color-mix(in srgb, var(--lv) 15%, transparent);
 }
 .log-target {
-  color: #6f7591;
+  color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -962,7 +937,7 @@
   color: var(--text-2);
 }
 .log-fields {
-  color: #6f7591;
+  color: var(--text-3);
 }
 .log-empty {
   padding: 40px 16px;

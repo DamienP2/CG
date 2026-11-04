@@ -1,5 +1,6 @@
 import { GripVertical, Send } from 'lucide-react';
 import { Logo } from '../ui/Logo';
+import { Dropdown } from '../ui/Dropdown';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { defaultData, holdFrame } from '../engine/evaluate';
 import { LiveTime } from '../engine/LiveTime';
@@ -187,13 +188,7 @@ export function MosPlugin() {
       <header>
         <Logo size={20} />
         <strong>Strata</strong>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <Dropdown value={projectId} title={t('Project')} options={projects.map((p) => ({ value: p.id, label: p.name }))} onChange={setProjectId} />
       </header>
       <div className="mos-templates">
         {project?.templates.map((tpl) => (

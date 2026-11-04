@@ -6,7 +6,6 @@ export const buttons: Record<string, string> = {
   'Actions (HTTP)': 'Actions (HTTP)',
   'Actions': 'Actions',
   'Allowed addresses': 'Adresses autorisées',
-  'Any · e.g. 10.0.0.0/24, 192.168.1.20': 'Toutes · ex. 10.0.0.0/24, 192.168.1.20',
   'Base URL': 'URL de base',
   'Buttons connection': 'Connexion Buttons',
   'Example': 'Exemple',

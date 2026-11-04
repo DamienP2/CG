@@ -4,6 +4,7 @@ import type { User } from '../engine/types';
 import { locale, t } from '../i18n';
 import { api, can, useApp } from '../store';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
+import { Dropdown } from '../ui/Dropdown';
 
 export interface ApiKey {
   id: string;
@@ -81,15 +82,9 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
       {canCreate && (
         <form className="key-form" onSubmit={create}>
           <KeyRound size={16} className="key-form-icon" />
-          <input value={name} placeholder={t('What uses it — e.g. Companion control room A')} onChange={(e) => setName(e.target.value)} />
+          <input value={name} placeholder={t('Name')} onChange={(e) => setName(e.target.value)} />
           {admin && (
-            <select value={owner} onChange={(e) => setOwner(e.target.value)} title={t('The key acts as this user')}>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {t('as {user} ({role})', { user: u.username, role: t(u.role) })}
-                </option>
-              ))}
-            </select>
+            <Dropdown className="key-owner" value={owner} title={t('The key acts as this user')} options={users.map((u) => ({ value: u.id, label: t('as {user} ({role})', { user: u.username, role: t(u.role) }) }))} onChange={setOwner} />
           )}
           <button className="btn primary" disabled={!name.trim()}>
             <Plus size={14} /> {t('Create key')}
@@ -137,7 +132,7 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
       ) : (
         <div className="empty big">
           <KeyRound size={22} />
-          <p>{t('No API key yet.')}</p>
+          <p>{t('No API key')}</p>
         </div>
       )}
     </>

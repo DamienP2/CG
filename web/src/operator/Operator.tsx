@@ -83,14 +83,7 @@ export function FieldInput({ field, value, onChange, rich, maxLength }: { field:
     return short ? (
       <Segmented value={value} onChange={onChange} options={field.options.map(([v, l]) => ({ value: v, label: l }))} />
     ) : (
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {!field.options.some(([v]) => v === value) && <option value={value}>{value}</option>}
-        {field.options.map(([v, l]) => (
-          <option key={v} value={v}>
-            {l}
-          </option>
-        ))}
-      </select>
+      <Dropdown value={value} onChange={onChange} options={[...(field.options.some(([v]) => v === value) ? [] : [{ value, label: value }]), ...field.options.map(([v, l]) => ({ value: v, label: l }))]} />
     );
   }
   switch (field.kind) {
@@ -956,25 +949,25 @@ export function Operator({ channelId }: { channelId: string | null }) {
     <footer className="ux1-transport">
       <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate || !!lockOf(nextTarget)} onTake={take} cap={<KeyCap action="next" />} />
       <button className={`opx-btn ${selZone && pauseOf(channel.layers[String(selZone.layer)], project) ? 'amber' : ''}`} disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => continueZone(selZone)} title={actionLabel('continue')}>
-        <ChevronsRight size={16} /> Continue <KeyCap action="continue" />
+        <ChevronsRight size={16} /> CONTINUE <KeyCap action="continue" />
       </button>
       <button className="opx-btn" disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => outZone(selZone)} title={actionLabel('out')}>
-        <CircleStop size={16} /> Out <KeyCap action="out" />
+        <CircleStop size={16} /> OUT <KeyCap action="out" />
       </button>
       <span className="opx-tsep" />
       <div className={`opx-upd ${updates && onAirNow && operateItem ? 'ready' : ''}`}>
         <button className="opx-upd-go" disabled={!onAirNow || !operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade, buses: itemBuses(item ?? undefined) })}>
-          <RefreshCw size={16} /> Update{updates && onAirNow ? <span className="opx-upd-n">{updates}</span> : null} <KeyCap action="update" />
+          <RefreshCw size={16} /> UPDATE{updates && onAirNow ? <span className="opx-upd-n">{updates}</span> : null} <KeyCap action="update" />
         </button>
         <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={false} />
       </div>
       <span className="spacer" />
       {channelId && <TimecodeChip channelId={channelId} />}
       <button className="opx-btn" disabled={!operate} onClick={requestUndo} title={actionLabel('undo')}>
-        <Undo2 size={16} /> {t('Undo')} <KeyCap action="undo" />
+        <Undo2 size={16} /> UNDO <KeyCap action="undo" />
       </button>
       <button className="opx-btn ux1-clear" disabled={!operate || !Object.keys(allLayers).length} onClick={() => command({ action: 'clear' })} title={actionLabel('clear')}>
-        {t('Clear all')} <KeyCap action="clear" />
+        CLEAR ALL <KeyCap action="clear" />
       </button>
       <button className="opx-btn ux1-help" title={t('Keyboard shortcuts')} aria-label={t('Keyboard shortcuts')} onClick={openShortcuts}>
         ?
@@ -1026,7 +1019,7 @@ function NextButton({ project, live, target, disabled, onTake, cap }: { project:
           <b className="opx-next-n">{Math.ceil(left - 1e-3)}</b>
           {/* NEXT keeps its broadcast name. */}
           <span className="opx-next-unit">s</span>
-          <span>· Next</span>
+          <span>· NEXT</span>
         </span>
         <span className="opx-next-sub">{auto.to ? t('Auto: {name}', { name: auto.to.name }) : t('Auto: out')}</span>
       </button>
@@ -1034,7 +1027,7 @@ function NextButton({ project, live, target, disabled, onTake, cap }: { project:
   }
   return (
     <button className="opx-btn big red" disabled={disabled} onClick={onTake} title={t('F1 / Enter: takes {name}', { name: target?.name ?? t('the next graphic') })}>
-      <SkipForward size={15} fill="currentColor" /> Next
+      <SkipForward size={15} fill="currentColor" /> NEXT
       {target && <span className="opx-next-name">{target.name}</span>}
       {cap}
     </button>
@@ -1840,14 +1833,14 @@ function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at
       </header>
       <div className="me-field">
         <span>{t('Next')}</span>
-        <div className="seg">
-          <button className={!auto ? 'on' : ''} title={t('The operator takes the next graphic')} onClick={() => onChange({ autoSecs: undefined, hold: undefined })}>
-            {t('Operator')}
-          </button>
-          <button className={auto ? 'on' : ''} title={t('The next graphic is taken after this time on air')} onClick={() => onChange({ autoSecs: item.autoSecs ?? AUTO_SECS, hold: undefined })}>
-            {t('After')}
-          </button>
-        </div>
+        <Segmented
+          value={auto ? 'after' : 'operator'}
+          options={[
+            { value: 'operator', label: t('Operator'), title: t('The operator takes the next graphic') },
+            { value: 'after', label: t('After'), title: t('The next graphic is taken after this time on air') },
+          ]}
+          onChange={(v) => onChange(v === 'after' ? { autoSecs: item.autoSecs ?? AUTO_SECS, hold: undefined } : { autoSecs: undefined, hold: undefined })}
+        />
       </div>
       {auto && (
         <label className="me-field">
@@ -1917,25 +1910,23 @@ function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, chi
               {used.map((s) => (
                 <label key={s.id}>
                   <span className="muted small">{t('{name} checked every', { name: s.name })}</span>
-                  <select
-                    value={s.interval}
-                    disabled={!can.design(auth?.user) || !('type' in s)}
-                    title={can.design(auth?.user) ? t('How often the server reads the source (for every graphic using it)') : t('Set by a designer in Data')}
-                    onChange={async (e) => {
-                      const { updatedAt, checkedAt, error, bytes, ...src } = s as typeof s & { checkedAt?: number; bytes?: number };
-                      (void updatedAt, checkedAt, error, bytes);
-                      await api('PUT', `/api/data/sources/${encodeURIComponent(s.id)}`, { ...src, interval: +e.target.value }).catch((err) => toast((err as Error).message, 'error'));
-                    }}
-                  >
-                    {[...new Set([...INTERVALS, s.interval])]
-                      .filter((v) => v > 0)
-                      .sort((a, b) => a - b)
-                      .map((v) => (
-                        <option key={v} value={v}>
-                          {v < 60 ? `${v} s` : `${v / 60} min`}
-                        </option>
-                      ))}
-                  </select>
+                  {can.design(auth?.user) && 'type' in s ? (
+                    <Dropdown
+                      value={String(s.interval)}
+                      title={t('How often the server reads the source (for every graphic using it)')}
+                      options={[...new Set([...INTERVALS, s.interval])]
+                        .filter((v) => v > 0)
+                        .sort((a, b) => a - b)
+                        .map((v) => ({ value: String(v), label: v < 60 ? `${v} s` : `${v / 60} min` }))}
+                      onChange={async (v) => {
+                        const { updatedAt, checkedAt, error, bytes, ...src } = s as typeof s & { checkedAt?: number; bytes?: number };
+                        (void updatedAt, checkedAt, error, bytes);
+                        await api('PUT', `/api/data/sources/${encodeURIComponent(s.id)}`, { ...src, interval: +v }).catch((err) => toast((err as Error).message, 'error'));
+                      }}
+                    />
+                  ) : (
+                    <span className="muted small">{s.interval < 60 ? `${s.interval} s` : `${s.interval / 60} min`}</span>
+                  )}
                 </label>
               ))}
             </div>
@@ -2046,7 +2037,7 @@ function AddGraphic({ project, templates, used, onPick, onClose }: { project: Pr
               </div>
             </section>
           ))}
-          {!groups.length && <p className="opx-hint pad">{templates.length ? t('No graphic matches.') : t('No graphic published yet: publish templates from the Designer.')}</p>}
+          {!groups.length && <p className="opx-hint pad">{templates.length ? t('No match') : t('No graphic')}</p>}
         </div>
       </div>
     </div>,
@@ -2059,11 +2050,11 @@ function UpdateMode({ value, onChange, disabled }: { value: boolean; onChange: (
   return (
     <div className="opx-seg opx-upd-mode" title={t('How the values change on air')}>
       <button className={value ? 'on' : ''} disabled={disabled} title={t('The new values cross-fade in (½ s)')} onClick={() => onChange(true)}>
-        {t('Fade')}
+        FADE
       </button>
-      {/* CUT keeps its broadcast name. */}
+      {/* FADE / CUT keep their broadcast names. */}
       <button className={value ? '' : 'on'} disabled={disabled} title={t('The new values replace the old ones at once')} onClick={() => onChange(false)}>
-        Cut
+        CUT
       </button>
     </div>
   );
@@ -2148,7 +2139,7 @@ function OutTile({ project, item, template, liveAt, step, disabled, onOut }: { p
         <CircleStop size={18} />
         {time}
       </span>
-      <span>Out</span>
+      <span>OUT</span>
     </button>
   );
 }
@@ -2237,7 +2228,7 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, takeOver, com
                   <ChevronsRight size={18} />
                   {step?.kind === 'resume' && <b className="opx-tile-time">{Math.ceil(left)} s</b>}
                 </span>
-                <span>Continue</span>
+                <span>CONTINUE</span>
               </button>
             )}
             <OutTile project={project} item={item} template={tpl} liveAt={liveAt} step={step} disabled={!operate} onOut={() => command({ action: 'takeOut', zone: zone.id })} />
@@ -2268,7 +2259,7 @@ function AirControls({ project, zone, item, command, widget, bare, lead }: { pro
         {!bare && (
           <div className="opx-actions sticky">
             <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
-              <CircleStop size={14} /> Out
+              <CircleStop size={14} /> OUT
             </button>
           </div>
         )}
@@ -2289,11 +2280,11 @@ function AirControls({ project, zone, item, command, widget, bare, lead }: { pro
         <div className="opx-actions sticky">
           {canContinue(item, tpl) && (
             <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title={t('F2 / Space')}>
-              <ChevronsRight size={14} /> Continue
+              <ChevronsRight size={14} /> CONTINUE
             </button>
           )}
           <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
-            <CircleStop size={14} /> Out
+            <CircleStop size={14} /> OUT
           </button>
         </div>
       )}

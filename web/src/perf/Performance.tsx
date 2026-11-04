@@ -10,6 +10,7 @@ import { Bar, Dot } from './bits';
 import { bytes, channelTone, corePct, cores, coresLabel, fps, fpsTone, inputTone, machinePct, memTone, num, outputTone, pct, pictureTone, type Tone } from './format';
 // The badges of the Video streams page (its stylesheet may not be loaded yet).
 import '../outputs/streams.css';
+import { KIND_COLOR } from '../outputs/types';
 
 /*
  * The Performance page (admins): what the machine, each channel's pictures
@@ -21,15 +22,15 @@ type Section = 'overview' | 'capacity';
 
 /** Colours of the Video streams page. */
 const KIND: Record<string, { label: string; badge: string; color: string; icon: typeof Tv }> = {
-  picture: { label: 'Rendered picture', badge: 'IMG', color: '#38bdf8', icon: ImageIcon },
-  stream: { label: 'Stream output (SRT, UDP, RTMP, HLS)', badge: 'STREAM', color: '#fb7185', icon: RadioTower },
-  ndi: { label: 'NDI output', badge: 'NDI', color: '#14b8a6', icon: Radio },
-  st2110: { label: 'ST 2110 output', badge: 'ST 2110', color: '#e879f9', icon: Network },
-  sdi: { label: 'SDI output', badge: 'SDI', color: '#f5a524', icon: Tv },
-  inputStream: { label: 'Stream input (SRT, UDP, RTMP, HLS…)', badge: 'IN', color: '#a78bfa', icon: Video },
-  inputNdi: { label: 'NDI input', badge: 'NDI', color: '#a78bfa', icon: Radio },
+  picture: { label: 'Rendered picture', badge: 'IMG', color: KIND_COLOR.picture, icon: ImageIcon },
+  stream: { label: 'Stream output (SRT, UDP, RTMP, HLS)', badge: 'STREAM', color: KIND_COLOR.stream, icon: RadioTower },
+  ndi: { label: 'NDI output', badge: 'NDI', color: KIND_COLOR.ndi, icon: Radio },
+  st2110: { label: 'ST 2110 output', badge: 'ST 2110', color: KIND_COLOR.st2110, icon: Network },
+  sdi: { label: 'SDI output', badge: 'SDI', color: KIND_COLOR.sdi, icon: Tv },
+  inputStream: { label: 'Stream input (SRT, UDP, RTMP, HLS…)', badge: 'IN', color: KIND_COLOR.input, icon: Video },
+  inputNdi: { label: 'NDI input', badge: 'NDI', color: KIND_COLOR.input, icon: Radio },
 };
-const INPUT_COLOR = '#a78bfa';
+const INPUT_COLOR = KIND_COLOR.input;
 const kindOf = (k: string) => KIND[k] ?? { label: k, badge: k.toUpperCase(), color: '#8b90aa', icon: Activity };
 
 export function Performance() {
@@ -311,7 +312,6 @@ function CapacityView({ m }: { m: Metrics }) {
   const tone: Tone = c.used >= c.budget ? 'bad' : c.used >= c.budget * 0.75 ? 'warn' : 'ok';
   return (
     <>
-      <p className="perf-intro">{t('Strata should use at most 80 % of the machine. Each cost is measured on this server when something of that kind runs, else a typical figure.')}</p>
       <section className="set-card perf-budget">
         <div className="perf-budget-head">
           <div>
@@ -340,14 +340,6 @@ function CapacityView({ m }: { m: Metrics }) {
         {c.items.map((it) => (
           <CapacityCard key={`${it.kind}|${it.format}`} it={it} />
         ))}
-      </div>
-
-      <div className="perf-note">
-        <Info size={15} />
-        <div>
-          <p>{t('HTML5 outputs are drawn by the browser that shows them: they cost almost nothing on the server.')}</p>
-          <p>{t('ST 2110 also needs network bandwidth: about 2.6 Gb/s per 1080p50 fill stream.')}</p>
-        </div>
       </div>
     </>
   );

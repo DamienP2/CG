@@ -4,6 +4,7 @@ import { CLOCKS, clockLabel, hardwareOf } from '../hardware/model';
 import { navigate } from '../router';
 import { emptySync, type ClockReference, type HardwareInfo, type ServerConfig } from '../outputs/types';
 import { Card } from './ui';
+import { Dropdown } from '../ui/Dropdown';
 import '../hardware/hardware.css';
 
 /*
@@ -49,23 +50,17 @@ export function VideoSync({ cfg, edit, det, onRefresh }: { cfg: ServerConfig; ed
                     </span>
                   )}
                 </span>
-                <select
+                <Dropdown
                   value={ch.clock ?? ''}
-                  aria-label={t('Clock reference')}
-                  onChange={(e) =>
+                  title={t('Clock reference')}
+                  options={[{ value: '', label: t('Default ({reference})', { reference: clockLabel(sync.reference) }) }, ...CLOCKS.map((r) => ({ value: r, label: clockLabel(r) }))]}
+                  onChange={(v) =>
                     edit((all) => {
                       const c = all.channels.find((x) => x.id === ch.id)!;
-                      c.clock = (e.target.value || null) as ClockReference | null;
+                      c.clock = (v || null) as ClockReference | null;
                     })
                   }
-                >
-                  <option value="">{t('Default ({reference})', { reference: clockLabel(sync.reference) })}</option>
-                  {CLOCKS.map((r) => (
-                    <option key={r} value={r}>
-                      {clockLabel(r)}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             );
           })}

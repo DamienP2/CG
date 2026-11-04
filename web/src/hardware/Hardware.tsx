@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpFromLine, Network, Plus, RefreshCw, Settings as SettingsIcon, Trash2, TriangleAlert, Tv } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Network, Plus, RefreshCw, Settings2, Trash2, TriangleAlert, Tv } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { t, tc, tn } from '../i18n';
 import { friendlyError } from '../ui/serverError';
@@ -10,6 +10,7 @@ import { navigate } from '../router';
 import { api, can, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Dropdown, type DropOption } from '../ui/Dropdown';
+import { NumberField } from '../ui/fields';
 import { ENCODINGS, bracketOf, speedLabel, deviceOf, dropUsers, hardwareOf, roleOf, syncUsers, usersOf, type Bracket, type Role } from './model';
 import './hardware.css';
 
@@ -509,7 +510,7 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
                   ]}
                   onChange={(v) => setRef(v === 'genlock')}
                 />
-                {genlock && <input type="number" min={-1125} max={1125} value={card.genlockOffset ?? 0} aria-label={t('Genlock offset')} onChange={(e) => setRef(true, +e.target.value)} />}
+                {genlock && <NumberField value={card.genlockOffset ?? 0} min={-1125} max={1125} title={t('Genlock offset')} onChange={(v) => setRef(true, v)} />}
               </span>
               <span className="fio-sig">{found?.referenceLocked == null ? <span className="muted">—</span> : found.referenceLocked ? <Sig dot="ok" text={t('locked')} /> : <Sig dot="warn" text={t('absent')} />}</span>
             </div>
@@ -734,7 +735,7 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
               <dd className="mono">{ptp?.grandmaster ?? '—'}</dd>
               <dt>{t('Domain')}</dt>
               <dd>
-                <input className="fio-num" type="number" min={0} max={127} value={sync.ptpDomain} aria-label={t('PTP domain')} onChange={(e) => editHw((h) => void (h.sync!.ptpDomain = Math.max(0, Math.min(127, Math.round(+e.target.value) || 0))))} />
+                <NumberField value={sync.ptpDomain} min={0} max={127} title={t('PTP domain')} onChange={(v) => editHw((h) => void (h.sync!.ptpDomain = Math.max(0, Math.min(127, Math.round(v) || 0))))} />
                 {sync.ptpDomain === 127 && <span className="muted"> · SMPTE 2059-2</span>}
               </dd>
               <dt>{t('Card')}</dt>
@@ -754,7 +755,7 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
               </dd>
               <dt>TAI − UTC</dt>
               <dd>
-                <input className="fio-num" type="number" min={0} max={99} value={sync.taiOffset} aria-label={t('TAI − UTC (s)')} onChange={(e) => editHw((h) => void (h.sync!.taiOffset = Math.max(0, Math.min(99, Math.round(+e.target.value) || 0))))} /> <span className="muted">s</span>
+                <NumberField value={sync.taiOffset} min={0} max={99} suffix="s" title={t('TAI − UTC (s)')} onChange={(v) => editHw((h) => void (h.sync!.taiOffset = Math.max(0, Math.min(99, Math.round(v) || 0))))} />
               </dd>
             </dl>
           </div>
@@ -764,7 +765,7 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
             <h3>{t('Media network')}</h3>
             <div className="spacer" />
             <button className="icon-btn ghost" title={t('Networks')} onClick={() => navigate('/settings#network')}>
-              <SettingsIcon size={14} />
+              <Settings2 size={14} />
             </button>
           </header>
           {media('red')}
@@ -778,10 +779,10 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
             <tr>
               <th>{t('Flow')}</th>
               <th>{t('Channel')}</th>
-              <th>Type</th>
+              <th>{t('Type')}</th>
               <th>{t('Red')}</th>
               <th>{t('Blue')}</th>
-              <th>Format</th>
+              <th>{t('Format')}</th>
               <th>{t('State')}</th>
               <th />
             </tr>
@@ -883,32 +884,32 @@ function FlowEditor({ f, hw, det, cfg, editHw, onGone }: { f: St2110Flow; hw: Ha
           <span className="set-label">{two ? t('Fill — multicast') : t('Stream — multicast')}</span>
           <input value={fip} placeholder="239.100.1.1" spellCheck={false} onChange={(e) => editFlow((x) => void (x.fill = joinAddr(e.target.value, fport)))} />
         </label>
-        <label className="set-field hw-num">
+        <div className="set-field hw-num">
           <span className="set-label">{t('Port')}</span>
-          <input type="number" min={1} max={65535} value={fport} onChange={(e) => editFlow((x) => void (x.fill = joinAddr(fip, e.target.value)))} />
-        </label>
+          <NumberField value={Number(fport) || 5004} min={1} max={65535} onChange={(v) => editFlow((x) => void (x.fill = joinAddr(fip, String(Math.round(v)))))} />
+        </div>
         {two ? (
           <>
             <label className="set-field">
               <span className="set-label">{t('Key — multicast')}</span>
               <input value={kip} placeholder={t('none')} spellCheck={false} onChange={(e) => editFlow((x) => void (x.key = e.target.value.trim() ? joinAddr(e.target.value, kport || '5004') : null))} />
             </label>
-            <label className="set-field hw-num">
+            <div className="set-field hw-num">
               <span className="set-label">{t('Port')}</span>
-              <input type="number" min={1} max={65535} value={kport} disabled={!f.key} onChange={(e) => editFlow((x) => void (x.key = joinAddr(kip, e.target.value)))} />
-            </label>
+              {f.key ? <NumberField value={Number(kport) || 5004} min={1} max={65535} onChange={(v) => editFlow((x) => void (x.key = joinAddr(kip, String(Math.round(v)))))} /> : <input value="" disabled aria-label={t('Port')} />}
+            </div>
           </>
         ) : (
           <span className="hw-flow-gap" />
         )}
-        <label className="set-field hw-num">
+        <div className="set-field hw-num">
           <span className="set-label">TTL</span>
-          <input type="number" min={1} max={255} value={f.ttl} onChange={(e) => editFlow((x) => void (x.ttl = Math.max(1, Math.min(255, Math.round(+e.target.value) || 1))))} />
-        </label>
-        <label className="set-field hw-num">
+          <NumberField value={f.ttl} min={1} max={255} onChange={(v) => editFlow((x) => void (x.ttl = Math.max(1, Math.min(255, Math.round(v) || 1))))} />
+        </div>
+        <div className="set-field hw-num">
           <span className="set-label">{t('Payload type')}</span>
-          <input type="number" min={96} max={127} value={f.payloadType} onChange={(e) => editFlow((x) => void (x.payloadType = Math.max(96, Math.min(127, Math.round(+e.target.value) || 96))))} />
-        </label>
+          <NumberField value={f.payloadType} min={96} max={127} onChange={(v) => editFlow((x) => void (x.payloadType = Math.max(96, Math.min(127, Math.round(v) || 96))))} />
+        </div>
       </div>
       <label className="switch hw-blue-toggle">
         <input
@@ -960,20 +961,20 @@ function BlueLeg({ f, two, ifaces, blueRole, editFlow }: { f: St2110Flow; two: b
         <span className="set-label">{two ? t('Blue fill — multicast') : t('Blue stream — multicast')}</span>
         <input value={bip} placeholder="239.101.1.1" spellCheck={false} onChange={(e) => editFlow((x) => void (x.blue = joinAddr(e.target.value, bport)))} />
       </label>
-      <label className="set-field hw-num">
+      <div className="set-field hw-num">
         <span className="set-label">{t('Port')}</span>
-        <input type="number" min={1} max={65535} value={bport} onChange={(e) => editFlow((x) => void (x.blue = joinAddr(bip, e.target.value)))} />
-      </label>
+        <NumberField value={Number(bport) || 5004} min={1} max={65535} onChange={(v) => editFlow((x) => void (x.blue = joinAddr(bip, String(Math.round(v)))))} />
+      </div>
       {two && (
         <>
           <label className="set-field">
             <span className="set-label">{t('Blue key — multicast')}</span>
             <input value={bkip} placeholder="239.101.1.2" spellCheck={false} onChange={(e) => editFlow((x) => void (x.blueKey = e.target.value.trim() ? joinAddr(e.target.value, bkport || '5004') : null))} />
           </label>
-          <label className="set-field hw-num">
+          <div className="set-field hw-num">
             <span className="set-label">{t('Port')}</span>
-            <input type="number" min={1} max={65535} value={bkport} disabled={!f.blueKey} onChange={(e) => editFlow((x) => void (x.blueKey = joinAddr(bkip, e.target.value)))} />
-          </label>
+            {f.blueKey ? <NumberField value={Number(bkport) || 5004} min={1} max={65535} onChange={(v) => editFlow((x) => void (x.blueKey = joinAddr(bkip, String(Math.round(v)))))} /> : <input value="" disabled aria-label={t('Port')} />}
+          </div>
         </>
       )}
     </div>

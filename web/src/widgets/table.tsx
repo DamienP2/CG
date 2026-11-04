@@ -686,9 +686,9 @@ export default defineWidget({
   icon: Table,
   create: () => ({
     grid: [
-      ['Name', 'Value'],
+      [t('Name'), t('Value')],
       ['Alpha', '1'],
-      ['Beta', '2'],
+      [tc('sample', 'Beta'), '2'],
       ['Gamma', '3'],
     ],
     st: { header: { bg: '#00000000', color: '#ffffffb3' }, even: { ...DST.odd } },

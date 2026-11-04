@@ -627,7 +627,7 @@ function WidgetOverlay({ layerId, box, frame }: { layerId: string; box: Box; fra
 /**
  * No template open: every template of the project at its on-air point,
  * each cut to its zone, over the zones. Clicking a graphic opens its
- * template; Esc in a template comes back here.
+ * template; a click beside the template list comes back here.
  */
 function Overview({
   project,

@@ -4,6 +4,8 @@ import { t, tn } from '../i18n';
 import type { ServerConfig, SystemInfo } from '../outputs/types';
 import { api, can, useApp } from '../store';
 import { promptDialog } from '../ui/dialogs';
+import { Dropdown } from '../ui/Dropdown';
+import { NumberField } from '../ui/fields';
 import type { ApiKey } from './ApiKeys';
 import { PageHead } from './SidePage';
 
@@ -211,24 +213,11 @@ export function ApiButtons({ keys, onCreateKey }: { keys: ApiKey[]; onCreateKey:
       <div className="btn1-bar">
         <label>
           <span className="btn1-label">{t('Channel')}</span>
-          <select value={channel?.id ?? ''} onChange={(e) => setChannelId(e.target.value)} aria-label={t('Channel')}>
-            {channels.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <Dropdown value={channel?.id ?? ''} title={t('Channel')} options={channels.map((c) => ({ value: c.id, label: c.name }))} onChange={setChannelId} />
         </label>
         <label>
           <span className="btn1-label">{t('API key')}</span>
-          <select value={key?.id ?? ''} onChange={(e) => setKeyId(e.target.value)} aria-label={t('API key')}>
-            {!keys.length && <option value="">{t('No API key yet.')}</option>}
-            {keys.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.name} · {k.prefix}…
-              </option>
-            ))}
-          </select>
+          <Dropdown value={key?.id ?? ''} title={t('API key')} placeholder={t('No API key')} options={keys.map((k) => ({ value: k.id, label: k.name, detail: `${k.prefix}…` }))} onChange={setKeyId} />
         </label>
         {admin && key && !secrets[key.id] && (
           <button className="btn small" onClick={() => void reveal()} title={t('Show the key')}>
@@ -389,7 +378,11 @@ function ControlSettings({ onSaved }: { onSaved: () => void }) {
       setSaving(false);
     }
   };
-  const port = (v: number, f: (n: number) => void, label: string) => <input type="number" min={1} max={65535} value={v} aria-label={label} onChange={(e) => f(+e.target.value)} />;
+  const port = (v: number, f: (n: number) => void, label: string) => (
+    <span className="btn1-port">
+      <NumberField value={v} min={1} max={65535} title={label} onChange={(n) => f(Math.round(n))} />
+    </span>
+  );
   return (
     <Panel
       icon={<Settings2 size={15} />}
@@ -427,7 +420,7 @@ function ControlSettings({ onSaved }: { onSaved: () => void }) {
               {t('Allowed addresses')}
             </td>
             <td colSpan={2}>
-              <input className="btn1-allow" value={allow} placeholder={t('Any · e.g. 10.0.0.0/24, 192.168.1.20')} spellCheck={false} aria-label={t('Allowed addresses')} onChange={(e) => setAllow(e.target.value)} />
+              <input className="btn1-allow" value={allow} placeholder="10.0.0.0/24, 192.168.1.20" spellCheck={false} aria-label={t('Allowed addresses')} onChange={(e) => setAllow(e.target.value)} />
             </td>
           </tr>
         </tbody>

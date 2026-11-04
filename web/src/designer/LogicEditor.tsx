@@ -1157,7 +1157,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
                   {logicIn && rowType(r.key) === 'num' && (
                     <button
                       className="lx-mode"
-                      title={t('How the value is set: replaced, added to the animation, or multiplying it')}
+                      title={t('Replace, add to the animation, or multiply')}
                       onClick={() =>
                         mutate(n.id, (m) => {
                           const row = (m as typeof n).rows.find((x) => x.key === r.key);
@@ -1802,10 +1802,10 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         <button className="lx-tool" onClick={makeFrame} title={t('Frame the selected nodes (F)')}>
           <BoxSelect size={13} /> {t('Frame')} <kbd>F</kbd>
         </button>
-        <button className="lx-tool" onClick={copy} disabled={!sel.size && !selFrame} title={t('Copy (⌘C)')}>
+        <button className="lx-tool" onClick={copy} disabled={!sel.size && !selFrame} title={`${t('Copy')} (${modKey('C')})`}>
           <Copy size={13} /> {t('Copy')}
         </button>
-        <button className="lx-tool" onClick={paste} disabled={!canPaste} title={t('Paste (⌘V)')}>
+        <button className="lx-tool" onClick={paste} disabled={!canPaste} title={`${t('Paste')} (${modKey('V')})`}>
           <ClipboardPaste size={13} /> {t('Paste')}
         </button>
         {!proj && (

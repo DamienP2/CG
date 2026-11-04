@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import { api, useApp } from '../store';
 import { emptyTime, type HardwareInfo, type ServerConfig, type TimeConfig, type TimecodeState, type TimeState } from '../outputs/types';
 import { Card, Field } from './ui';
+import { Dropdown } from '../ui/Dropdown';
 import '../hardware/hardware.css';
 
 /*
@@ -161,7 +162,7 @@ export function TimePage({
             <input
               value={draft}
               disabled={!supported}
-              placeholder={time.ntpServers.length ? t('Add a server') : t("The system's servers · add one")}
+              placeholder={t('Add a server')}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={addServer}
               onKeyDown={(e) => e.key === 'Enter' && addServer()}
@@ -210,14 +211,13 @@ function TimecodeCard({ cfg, edit }: { cfg: ServerConfig; edit: (fn: (c: ServerC
     <Card icon={<Timer size={16} />} title={t('Timecode')}>
       <div className="set-grid">
         <Field label={t('Takes at a timecode')}>
-          <select value={chosen} onChange={(e) => edit((c) => void (c.time = { ...emptyTime(), ...c.time, timecodeInput: e.target.value || undefined }))}>
-            <option value="">{t("Server's time of day")}</option>
-            {sdi.map((i) => (
-              <option key={i.id} value={i.id}>
-                {t('SDI input {name} (RP188 / VITC)', { name: i.name })}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            value={chosen}
+            className="fio-pick"
+            title={t('Takes at a timecode')}
+            options={[{ value: '', label: t("Server's time of day") }, ...sdi.map((i) => ({ value: i.id, label: t('SDI input {name}', { name: i.name }), note: 'RP188 / VITC' }))]}
+            onChange={(v) => edit((c) => void (c.time = { ...emptyTime(), ...c.time, timecodeInput: v || undefined }))}
+          />
         </Field>
       </div>
       {chosen && st?.input === chosen && (

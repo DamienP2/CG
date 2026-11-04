@@ -5,7 +5,7 @@ import { api, can, useApp } from '../store';
 import { JsonTree } from './JsonTree';
 import { useData, useSources } from './dataStore';
 import { AddSourceMenu, SocialEditor, useSocialSources, connectionState, type SocialPick } from './SocialSources';
-import { DataTable, KINDS, blank, mainList } from './DataPage';
+import { DataTable, FormatPick, KINDS, blank, mainList } from './DataPage';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
 import { Card } from '../settings/ui';
 import { PlatformBadge } from '../social/PlatformBadge';
@@ -13,7 +13,6 @@ import { Segmented } from '../ui/fields';
 import { confirmDialog } from '../ui/dialogs';
 import { locale, t, tc, tn } from '../i18n';
 import { errorProps } from '../ui/serverError';
-import { InfoTip } from '../ui/InfoTip';
 
 /*
  * Main menu › Data: the connections shared by every project, set up and
@@ -51,7 +50,7 @@ export function DataHome() {
       })}
       {!sources.length && (
         <div className="lib-nav-empty">
-          <Database size={13} /> {t('No shared source')}
+          <Database size={13} /> {t('No data source')}
         </div>
       )}
       <NavSection actions={edit && <AddSourceMenu ghost onSocial={(platform) => setPick({ social: { platform } })} />}>{t('Social networks')}</NavSection>
@@ -105,12 +104,10 @@ function SourceFields({ s, isNew, editable, patch }: { s: DataSource; isNew?: bo
         )}
         {(s.type === 'json' || s.type === 'xml') && (
           <label>
-            <span>
-              {t('Headers')}
-              <InfoTip text={t('One per line: “Name: value” (an API key…)')} />
-            </span>
+            {t('Headers')}
             <textarea
               rows={2}
+              placeholder="Authorization: Bearer …"
               disabled={!editable}
               value={Object.entries(s.headers ?? {})
                 .map(([k, v]) => `${k}: ${v}`)
@@ -158,11 +155,7 @@ function SourceFields({ s, isNew, editable, patch }: { s: DataSource; isNew?: bo
     <>
       <label>
         {t('Format sent')}
-        <select value={s.format ?? 'json'} disabled={!editable} onChange={(e) => patch({ format: e.target.value as 'json' } as Partial<DataSource>)}>
-          <option value="json">JSON</option>
-          <option value="csv">CSV</option>
-          <option value="xml">XML</option>
-        </select>
+        <FormatPick value={s.format ?? 'json'} editable={editable} onChange={(format) => patch({ format } as Partial<DataSource>)} />
       </label>
       {!isNew && (
         <div className="push-help">
@@ -273,15 +266,14 @@ function SetupEditor({ source, isNew, editable, onSaved, onCancel, onDeleted }: 
         <div className="dp-form">
           <label>
             {t('Name')}
-            <input placeholder={t('Name (e.g. Live score)')} value={s.name} disabled={!editable} onChange={(e) => patch({ name: e.target.value })} />
+            <input placeholder={t('Live score')} value={s.name} disabled={!editable} onChange={(e) => patch({ name: e.target.value })} />
           </label>
           {isNew && (
             <div className="kind-picker">
               {KINDS.map((k) => (
-                <button key={k.type} className={k.type === s.type ? 'on' : ''} onClick={() => setS({ ...blank(k.type), name: s.name })}>
+                <button key={k.type} className={k.type === s.type ? 'on' : ''} title={t(k.hint)} onClick={() => setS({ ...blank(k.type), name: s.name })}>
                   <k.icon size={15} />
                   <strong>{t(k.label)}</strong>
-                  <em>{t(k.hint)}</em>
                 </button>
               ))}
             </div>

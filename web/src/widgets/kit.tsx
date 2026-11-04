@@ -8,7 +8,7 @@ import { plain as plainText } from '../engine/rich';
 // the inspector and of the Operator, styled like the rest of the app.
 import { Dropdown } from '../ui/Dropdown';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Database, Ellipsis, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Database, Ellipsis, Radio, WandSparkles, X, type LucideIcon } from 'lucide-react';
 import { useDesigner } from '../designer/designerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { fieldUsed, formatSetting, newFieldKey, settingKind } from '../engine/settings';
@@ -780,7 +780,7 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
               put(items.filter((_, j) => j !== i));
             }}
           >
-            ✕
+            <X size={12} />
           </button>
         </div>
       ))}

@@ -29,8 +29,6 @@ export const asrun: Record<string, string> = {
   'The browser blocked the print window.': 'Le navigateur a bloqué la fenêtre d’impression.',
   'Time': 'Heure',
   'Today': 'Aujourd’hui',
-  'UNDONE': 'ANNULÉ',
-  'Undos': 'Annulations',
   'Yesterday': 'Hier',
   'Zone': 'Zone',
   'auto next': 'auto next',

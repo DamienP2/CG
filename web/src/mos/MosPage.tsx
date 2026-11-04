@@ -1,4 +1,5 @@
-import { InfoTip } from '../ui/InfoTip';
+import { Dropdown } from '../ui/Dropdown';
+import { NumberField } from '../ui/fields';
 import { friendlyError } from '../ui/serverError';
 import { Cable, Copy, KeyRound, ListOrdered, Newspaper, Plug, Radio } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -8,6 +9,7 @@ import { navigate } from '../router';
 import { Card, Field, SaveBar } from '../settings/ui';
 import { useServerConfig } from '../settings/serverConfig';
 import { api, useApp } from '../store';
+import '../hardware/hardware.css';
 
 export interface MosConfig {
   enabled: boolean;
@@ -57,10 +59,7 @@ export function MosPage() {
   const item = (s: Section, icon: React.ReactNode, label: string, extra?: Partial<React.ComponentProps<typeof NavItem>>) => <NavItem on={section === s} icon={icon} label={label} onClick={() => setSection(s)} {...extra} />;
   const nav = (
     <>
-      <NavSection>
-        {t('Newsroom')}
-        <InfoTip text={t('Saga (Fonn Group), iNews, ENPS, Octopus… send their running orders over MOS 2.8. Each one becomes a playlist of the project.')} />
-      </NavSection>
+      <NavSection>{t('Newsroom')}</NavSection>
       {item('connection', <Cable size={15} />, t('Connection'), { status: state })}
       {item('orders', <ListOrdered size={15} />, t('Running orders'), { count: orders.length })}
       {item('plugin', <Plug size={15} />, t('Journalist plugin'))}
@@ -85,37 +84,30 @@ export function MosPage() {
                   {t('Accept newsroom connections')}
                 </label>
               </Field>
-              <Field label={t('MOS ID')} hint={t('Declare the same ID in the newsroom system.')}>
+              <Field label={t('MOS ID')}>
                 <input value={mos.mosId} onChange={(e) => set({ mosId: e.target.value })} />
               </Field>
-              <Field label={t('NCS ID')} hint={t('Newsroom system ID (informational).')}>
+              <Field label={t('NCS ID')}>
                 <input value={mos.ncsId} placeholder="SAGA" onChange={(e) => set({ ncsId: e.target.value })} />
               </Field>
-              <Field label={t('Lower port')} hint={t('Profiles 0–1 (objects).')}>
-                <input type="number" value={mos.lowerPort} onChange={(e) => set({ lowerPort: +e.target.value })} />
+              <Field label={t('Lower port')}>
+                <NumberField value={mos.lowerPort} min={1} max={65535} onChange={(v) => set({ lowerPort: Math.round(v) })} />
               </Field>
-              <Field label={t('Upper port')} hint={t('Profile 2 (running orders).')}>
-                <input type="number" value={mos.upperPort} onChange={(e) => set({ upperPort: +e.target.value })} />
+              <Field label={t('Upper port')}>
+                <NumberField value={mos.upperPort} min={1} max={65535} onChange={(v) => set({ upperPort: Math.round(v) })} />
               </Field>
-              <Field label={t('Project')} hint={t('Receives the running orders. Automatic: the project of the graphics.')}>
-                <select value={mos.projectId} onChange={(e) => set({ projectId: e.target.value })}>
-                  <option value="">{t('Automatic')}</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+              <Field label={t('Project')}>
+                <Dropdown value={mos.projectId} className="fio-pick" title={t('Project')} options={[{ value: '', label: t('Automatic') }, ...projects.map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v })} />
               </Field>
             </div>
           </Card>
           <Card icon={<Radio size={16} />} title={t('State sent to the newsroom')}>
             <div className="set-grid">
-              <Field label={t('Newsroom system address')} hint={t('READY, PLAY, STOP of each graphic, on its upper port.')}>
+              <Field label={t('Newsroom system address')}>
                 <input value={mos.ncsHost ?? ''} placeholder="10.0.0.20" onChange={(e) => set({ ncsHost: e.target.value })} />
               </Field>
               <Field label={t('Port')}>
-                <input type="number" value={mos.ncsPort ?? 10541} onChange={(e) => set({ ncsPort: +e.target.value })} />
+                <NumberField value={mos.ncsPort ?? 10541} min={1} max={65535} onChange={(v) => set({ ncsPort: Math.round(v) })} />
               </Field>
             </div>
             {mos.enabled && !!mos.ncsHost && status?.report && (
@@ -166,7 +158,7 @@ export function MosPage() {
         ) : (
           <div className="empty big">
             <ListOrdered size={22} />
-            <p>{mos.enabled ? t('No running order received yet.') : t('Turn on the newsroom connections to receive running orders.')}</p>
+            <p>{mos.enabled ? t('No running order received yet.') : t('Off')}</p>
           </div>
         ))}
 
@@ -187,7 +179,6 @@ export function MosPage() {
                 <Copy size={13} /> {t('Copy')}
               </button>
             </div>
-            <span className="set-hint">{t('Register this URL as an HTML5 MOS plugin in the newsroom system, with the API key of an operator account restricted to the right projects.')}</span>
           </div>
           <div>
             <button className="btn" onClick={() => navigate('/api-docs')}>

@@ -7,6 +7,7 @@ import { Scene, Viewport } from '../engine/Scene';
 import type { Easing, FieldKind, Keyframe, Layer, Project, Prop, ProjectSummary, Template, Value } from '../engine/types';
 import { api, useApp } from '../store';
 import { t, tn } from '../i18n';
+import { Dropdown } from '../ui/Dropdown';
 import { widgetOf } from '../widgets';
 
 // ------------------------------------------------- the server's analysis --
@@ -444,20 +445,16 @@ export function ImportModal({ file: first, onClose, onCreated, onProject, into, 
                 <label className="imp-field">
                   <span>{t('Format')}</span>
                   <div className="imp-row">
-                    <select value={`${size[0]}x${size[1]}`} onChange={(e) => setSize(e.target.value.split('x').map(Number) as [number, number])}>
-                      {[...FORMATS, ...(FORMATS.some(([w, h]) => w === size[0] && h === size[1]) ? [] : [size])].map(([w, h]) => (
-                        <option key={`${w}x${h}`} value={`${w}x${h}`}>
-                          {w}×{h}
-                        </option>
-                      ))}
-                    </select>
-                    <select value={`${rate[0]}/${rate[1]}`} onChange={(e) => setRate(e.target.value.split('/').map(Number) as [number, number])}>
-                      {RATES.map((r) => (
-                        <option key={`${r[0]}/${r[1]}`} value={`${r[0]}/${r[1]}`}>
-                          {rateName(r)} {t('fps')}
-                        </option>
-                      ))}
-                    </select>
+                    <Dropdown
+                      value={`${size[0]}x${size[1]}`}
+                      options={[...FORMATS, ...(FORMATS.some(([w, h]) => w === size[0] && h === size[1]) ? [] : [size])].map(([w, h]) => ({ value: `${w}x${h}`, label: `${w}×${h}` }))}
+                      onChange={(v) => setSize(v.split('x').map(Number) as [number, number])}
+                    />
+                    <Dropdown
+                      value={`${rate[0]}/${rate[1]}`}
+                      options={RATES.map((r) => ({ value: `${r[0]}/${r[1]}`, label: `${rateName(r)} ${t('fps')}` }))}
+                      onChange={(v) => setRate(v.split('/').map(Number) as [number, number])}
+                    />
                   </div>
                 </label>
                   </>

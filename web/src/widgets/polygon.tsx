@@ -2,7 +2,8 @@
 // Free vertices are fractions of the box (they scale with it).
 // Same picture as crates/cg-render/src/wid/polygon.rs; geometry mirrors crates/cg-core/src/wid/polygon.rs.
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Pentagon } from 'lucide-react';
+import { Pentagon, X } from 'lucide-react';
+import { NumberField } from '../ui/fields';
 import { useApp } from '../store';
 import { num } from '../engine/evaluate';
 import { Btns, clamp, defineWidget, Handle, Num, Row, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
@@ -275,19 +276,11 @@ function VertexList({ layer, edit }: { layer: L; edit: Edit }) {
                 <span className="hint" style={{ flex: '0 0 auto' }}>
                   {ax ? 'y' : 'x'}
                 </span>
-                <input
-                  type="number"
-                  step={1}
-                  style={{ width: '100%', minWidth: 0 }}
-                  title={ax ? t('Y in px from the box top') : t('X in px from the box left')}
-                  value={Math.round(v[ax] * (ax ? h : w))}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  onChange={(e) => e.target.value !== '' && setV(i, ax, +e.target.value)}
-                />
+                <NumberField title={ax ? t('Y in px from the box top') : t('X in px from the box left')} value={Math.round(v[ax] * (ax ? h : w))} onChange={(n) => setV(i, ax, n)} />
               </span>
             ))}
             <button className="wk-x" title={t('Remove this vertex')} onClick={() => removeVertex(layer, edit, i)}>
-              ✕
+              <X size={12} />
             </button>
           </div>
         ))}

@@ -257,7 +257,7 @@ export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) 
   return (
     <button
       className={`pp-op ${on ? 'on' : ''}`}
-      title={on ? (fromSource ? t('Exposed to the Operator ({fields}) · fed by a data source · click to stop', { fields: fields.map((f) => f.label).join(', ') || bound.join(', ') }) : t('Exposed to the Operator ({fields}) · click to stop', { fields: fields.map((f) => f.label).join(', ') || bound.join(', ') })) : t('Expose to the Operator')}
+      title={on ? (fromSource ? t('Exposed to the Operator ({fields}) · fed by data · click to stop', { fields: fields.map((f) => f.label).join(', ') || bound.join(', ') }) : t('Exposed to the Operator ({fields}) · click to stop', { fields: fields.map((f) => f.label).join(', ') || bound.join(', ') })) : t('Expose to the Operator')}
       onClick={() => (on ? unbind() : expose())}
     >
       <Radio size={13} />
@@ -555,7 +555,6 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
               {text('target', false, '5:00')}
             </>
           )}
-          <p className="hint">{t('Tokens: yyyy yy MM M dd d HH H hh h mm m ss s f (tenths) A (AM/PM).')}</p>
         </>
       );
     case 'ticker':
@@ -936,7 +935,7 @@ function LayerGeneral({ layer }: { layer: Layer }) {
       <WidgetSettings layer={layer} set={set} data={data} />
       {isTimed(layer) && !widgetOf(layer)?.Operator && (
         <>
-          <div className="row" title={t('How it starts on air: at the In, on Continue (F2), or on a trigger (also the API action widget)')}>
+          <div className="row" title={t('Start on air: In, Continue (F2) or a trigger')}>
             <span className="prop-label">{tc('cc', 'Start')}</span>
             <Segmented
               value={startMode(layer)}
@@ -1340,7 +1339,7 @@ function DurationField({ frames, rate, onChange }: { frames: number; rate: numbe
 }
 
 const OVERFLOWS: { value: TextOverflow; label: string; hint: string }[] = [
-  { value: 'fit', label: 'Fit', hint: 'Narrower, then smaller, down to the minimums below; then cut at the box' },
+  { value: 'fit', label: 'Fit', hint: 'Narrower, then smaller, then cut at the box' },
   { value: 'ellipsis', label: '…', hint: 'Shortened with “…”' },
   { value: 'clip', label: 'Cut', hint: 'Cut at the box' },
   { value: 'visible', label: 'Overflow', hint: 'Drawn outside its box' },
@@ -1472,7 +1471,7 @@ export function Inspector() {
         <LayerInspector key={layer.id} layer={layer} />
       ) : selected.length > 1 ? (
         <Section title={t('Selection')}>
-          <p className="hint">{t('{n} layers selected. Drag on the stage to move them together.', { n: selected.length })}</p>
+          <p className="hint">{t('{n} layers selected', { n: selected.length })}</p>
         </Section>
       ) : (
         <TemplateInspector template={template} />

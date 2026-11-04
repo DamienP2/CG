@@ -7,7 +7,7 @@ import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
-import { t, tc, tl, tn } from '../i18n';
+import { lang, t, tc, tl, tn } from '../i18n';
 import { GroupRow } from '../designer/Inspector';
 import { ColorPick, Content, defineWidget, GridEditor, Num, RangeNum, Row, Section, Seg, Select, Text, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
 import { ADVANCE_MODES, Centre, Countdown, Dots, GAP, WaitsContinue, WaitsTrigger, type AdvanceMode, type Line2Item } from './centre';
@@ -19,11 +19,13 @@ export type Config = LConfig;
 /** What the operator changes on air (mirrors `State` in the Rust module). */
 export type State = LState;
 
-const SAMPLES: Record<string, { data: string[][]; axis: { suffix: string; decimals: number } }> = {
-  poll: { data: SAMPLE, axis: { suffix: ' %', decimals: 0 } },
+/** The sample rows, in the interface's language (made when a chart is added or a sample loaded). */
+const sample = () => SAMPLE.map((r, i) => (i ? [new Date(2000, i - 1, 15).toLocaleDateString(lang() === 'fr' ? 'fr-FR' : 'en-GB', { month: 'short' }).replace(/^./, (c) => c.toUpperCase()), ...r.slice(1)] : [tc('sample', 'Month'), ...r.slice(1)]));
+const samples = (): Record<string, { data: string[][]; axis: { suffix: string; decimals: number } }> => ({
+  poll: { data: sample(), axis: { suffix: ' %', decimals: 0 } },
   budget: {
     data: [
-      ['Year', 'Revenue', 'Costs', 'Balance'],
+      [tc('sample', 'Year'), tc('sample', 'Revenue'), tc('sample', 'Costs'), tc('sample', 'Balance')],
       ['2021', '42', '-38', '4'],
       ['2022', '45', '-47', '-2'],
       ['2023', '51', '-49', '2'],
@@ -34,21 +36,21 @@ const SAMPLES: Record<string, { data: string[][]; axis: { suffix: string; decima
   },
   share: {
     data: [
-      ['Channel', 'Share'],
+      [tc('sample', 'Channel'), tc('sample', 'Share')],
       ['Strata TV', '24.5'],
       ['TF Nord', '18.2'],
       ['Canal Est', '14.9'],
       ['Info 24', '9.1'],
       ['Sport+', '5.4'],
-      ['Kids', '3.2'],
-      ['Docs', '2.1'],
-      ['Music', '1.4'],
-      ['Local', '0.9'],
-      ['Weather', '0.6'],
+      [tc('sample', 'Kids'), '3.2'],
+      [tc('sample', 'Docs'), '2.1'],
+      [tc('sample', 'Music'), '1.4'],
+      [tc('sample', 'Local'), '0.9'],
+      [tc('sample', 'Weather'), '0.6'],
     ],
     axis: { suffix: ' %', decimals: 1 },
   },
-};
+});
 
 /** Layout of the layer at a moment (both the stage and the warnings use it). */
 function run(layer: Config, data: Data, state: unknown, w: number, h: number, fs: number, ageMs: number, now: number, lang: string): Out {
@@ -328,7 +330,7 @@ export default defineWidget({
   label: 'Chart',
   group: 'Data',
   icon: ChartColumn,
-  create: () => ({ chartType: 'columns', data: SAMPLE.map((r) => r.slice()), title: { pos: 'none' }, labels: { value: false }, panel: { on: false }, props: { width: 1460, height: 820, fontSize: 26 } }),
+  create: () => ({ chartType: 'columns', data: sample(), title: { pos: 'none' }, labels: { value: false }, panel: { on: false }, props: { width: 1460, height: 820, fontSize: 26 } }),
   ownsLook: true,
   live: () => true,
   content: ['csv', 'title.text'],
@@ -369,13 +371,14 @@ export default defineWidget({
                   ['budget', t('Budget')],
                   ['share', t('Audience share')],
                 ]}
-                onChange={(v) =>
-                  SAMPLES[v] &&
-                  edit((l) => {
-                    l.data = SAMPLES[v].data.map((r) => r.slice());
-                    l.axis = { ...l.axis, ...SAMPLES[v].axis };
-                  })
-                }
+                onChange={(v) => {
+                  const s = samples()[v];
+                  if (s)
+                    edit((l) => {
+                      l.data = s.data;
+                      l.axis = { ...l.axis, ...s.axis };
+                    });
+                }}
               />
               <Row expose="data" exposeValue={c.data}>
                 <GridEditor path="data" value={c.data} header csv />

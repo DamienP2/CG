@@ -368,6 +368,10 @@ code {
   background: var(--line-2);
   color: var(--text);
 }
+.segmented button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 .badge {
   font-size: var(--fs-11);
@@ -2351,6 +2355,9 @@ code {
   font-size: 12px;
   color: var(--text-3);
 }
+.sort .dd-btn {
+  width: auto;
+}
 .seg {
   display: flex;
   gap: 2px;
@@ -3555,6 +3562,10 @@ select.small {
 .me-field > .seg {
   grid-column: 2 / -1;
 }
+.me-field > .segmented {
+  grid-column: 2 / -1;
+  justify-self: start;
+}
 .me-field > .num-field + em {
   grid-column: 3;
 }
@@ -3786,8 +3797,13 @@ select.small {
 .mos-plugin header svg {
   color: var(--live);
 }
-.mos-plugin header select {
+.mos-plugin header .dd-btn {
+  width: auto;
+  max-width: 60%;
   margin-left: auto;
+}
+.mos-plugin header .dd-btn svg {
+  color: var(--text-3);
 }
 .mos-error {
   color: var(--live);
@@ -5016,7 +5032,7 @@ body.resizing-y * {
   gap: 4px;
   align-items: center;
 }
-.binding select,
+.binding .dd-btn,
 .binding input {
   flex: 1;
   min-width: 0;
@@ -5567,7 +5583,7 @@ a.btn {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #4b5070;
+  color: var(--text-3);
 }
 .oc-wires {
   position: absolute;
@@ -7179,13 +7195,9 @@ body.resizing-y .opl-page:has(.splitter.opx-pv:active) .splitter.opx-pv {
   justify-content: space-between;
   gap: 8px;
 }
-.opx-every select {
-  height: 28px;
-  border: none;
-  border-radius: 5px;
-  background: var(--bg);
-  color: var(--text);
-  padding: 0 8px;
+.opx-every .dd-btn {
+  width: auto;
+  min-width: 90px;
 }
 .opx-map {
   display: flex;
@@ -7475,11 +7487,15 @@ body.resizing-y .opl-page:has(.splitter.opx-pv:active) .splitter.opx-pv {
   flex: 1;
   min-width: 0;
 }
-.dc-inline input[type='number'] {
-  width: 100%;
+.dc-inline .num-field {
+  flex: 1;
+}
+.dc-inline .num-field input,
+.dc-num .num-field input {
   min-width: 0;
 }
 .dc-num {
+  display: flex;
   width: 70px !important;
   flex: none;
 }
@@ -8304,10 +8320,11 @@ body.dragging-guide .guide span {
   min-width: 0;
   font-family: var(--mono);
 }
-.ai-field em {
-  font-style: normal;
-  color: var(--text-3);
-  font-size: 11px;
+.ai-field .num-field {
+  flex: 1;
+}
+.ai-field .num-field .scrub {
+  min-width: 14px;
 }
 .ai-field.wide span {
   width: 44px;
@@ -9564,7 +9581,6 @@ body.cv-moving * {
   gap: 6px;
   flex-wrap: wrap;
 }
-.ods-line select,
 .ods-line input {
   height: 28px;
   min-width: 0;
@@ -9993,6 +10009,12 @@ body.cv-moving * {
   flex: 1;
   min-width: 0;
 }
+.wk-item .num-field {
+  flex: 1;
+}
+.wk-item .num-field input {
+  min-width: 0;
+}
 .wk-item.off > input {
   opacity: 0.45;
   text-decoration: line-through;
@@ -10108,8 +10130,8 @@ body.cv-moving * {
   align-items: center;
   gap: 6px;
 }
-.ods-hand .ods-line > select,
-.ods-hand .ods-line > input:not(.ods-num):not(.ods-trigger) {
+.ods-hand .ods-line > .dd-btn,
+.ods-hand .ods-line > input:not(.ods-trigger) {
   flex: 1 1 100%;
   max-width: none;
   min-height: 34px;
@@ -10122,7 +10144,10 @@ body.cv-moving * {
 .ods-hand .ods-line > .opx-seg {
   flex: 1 1 100%;
 }
-.ods-hand .ods-line > .ods-num,
+.ods-hand .ods-line > .ods-num {
+  width: 76px;
+}
+.ods-hand .ods-line > .ods-num input,
 .ods-hand .ods-line > .ods-trigger {
   height: 30px;
   border: none;
@@ -10956,7 +10981,7 @@ body.cv-moving * {
   flex-wrap: wrap;
 }
 .ods-bar .ods-every {
-  width: 54px;
+  width: 64px;
 }
 .ods-prog.line {
   flex: none;
@@ -12992,18 +13017,6 @@ body.cv-moving * {
   text-transform: none;
   letter-spacing: 0;
 }
-.data-item.shared strong::after {
-  content: 'shared';
-  margin-left: 6px;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: var(--accent-soft);
-  color: var(--accent-2);
-  font-size: var(--fs-11);
-  font-weight: 700;
-  text-transform: uppercase;
-  vertical-align: 1px;
-}
 .dc-pal-sub {
   margin: 6px 4px 2px;
   font-size: var(--fs-11);
@@ -13255,10 +13268,6 @@ a.lib-nav-item {
   font-size: 12px;
   color: var(--warn);
 }
-.user-all {
-  margin: 0;
-  font-size: 12.5px;
-}
 .user-scopes {
   display: flex;
   flex-direction: column;
@@ -13325,8 +13334,10 @@ a.lib-nav-item {
   background: none;
   outline: none;
 }
-.key-form select {
+.key-form .dd-btn {
+  width: auto;
   max-width: 240px;
+  height: 32px;
 }
 .key-grid {
   display: grid;
@@ -13719,6 +13730,7 @@ a.lib-nav-item {
 }
 .opg-col {
   flex: none;
+  width: auto;
   max-width: 140px;
   height: 26px;
   font-size: 12px;
@@ -14319,8 +14331,7 @@ a.lib-nav-item {
   font-size: 11px;
   color: var(--text-3);
 }
-.imp-field input,
-.imp-field select {
+.imp-field input {
   height: 30px;
   min-width: 0;
   border: 1px solid var(--line-2);
@@ -14335,12 +14346,14 @@ a.lib-nav-item {
   display: flex;
   gap: 6px;
 }
-.imp-row select {
+.imp-row .dd-btn {
   flex: 1;
   min-width: 0;
+  height: 30px;
+  border-radius: 7px;
 }
-.imp-row select + select {
-  flex: 0 0 76px;
+.imp-row .dd-btn + .dd-btn {
+  flex: 0 0 96px;
 }
 .imp-seg {
   display: flex;
@@ -14986,12 +14999,19 @@ a.lib-nav-item {
   gap: 8px;
 }
 .asr-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.asr-live > i {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--live);
   box-shadow: 0 0 0 3px var(--live-soft);
-  margin-right: 4px;
 }
 .asr-toolbar {
   display: flex;
@@ -15626,6 +15646,11 @@ a.lib-nav-item {
   align-items: center;
   gap: 8px;
 }
+.btn1-bar .dd-btn {
+  width: auto;
+  min-width: 160px;
+  height: 30px;
+}
 .btn1-project {
   font-size: 12px;
   color: var(--text-2);
@@ -15759,7 +15784,8 @@ a.lib-nav-item {
   font-size: 11.5px;
   color: var(--text-2);
 }
-.btn1-settings input[type='number'] {
+.btn1-port {
+  display: inline-block;
   width: 90px;
 }
 .btn1-allow {
@@ -16002,7 +16028,7 @@ a.lib-nav-item {
   vertical-align: middle;
 }
 .dr-table tr:not(.dr-edit) > td > input:not([type='checkbox']),
-.dr-table tr:not(.dr-edit) > td > select {
+.dr-table tr:not(.dr-edit) > td > .dd-btn {
   width: 100%;
   min-width: 0;
   padding: 4px 6px;
@@ -16011,7 +16037,7 @@ a.lib-nav-item {
   border-color: transparent;
 }
 .dr-table tr:not(.dr-edit) > td > input:not([type='checkbox']):is(:hover, :focus),
-.dr-table tr:not(.dr-edit) > td > select:is(:hover, :focus) {
+.dr-table tr:not(.dr-edit) > td > .dd-btn:is(:hover, :focus, .open) {
   background: var(--panel-2);
   border-color: var(--line-2);
 }
@@ -16027,10 +16053,6 @@ a.lib-nav-item {
 .dr-table .mono,
 .dr-params .mono {
   font-family: var(--mono);
-}
-.dr-table select:disabled {
-  appearance: none;
-  opacity: 1;
 }
 .dr-req {
   text-align: center;
@@ -16672,14 +16694,9 @@ a.lib-nav-item {
   justify-content: flex-start;
 }
 .mod-num {
-  width: 52px;
-  padding: 2px 4px;
-  border: 1px solid var(--line-2);
-  border-radius: 4px;
-  background: var(--panel-2);
-  color: var(--text);
-  font: inherit;
-  text-align: right;
+  display: inline-block;
+  width: 64px;
+  vertical-align: middle;
 }
 .mod-words {
   display: flex;
@@ -17022,10 +17039,6 @@ button.mod-word {
 .ux3-sort {
   flex-wrap: nowrap;
 }
-.ux3-pick-hint {
-  color: var(--text-2);
-  font-size: var(--fs-12);
-}
 .bulk-bar .btn:disabled {
   opacity: 0.45;
 }
@@ -17066,9 +17079,6 @@ button.mod-word {
 }
 .ux3-empty-mini svg {
   flex: none;
-}
-.data-item.shared strong[data-badge]::after {
-  content: attr(data-badge);
 }
 /* Video streams: on narrow screens the inspector is a drawer over the graph. */
 .ux3-row {
@@ -20583,10 +20593,15 @@ input.lc-pal-name:focus {
 }
 .opx-var-val > input,
 .opx-var-val > textarea,
-.opx-var-val > select,
 .opx-var-val > .rt {
   width: 100%;
   min-width: 0;
+}
+/* A choice among many: the same box as the texts beside it. */
+.opx-var-val > .dd-btn {
+  height: 30px;
+  background: var(--panel-3);
+  border-color: var(--line);
 }
 .opx-var.chg .opx-var-val input,
 .opx-var.chg .opx-var-val textarea,
@@ -21454,9 +21469,13 @@ textarea.tx-grow {
   gap: 4px;
 }
 .dp-form input:not([type='checkbox']),
-.dp-form select,
 .dp-form textarea {
   padding: 7px 10px;
+  font-size: 13px;
+}
+.dp-form .dd-btn {
+  height: 32px;
+  padding: 0 10px;
   font-size: 13px;
 }
 .dp-form > label.check {
