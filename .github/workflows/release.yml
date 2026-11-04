@@ -135,7 +135,7 @@ jobs:
 
   macos-installer:
     needs: web
-    runs-on: macos-latest
+    runs-on: macos-15
     env:
       # Secrets cannot be tested in `if:` directly.
       HAS_SIGNING: ${{ secrets.MACOS_CERTS_P12 != '' }}
@@ -239,7 +239,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
       MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
