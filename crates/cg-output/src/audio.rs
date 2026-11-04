@@ -265,6 +265,10 @@ pub struct AudioOutConfig {
     /// TAI − UTC in seconds: RTP timestamps count TAI.
     #[serde(default = "default_tai")]
     pub tai_offset: u32,
+    /// The priority the network gives its packets (DSCP): 34 (AF41) as
+    /// AES67 asks, 46 (EF) as Dante does, 0 none.
+    #[serde(default = "default_dscp")]
+    pub dscp: u8,
     /// Sound card: its name ("" = the system's default output).
     #[serde(default)]
     pub device: String,
@@ -284,6 +288,9 @@ fn default_pt() -> u8 {
 }
 fn default_tai() -> u32 {
     37
+}
+fn default_dscp() -> u8 {
+    34
 }
 fn default_first() -> u16 {
     1
@@ -375,9 +382,16 @@ pub fn sap(source: Ipv4Addr, id: u16, sdp: &str, delete: bool) -> Vec<u8> {
     p
 }
 
-fn open_socket(ttl: u32, interface: Option<Ipv4Addr>) -> std::io::Result<UdpSocket> {
+fn open_socket(ttl: u32, interface: Option<Ipv4Addr>, dscp: u8) -> std::io::Result<UdpSocket> {
     let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
     s.set_multicast_ttl_v4(ttl)?;
+    // DSCP: the 6 high bits of the TOS byte. Windows applies it only when a
+    // QoS policy allows the program: refused, the packets go unmarked.
+    if dscp > 0 {
+        if let Err(e) = s.set_tos(u32::from(dscp.min(63)) << 2) {
+            tracing::warn!("audio: network priority (DSCP {dscp}) not set: {e}");
+        }
+    }
     if let Some(ip) = interface {
         s.set_multicast_if_v4(&ip)?;
         s.bind(&SocketAddrV4::new(ip, 0).into())?;
@@ -422,9 +436,9 @@ impl AudioOut {
         let stats = Arc::new(AudioStats::default());
         let thread = match config.kind {
             AudioKind::Aes67 => {
-                let socket = open_socket(config.ttl, config.interface)
+                let socket = open_socket(config.ttl, config.interface, config.dscp)
                     .map_err(|e| OutputError::Message(e.to_string()))?;
-                let sap_socket = open_socket(255, config.interface)
+                let sap_socket = open_socket(255, config.interface, 0)
                     .map_err(|e| OutputError::Message(e.to_string()))?;
                 let (stop2, stats2) = (stop.clone(), stats.clone());
                 std::thread::Builder::new()
@@ -734,6 +748,16 @@ mod tests {
         let p = sap(Ipv4Addr::new(10, 0, 0, 1), 3, &sdp, false);
         assert_eq!(&p[..8], &[0x20, 0, 0, 3, 10, 0, 0, 1]);
         assert!(p.ends_with(sdp.as_bytes()));
+    }
+
+    #[test]
+    fn packets_are_marked_with_their_priority() {
+        let c: AudioOutConfig = serde_json::from_str(r#"{"name":"t"}"#).unwrap();
+        assert_eq!(c.dscp, 34);
+        let s = open_socket(1, None, 46).unwrap();
+        #[cfg(unix)]
+        assert_eq!(socket2::SockRef::from(&s).tos().unwrap(), 46 << 2);
+        drop(s);
     }
 
     #[test]

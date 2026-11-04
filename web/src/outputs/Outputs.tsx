@@ -1339,6 +1339,13 @@ export function Outputs({ mode }: { mode: Mode }) {
                                   ))}
                                 </select>
                               </Field>
+                              <Field label={t('Network priority')} hint={t('DSCP marking: switches with QoS send these packets first. AES67 asks for 34, Dante uses 46.')}>
+                                <select value={a.dscp ?? 34} onChange={(e) => set((x) => void (x.dscp = +e.target.value))}>
+                                  <option value={34}>AES67 · AF41 (34)</option>
+                                  <option value={46}>Dante · EF (46)</option>
+                                  <option value={0}>{t('None (0)')}</option>
+                                </select>
+                              </Field>
                               <dl className="oc-hw-sum">
                                 <dt>{t('Format')}</dt>
                                 <dd>48 kHz · 24 bits · 2 ch · 1 ms</dd>

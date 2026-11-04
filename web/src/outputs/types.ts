@@ -191,6 +191,8 @@ export interface AudioOutput {
   interface?: string | null;
   ttl?: number;
   payloadType?: number;
+  /** Network priority of its packets (DSCP): 34 AES67 (default), 46 Dante, 0 none. */
+  dscp?: number;
   /** Sound card: its name ("" = the system's default). */
   device?: string;
   /** Sound card: first of the two channels (1 = 1-2). */

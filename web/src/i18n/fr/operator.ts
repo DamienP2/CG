@@ -552,6 +552,9 @@ export const operator: Record<string, string> = {
   'Address:port expected': 'Adresse:port attendue',
   'Sound cards are played on macOS and Windows.': 'Cartes son : macOS et Windows uniquement.',
   'No sound card found.': 'Aucune carte son trouvée.',
+  'Network priority': 'Priorité réseau',
+  'DSCP marking: switches with QoS send these packets first. AES67 asks for 34, Dante uses 46.': 'Marquage DSCP : les switches avec QoS font passer ces paquets en premier. AES67 demande 34, Dante utilise 46.',
+  'None (0)': 'Aucune (0)',
   // Personal / shared playlists
   'New personal playlist': 'Nouvelle playlist personnelle',
   'New shared playlist': 'Nouvelle playlist partagée',
