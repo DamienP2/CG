@@ -78,7 +78,7 @@ export function StageZoom() {
   return (
     <>
       <label className="zoom" title={`${Math.round(zoom * 100)} %`}>
-        {t('Zoom')}
+        <span>{t('Zoom')}</span>
         <input type="range" min={Math.log2(ZOOM_MIN)} max={Math.log2(ZOOM_MAX)} step={0.01} value={Math.log2(zoom)} onChange={(e) => useDesigner.setState({ stageZoom: clampZoom(2 ** +e.target.value) })} />
       </label>
       <button className="btn small" title={t('Fit the picture in the canvas')} onClick={() => useDesigner.setState({ stageZoom: stageFit })}>

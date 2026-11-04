@@ -1339,6 +1339,23 @@ code {
   border: none;
   background: none;
 }
+/* A narrow canvas: the Designer's zoom slider gets shorter, then its word goes; the toolbar stays whole. */
+.center > .toolbar {
+  container-type: inline-size;
+}
+.center > .toolbar > .zoom {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.center > .toolbar > .zoom input {
+  min-width: 56px;
+  flex: 0 1 110px;
+}
+@container (max-width: 640px) {
+  .center > .toolbar > .zoom > span {
+    display: none;
+  }
+}
 .tl-scroll {
   flex: 1;
   overflow: auto;
@@ -12391,6 +12408,13 @@ body.cv-moving * {
 .op-rows .wk-btns {
   align-items: center;
 }
+/* A table's buttons (+ Row, Import a CSV file…): in sentence case, as the rest of the forms. */
+.wk-btns .opx-btn.small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
 .op-rows-n {
   margin-left: auto;
   font-size: 11.5px;
@@ -12400,9 +12424,13 @@ body.cv-moving * {
   flex: 1;
   min-width: 0;
   text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+.te-tog {
+  height: auto;
+  min-height: 30px;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 .te-canvas {
   scrollbar-gutter: stable;

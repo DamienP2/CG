@@ -10,7 +10,7 @@ import { api, useApp } from '../store';
 import { columnKey, linesKey, rowKey, tableKey, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { navigate, projectPath } from '../router';
 import { autoLayout, measureNodes, type LayoutEdge } from '../ui/autoLayout';
-import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
+import { freeInView as freeInViewOf, freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey } from './Inspector';
 import { BuildCard } from './TableBuild';
@@ -429,6 +429,9 @@ export interface DataLayerOpts {
   /** A variable dropped in the void (screen point in the viewport, point in the space). */
   onKeyVoid: (key: string, sx: number, sy: number, at: Pt) => void;
 }
+
+/** When the palette was last clicked: the second click of a double-click adds nothing. */
+let lastPaletteClick = 0;
 
 /**
  * The Données layer of the Logic canvas: data sources, the steps on the way (filter, sort,
@@ -853,15 +856,10 @@ export function useDataLayer(o: DataLayerOpts) {
     const v = cv.visible();
     return { x: Math.round(v.x + v.w / 2 - 160), y: Math.round(v.y + 80 + ((flow.nodes.length * 30) % 200)) };
   };
-  /** The first free place in view (from the top left) for a node `w` wide; below the others when the view is full. */
+  /** The free place nearest the middle of the view for a node `w` wide; below the others when the view is full. */
   const freeInView = (w: number, h = 120): Pt => {
     const world = document.querySelector('.logic-editor .logic-canvas');
-    const rects = [...(world?.querySelectorAll<HTMLElement>('.logic-node') ?? [])].map((el) => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }));
-    const free = (x: number, y: number) => !rects.some((r) => x < r.x + r.w + 24 && x + w + 24 > r.x && y < r.y + r.h + 24 && y + h + 24 > r.y);
-    const v = cv.visible();
-    const pad = 32;
-    for (let y = v.y + pad; y + h <= v.y + v.h - pad; y += 24) for (let x = v.x + pad; x + w <= v.x + v.w - pad; x += 24) if (free(x, y)) return { x: Math.round(x), y: Math.round(y) };
-    return freeSpot(world, inView(), w, h);
+    return freeInViewOf(world, cv.visible(), w, h) ?? freeSpot(world, inView(), w, h);
   };
   /** A node already on the canvas: brought into view and flashed. */
   const focusNode = (id: string) => {
@@ -896,7 +894,12 @@ export function useDataLayer(o: DataLayerOpts) {
       window.removeEventListener('pointerup', up);
       setGhost(null);
       const world = document.querySelector('.logic-editor .logic-canvas');
-      if (!moved) return onClick ? onClick() : add(freeInView(width));
+      if (!moved) {
+        const quick = ev.timeStamp - lastPaletteClick < 500;
+        lastPaletteClick = ev.timeStamp;
+        if (quick) return;
+        return onClick ? onClick() : add(freeInView(width));
+      }
       const el = document.elementFromPoint(ev.clientX, ev.clientY) as Element | null;
       if (!el?.closest('.logic-canvas')) return;
       const edge = el.closest('[data-edge]')?.getAttribute('data-edge');

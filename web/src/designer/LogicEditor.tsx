@@ -12,11 +12,12 @@ import { can, useApp } from '../store';
 import { useLogicFlows } from '../logicFlows';
 import { InsertModal, needsOf, PresetsModal, SaveFlowModal, type Needs } from './logicLibrary';
 import { DC_MADE, useDataLayer } from './DataCanvas';
+import { key as modKey } from './ClipboardMenu';
 import { useBoundData } from '../data/dataStore';
 import { settingDefaults } from '../engine/settings';
 import { settingLabel } from '../engine/settingPorts';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
-import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
+import { freeInView, freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { useDesigner } from './designerStore';
 import { useProjectLogic } from './projectLogic';
 import { HowBody, howOf } from './logicHow';
@@ -564,6 +565,8 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
 
   const place = () => {
     const v = cv.visible();
+    const at = freeInView(spaceRef.current, v);
+    if (at) return at;
     const x = Math.round(v.x + 80 + ((logic.nodes.length * 30) % 300));
     const y = Math.round(v.y + 70 + ((logic.nodes.length * 40) % 360));
     return freeSpot(spaceRef.current, { x, y });
@@ -988,6 +991,16 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       setQuick(null);
     }
   };
+  /** Esc closes the editor, as the table editor; typing in a field or with a menu open, it closes only that. */
+  const escape = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || (e.target as HTMLElement).closest?.('input, textarea, select, [contenteditable]')) return;
+    if (quick || modal || document.querySelector('.modal-back, .dd-list, .cp-pop, .tb-card, .te-full')) return;
+    onClose();
+  };
+  useEffect(() => {
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  });
 
   const onCanvasDown = (e: React.PointerEvent) => {
     setQuick(null);
@@ -1774,7 +1787,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
 
   return (
     <PortCtx.Provider value={{ wiredIn, wiredOut, startWire }}>
-    <div className={`logic-editor lx view-${view}`} onKeyDown={(e) => e.stopPropagation()}>
+    <div className={`logic-editor lx view-${view}`} onKeyDown={(e) => (e.stopPropagation(), escape(e.nativeEvent))}>
       <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={proj ? t('Project · {name}', { name: template.name }) : template.name} onClose={onClose}>
         {!proj && (
         <div className="segmented lx-view">
@@ -1811,7 +1824,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
           <div className="lx-search">
             <Search size={13} />
             <input ref={searchRef} value={search} placeholder={t('Search')} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setSearch('')} />
-            <kbd>⌘K</kbd>
+            <kbd>{modKey('K')}</kbd>
           </div>
           <Segmented
             value={scope}
@@ -1859,7 +1872,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
                 {open &&
                   list.map((e) => (
                     <div key={e.key} className={`lx-entry ${placed.has(e.key) ? 'placed' : ''}`}>
-                      <button onClick={() => addEntry(e)} title={t('Add')}>
+                      <button onClick={(ev) => ev.detail < 2 && addEntry(e)} title={t('Add')}>
                         <e.icon size={13} />
                         <strong>{e.fam === 'layer' || e.fam === 'graphic' || e.fam === 'playlist' ? e.label : t(e.label)}</strong>
                         {placed.has(e.key) ? <em>{t('placed')}</em> : e.note ? <em>{e.note}</em> : null}

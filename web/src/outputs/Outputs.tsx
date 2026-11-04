@@ -313,6 +313,14 @@ export function Outputs({ mode }: { mode: Mode }) {
   // Arrange lays the nodes out from left to right (the graph is only known further down).
   const arrangeRef = useRef<() => void>(() => {});
   const cv = useCanvasView('outputs', '.oc-node', { onArrange: () => arrangeRef.current() });
+  // Opening the page, or another channel: the whole graph in view (as Fit).
+  const ready = !!cfg;
+  const fit = cv.fit;
+  useEffect(() => {
+    if (!ready) return;
+    const h = requestAnimationFrame(fit);
+    return () => cancelAnimationFrame(h);
+  }, [ready, current, fit]);
   // Node widths, per browser.
   const [widths, setWidths] = useState<Record<string, number>>(() => {
     try {
@@ -927,7 +935,8 @@ export function Outputs({ mode }: { mode: Mode }) {
   };
 
   const selNode = nodes.find((n) => n.id === sel) ?? nodes[0];
-  const destCount = (c: ChannelConfig) => pictures(c).reduce((n, p) => n + dests(p).length, 0);
+  // Every destination of the channel, wired or not (as its graph and its header).
+  const destCount = (c: ChannelConfig) => [...pictures(c), unwiredOf(c)].reduce((n, p) => n + dests(p).length, 0);
   const warns = (c: ChannelConfig) => Object.values(status[c.id] ?? {}).some((s) => !s.ok);
 
   // The inspector's notes, gathered while it renders (shown as one "i").

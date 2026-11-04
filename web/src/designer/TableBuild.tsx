@@ -1,5 +1,5 @@
 import { Check, Pencil, Sparkles, X } from 'lucide-react';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { interpolateText } from '../engine/evaluate';
 import type { Data, Layer, Template } from '../engine/types';
@@ -121,6 +121,16 @@ export function BuildCard({ layer, template, values, onClose }: { layer: Layer; 
     place();
     return () => cancelAnimationFrame(raf);
   }, [l.id]);
+  // Esc closes the card, not the editor under it.
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || (e.target as HTMLElement).closest?.('input, textarea, select') || document.querySelector('.dd-list')) return;
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', esc, true);
+    return () => window.removeEventListener('keydown', esc, true);
+  }, [onClose]);
   const name = tableDataset(l, template)?.ds?.name ?? t('the data');
   const cols = colsOf(det);
   const mark = det.find((d) => d.on && d.role === 'mark')?.src;

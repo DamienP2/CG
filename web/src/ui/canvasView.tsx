@@ -282,3 +282,23 @@ export function freeSpot(root: Element | null, at: { x: number; y: number }, w =
   }
   return p;
 }
+
+/** The free place nearest the middle of the view `v` (canvas units) for a node `w` × `h`; null when the view is full. */
+export function freeInView(root: Element | null, v: { x: number; y: number; w: number; h: number }, w = 260, h = 150): { x: number; y: number } | null {
+  const rects = [...(root?.querySelectorAll<HTMLElement>('.logic-node, .lx-node') ?? [])].map((el) => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }));
+  const free = (x: number, y: number) => !rects.some((r) => x < r.x + r.w + 24 && x + w + 24 > r.x && y < r.y + r.h + 24 && y + h + 24 > r.y);
+  const pad = 40;
+  const cx = v.x + v.w / 2 - w / 2;
+  const cy = v.y + v.h / 2 - h / 2;
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (let y = cy - Math.floor((cy - v.y - pad) / 24) * 24; y + h <= v.y + v.h - pad; y += 24)
+    for (let x = cx - Math.floor((cx - v.x - pad) / 24) * 24; x + w <= v.x + v.w - pad; x += 24) {
+      const d = Math.hypot(x - cx, (y - cy) * 1.5);
+      if (d < bestD && free(x, y)) {
+        best = { x: Math.round(x), y: Math.round(y) };
+        bestD = d;
+      }
+    }
+  return best;
+}

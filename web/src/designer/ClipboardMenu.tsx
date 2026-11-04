@@ -44,7 +44,8 @@ function reorder(ids: string[], how: Order) {
 }
 
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
-const key = (k: string) => (mac ? `⌘${k}` : `Ctrl+${k}`);
+/** A shortcut with the command key: ⌘ on a Mac, Ctrl elsewhere. */
+export const key = (k: string) => (mac ? `⌘${k}` : `Ctrl+${k}`);
 
 export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
