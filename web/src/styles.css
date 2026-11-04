@@ -19232,11 +19232,11 @@ a.opx-html5 {
   box-shadow: 0 0 0 2px var(--bg);
   margin: -8px 0 0 -4px;
 }
+/* Bottom left: over no page title (the toasts are bottom right). */
 .crash-banner {
   position: fixed;
-  left: 50%;
-  top: 54px;
-  transform: translateX(-50%);
+  left: 18px;
+  bottom: 18px;
   z-index: 60;
   display: flex;
   align-items: center;
