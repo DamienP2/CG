@@ -9,8 +9,8 @@ import { withSettings } from './settings';
 import { ValueMotionContext, valueTransform } from './valueMotion';
 import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
 import { TimeContext, useLayerTime, type Motion } from './LiveTime';
-import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
-import type { Data, FontStyle, GroupMask, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
+import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, tweakValue, type Resolved } from './evaluate';
+import type { Data, FontStyle, GroupMask, Layer, LayerType, Template, TextAlign, Tweak, VerticalAlign } from './types';
 import * as W from './widgets';
 import { applyLogic, clockAt, targeted, logicUsesTime, measureLayer, patchedLayers, wiredLayers, withOutputs } from './logic';
 import type { Clock } from './expr';
@@ -31,6 +31,8 @@ interface SceneProps {
   data: Data;
   /** Render hidden layers' ids for hit-testing in the designer. */
   interactive?: boolean;
+  /** Properties a Logic changed on air (« Animate a property »), at this frame. */
+  tweaks?: Tweak[];
 }
 
 export const LINE_HEIGHT = 1.2;
@@ -569,7 +571,7 @@ function TimedScene(props: SceneProps) {
   return <SceneBody {...props} clock={{ secs: time.ageSecs, nowMs: time.nowMs }} />;
 }
 
-function SceneBody({ template, frame, data, interactive, clock }: SceneProps & { clock: Clock }) {
+function SceneBody({ template, frame, data, interactive, clock, tweaks }: SceneProps & { clock: Clock }) {
   // Settings exposed to the Operator, set from the data.
   template = withSettings(template, data);
   const holdAt = holdFrame(template);
@@ -586,13 +588,23 @@ function SceneBody({ template, frame, data, interactive, clock }: SceneProps & {
   const fontsReady = useFonts((s) => s.ready);
   // Relations: resolve every layer, run the graph, keep the changed ones.
   const logic = useMemo(() => {
-    if (!template.logic?.nodes.length) return NO_LOGIC;
+    if (!template.logic?.nodes.length && !tweaks?.length) return NO_LOGIC;
     const out = new Map<string, Resolved>();
     const values = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
-    applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText), clock);
-    for (const id of targeted(template.logic)) if (values.has(id)) out.set(id, values.get(id)!);
+    if (template.logic?.nodes.length) {
+      applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText), clock);
+      for (const id of targeted(template.logic)) if (values.has(id)) out.set(id, values.get(id)!);
+    }
+    // Properties a Logic changed on air (« Animate a property »).
+    for (const tw of tweaks ?? []) {
+      const v = values.get(tw.layer);
+      if (!v) continue;
+      const rec = v as unknown as Record<string, unknown>;
+      rec[tw.prop] = tweakValue(tw, rec[tw.prop]);
+      out.set(tw.layer, v);
+    }
     return out;
-  }, [template, frame, data, hold, fontsReady, clock.secs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [template, frame, data, hold, fontsReady, clock.secs, tweaks]); // eslint-disable-line react-hooks/exhaustive-deps
   const rich = useMemo(() => typedKeys(template), [template.fields]);
   return (
     <RichKeys.Provider value={rich}>

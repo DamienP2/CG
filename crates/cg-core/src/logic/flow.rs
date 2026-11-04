@@ -37,6 +37,13 @@ pub enum Act {
     ResumePlaylist(String, Option<How>),
     StopAuto(String),
     ClearAll(Option<How>),
+    /// Properties of a layer (of the graphic `template`, in the project's Logic).
+    Animate {
+        template: String,
+        layer: String,
+        sets: Vec<crate::playout::PropSet>,
+        how: Option<How>,
+    },
     Widget {
         layer: String,
         control: String,
@@ -356,6 +363,19 @@ pub fn run(
                 act(Act::StopAuto(playlist.clone()), &mut queue)
             }
             NodeKind::ClearAll {} => act(Act::ClearAll(how), &mut queue),
+            NodeKind::Animate {
+                template,
+                layer,
+                sets,
+            } if !layer.is_empty() && !sets.is_empty() => act(
+                Act::Animate {
+                    template: template.clone(),
+                    layer: layer.clone(),
+                    sets: sets.clone(),
+                    how,
+                },
+                &mut queue,
+            ),
             NodeKind::Widget { layer, control } => act(
                 Act::Widget {
                     layer: layer.clone(),

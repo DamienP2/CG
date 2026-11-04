@@ -754,3 +754,56 @@ fn and_binds_before_or() {
     assert!(!holds("9", "0", "0"));
     assert!(holds("0", "0", "9"));
 }
+
+#[test]
+fn animate_takes_the_how_before_it() {
+    use crate::playout::{How, HowMode, PropSet};
+    let how = How {
+        mode: HowMode::Fade,
+        seconds: 0.6,
+        ..Default::default()
+    };
+    let sets = vec![PropSet {
+        key: "x".into(),
+        mode: "to".into(),
+        value: "1200".into(),
+    }];
+    let logic = Logic {
+        nodes: vec![
+            when("w", "trigger"),
+            node(
+                "h",
+                NodeKind::How {
+                    mode: how.mode,
+                    seconds: how.seconds,
+                    easing: how.easing,
+                    side: how.side,
+                },
+            ),
+            node(
+                "a",
+                NodeKind::Animate {
+                    template: String::new(),
+                    layer: "band".into(),
+                    sets: sets.clone(),
+                },
+            ),
+        ],
+        edges: vec![
+            edge2("w", "out", "h", "run"),
+            edge2("h", "next", "a", "run"),
+        ],
+        frames: vec![],
+    };
+    let mut w = BTreeMap::new();
+    step(&logic, Scope::Graphic, &[], &mut w);
+    assert_eq!(
+        step(&logic, Scope::Graphic, &[(event_key("w"), "1")], &mut w),
+        vec![Act::Animate {
+            template: String::new(),
+            layer: "band".into(),
+            sets,
+            how: Some(how),
+        }]
+    );
+}

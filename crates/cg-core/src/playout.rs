@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::anim::Data;
 use crate::model::{
     Layer, LayerKind, MarkerKind, Project, Resume, RowChange, RundownItem, Template, TriggerEvent,
-    ValueChange, ZoneTransition,
+    Value, ValueChange, ZoneTransition,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +86,9 @@ pub struct PlayoutItem {
     /// Fading or sliding in or out the way the Logic said (« How… »).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub motion: Option<Motion>,
+    /// Properties of its layers a Logic changed (« Animate a property »).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tweaks: Vec<Tweak>,
     /// What its Triggers watch, by node, since the take: a value as it was
     /// (it changes), another graphic seen on air (it goes out), an action
     /// done (it acts once each time its input becomes true).
@@ -279,6 +282,209 @@ pub struct Motion {
     /// Going out (removed at the end), else coming in.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub going: bool,
+}
+
+/// How a Logic changes a property (« Animate a property »).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TweakMode {
+    /// The value itself, `from` → `to` (the animation no longer moves it).
+    To,
+    /// An offset added to the animation, `from` → `to`.
+    By,
+    /// Back to the animation's value, from `from`; gone at the end.
+    Back,
+}
+
+/// A property of a layer of a graphic on air, changed by a Logic.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Tweak {
+    pub layer: String,
+    pub prop: crate::model::Prop,
+    pub mode: TweakMode,
+    pub from: Value,
+    pub to: Value,
+    /// Frames since it began, of `length`.
+    pub frame: f64,
+    pub length: f64,
+    #[serde(default)]
+    pub easing: crate::easing::Easing,
+}
+
+fn mix(a: Value, b: Value, p: f64) -> Value {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => Value::Number(x + (y - x) * p),
+        (Value::Color(x), Value::Color(y)) => {
+            let mut c = x.0;
+            for (i, v) in c.iter_mut().enumerate() {
+                *v += (y.0[i] - *v) * p as f32;
+            }
+            Value::Color(crate::model::Color(c))
+        }
+        (_, b) => b,
+    }
+}
+
+fn add(a: Value, b: Value) -> Value {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => Value::Number(x + y),
+        (a, _) => a,
+    }
+}
+
+impl Tweak {
+    pub fn done(&self) -> bool {
+        self.frame >= self.length
+    }
+    fn progress(&self) -> f64 {
+        if self.length <= 0.0 {
+            return 1.0;
+        }
+        self.easing.apply(self.frame / self.length)
+    }
+    /// The value it gives, over the animation's `base`.
+    pub fn value(&self, base: Value) -> Value {
+        let p = self.progress();
+        match self.mode {
+            TweakMode::To => mix(self.from, self.to, p),
+            TweakMode::By => add(base, mix(self.from, self.to, p)),
+            TweakMode::Back => mix(self.from, base, p),
+        }
+    }
+    /// Its offset now (`By`).
+    fn offset(&self) -> Value {
+        mix(self.from, self.to, self.progress())
+    }
+}
+
+/// The layers' values (`values`, from the animation and the Logic's wires)
+/// with the properties a Logic changed (« Animate a property »); a layer not
+/// in `values` is resolved first.
+pub fn apply_tweaks(
+    values: &mut crate::logic::Values,
+    t: &Template,
+    item: &PlayoutItem,
+    data: &crate::anim::Data,
+) {
+    for tw in &item.tweaks {
+        let Some(l) = t.layers.iter().find(|l| l.id == tw.layer) else {
+            continue;
+        };
+        let v = values.entry(tw.layer.clone()).or_insert_with(|| {
+            crate::anim::resolve_layer(l, item.frame, data, t.hold_frame()).values
+        });
+        let base = v.get(&tw.prop).copied().unwrap_or(tw.from);
+        v.insert(tw.prop, tw.value(base));
+    }
+}
+
+/// One change of « Animate a property »: the property (`*`: every one
+/// changed, with `back`), `to` / `add` / `sub` / `back`, the value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PropSet {
+    pub key: String,
+    #[serde(default = "to_mode")]
+    pub mode: String,
+    #[serde(default)]
+    pub value: String,
+}
+
+fn to_mode() -> String {
+    "to".into()
+}
+
+/// Changes properties of the layer `layer` of a graphic on air, the way a
+/// Logic said (`how`: over its length and curve; none, or a cut: at once).
+fn animate(
+    project: &Project,
+    item: &mut PlayoutItem,
+    layer: &str,
+    sets: &[PropSet],
+    how: Option<How>,
+) {
+    let Some(t) = project.template(&item.template_id) else {
+        return;
+    };
+    let Some(l) = t.layers.iter().find(|l| l.id == layer) else {
+        return;
+    };
+    let fps = project.frame_rate.as_f64().max(1.0);
+    let (length, easing) = match how {
+        Some(h) if h.mode != HowMode::Cut => ((h.seconds.max(0.0) * fps).round(), h.easing),
+        _ => (0.0, crate::easing::Easing::Linear),
+    };
+    let base_values = crate::anim::resolve_layer(l, item.frame, &item.data, t.hold_frame()).values;
+    for set in sets {
+        let props: Vec<crate::model::Prop> = if set.key == "*" {
+            item.tweaks
+                .iter()
+                .filter(|tw| tw.layer == layer)
+                .map(|tw| tw.prop)
+                .collect()
+        } else {
+            crate::logic::prop_of(&set.key).into_iter().collect()
+        };
+        for prop in props {
+            let Some(base) = base_values.get(&prop).copied() else {
+                continue;
+            };
+            let at = item
+                .tweaks
+                .iter()
+                .position(|tw| tw.layer == layer && tw.prop == prop);
+            let old = at.map(|i| item.tweaks.remove(i));
+            let now = old.as_ref().map_or(base, |o| o.value(base));
+            let parsed = match base {
+                Value::Color(_) => {
+                    crate::model::Color::from_hex(set.value.trim()).map(Value::Color)
+                }
+                Value::Number(_) => set
+                    .value
+                    .trim()
+                    .replace(',', ".")
+                    .parse::<f64>()
+                    .ok()
+                    .map(Value::Number),
+            };
+            let tw = |mode, from, to| Tweak {
+                layer: layer.to_string(),
+                prop,
+                mode,
+                from,
+                to,
+                frame: 0.0,
+                length,
+                easing,
+            };
+            let new = match set.mode.as_str() {
+                "back" => old.map(|_| tw(TweakMode::Back, now, base)),
+                "add" | "sub" => {
+                    let Some(Value::Number(d)) = parsed else {
+                        continue;
+                    };
+                    let d = if set.mode == "sub" { -d } else { d };
+                    match &old {
+                        // A value set: from it.
+                        Some(o) if o.mode != TweakMode::By => {
+                            Some(tw(TweakMode::To, now, add(now, Value::Number(d))))
+                        }
+                        // An offset: on from it.
+                        Some(o) => {
+                            let off = o.offset();
+                            Some(tw(TweakMode::By, off, add(off, Value::Number(d))))
+                        }
+                        None => Some(tw(TweakMode::By, Value::Number(0.0), Value::Number(d))),
+                    }
+                }
+                _ => parsed.map(|to| tw(TweakMode::To, now, to)),
+            };
+            if let Some(n) = new {
+                item.tweaks.push(n);
+            }
+        }
+    }
 }
 
 /// How a whole graphic is laid: its opacity, and its offset in frame widths / heights.
@@ -741,6 +947,7 @@ impl PlayoutItem {
             vals: BTreeMap::new(),
             leaving: None,
             motion: None,
+            tweaks: Vec::new(),
         }
     }
 
@@ -1888,6 +2095,16 @@ impl ChannelState {
                     item.leaving = None;
                 }
             }
+            if !item.tweaks.is_empty() {
+                for tw in &mut item.tweaks {
+                    if !tw.done() {
+                        tw.frame = (tw.frame + frames).min(tw.length);
+                        changed = true;
+                    }
+                }
+                item.tweaks
+                    .retain(|tw| !(tw.mode == TweakMode::Back && tw.done()));
+            }
             if let Some(m) = &mut item.motion {
                 m.frame += frames;
                 changed = true;
@@ -2264,6 +2481,31 @@ impl ChannelState {
                     self.clear_all(project, how);
                     done.push("✕".into());
                 }
+                // A layer of the graphics of `template` on air.
+                Act::Animate {
+                    template,
+                    layer,
+                    sets,
+                    how,
+                } => {
+                    let mut any = false;
+                    for item in self.layers.values_mut() {
+                        if item.template_id == template
+                            && !matches!(item.phase, Phase::Out | Phase::OutHold)
+                        {
+                            animate(project, item, &layer, &sets, how);
+                            any = true;
+                        }
+                    }
+                    if any {
+                        done.push(format!(
+                            "{} ⇢",
+                            project
+                                .template(&template)
+                                .map_or(template.clone(), |t| t.name.clone())
+                        ));
+                    }
+                }
                 // A graphic's own actions: none in the project's Logic.
                 Act::Out(_) | Act::Resume(_) | Act::NextRow(_) | Act::Widget { .. } => {}
             }
@@ -2479,6 +2721,7 @@ impl ChannelState {
         let mut widgets: Vec<(u32, String, WidgetControl)> = Vec::new();
         let mut asks: Vec<PlaylistAsk> = Vec::new();
         let mut clear_all: Option<Option<How>> = None;
+        let mut animations: Vec<(String, String, Vec<PropSet>, Option<How>)> = Vec::new();
         for (layer, item) in self.layers.iter_mut() {
             if matches!(item.phase, Phase::Out) {
                 continue;
@@ -2599,6 +2842,19 @@ impl ChannelState {
                     Act::ResumePlaylist(p, how) => asks.push(PlaylistAsk::Resume(p, how)),
                     Act::StopAuto(p) => asks.push(PlaylistAsk::StopAuto(p)),
                     Act::ClearAll(how) => clear_all = Some(how),
+                    // Its own layer (or, named, another graphic's on air).
+                    Act::Animate {
+                        template,
+                        layer: l,
+                        sets,
+                        how,
+                    } => {
+                        if template.is_empty() || template == item.template_id {
+                            animate(project, item, &l, &sets, how);
+                        } else {
+                            animations.push((template, l, sets, how));
+                        }
+                    }
                     Act::Widget { layer: l, control } => {
                         if let Ok(control) = serde_json::from_value::<WidgetControl>(
                             serde_json::Value::String(control),
@@ -2680,6 +2936,15 @@ impl ChannelState {
         }
         // Done by run_project, on the playlists' outputs.
         self.run.0.asked.extend(asks);
+        for (template, l, sets, how) in animations {
+            for item in self.layers.values_mut() {
+                if item.template_id == template
+                    && !matches!(item.phase, Phase::Out | Phase::OutHold)
+                {
+                    animate(project, item, &l, &sets, how);
+                }
+            }
+        }
         if let Some(how) = clear_all {
             self.clear_all(project, how);
             done.push("✕".into());
@@ -2811,6 +3076,7 @@ impl ChannelState {
                 || !i.changes.is_empty()
                 || i.leaving.is_some()
                 || i.motion.is_some()
+                || i.tweaks.iter().any(|t| !t.done())
                 || !matches!(i.phase, Phase::Holding | Phase::OutHold)
         })
     }
@@ -3902,6 +4168,73 @@ mod tests {
         ch.apply(&p, take("c")).unwrap();
         assert_eq!(ch.layers[&1].rundown_id.as_deref(), Some("c"));
         assert_eq!(ch.layers[&1].frame, 0.0);
+    }
+
+    #[test]
+    fn a_logic_animates_a_property_then_goes_back() {
+        use crate::model::Prop;
+        let p = project();
+        let mut ch = ChannelState::default();
+        ch.apply(
+            &p,
+            Command::Take {
+                zone: None,
+                layer: None,
+                template_id: "t".into(),
+                data: None,
+                rundown_id: None,
+            },
+        )
+        .unwrap();
+        for _ in 0..30 {
+            ch.tick(1.0);
+        }
+        let fps = p.frame_rate.as_f64();
+        let how = How {
+            mode: HowMode::Fade,
+            seconds: 0.4,
+            easing: crate::easing::Easing::Linear,
+            side: Side::Left,
+        };
+        let set = |mode: &str, value: &str| PropSet {
+            key: "x".into(),
+            mode: mode.into(),
+            value: value.into(),
+        };
+        let x = |ch: &ChannelState| {
+            let item = &ch.layers[&1];
+            let t = p.template("t").unwrap();
+            let mut v = crate::logic::Values::new();
+            apply_tweaks(&mut v, t, item, &item.data);
+            v.get("l")
+                .and_then(|m| m.get(&Prop::X))
+                .and_then(|v| v.as_number())
+        };
+        let base = x(&ch);
+        assert_eq!(base, None, "nothing changed yet");
+        let item = ch.layers.get_mut(&1).unwrap();
+        animate(&p, item, "l", &[set("to", "500")], Some(how));
+        let len = (0.4 * fps).round() as usize;
+        for _ in 0..len / 2 {
+            ch.tick(1.0);
+        }
+        let half = x(&ch).unwrap();
+        assert!(half > 150.0 && half < 350.0, "{half}");
+        for _ in 0..len {
+            ch.tick(1.0);
+        }
+        assert_eq!(x(&ch), Some(500.0));
+        // An offset from there, at once (no How…).
+        let item = ch.layers.get_mut(&1).unwrap();
+        animate(&p, item, "l", &[set("add", "100")], None);
+        assert_eq!(x(&ch), Some(600.0));
+        // Back to the animation's value, then no change left.
+        let item = ch.layers.get_mut(&1).unwrap();
+        animate(&p, item, "l", &[set("back", "")], Some(how));
+        for _ in 0..len + 1 {
+            ch.tick(1.0);
+        }
+        assert!(ch.layers[&1].tweaks.is_empty());
     }
 
     #[test]

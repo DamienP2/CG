@@ -606,4 +606,10 @@ export const designer: Record<string, string> = {
   'How': 'Comment',
   'How…': 'Comment…',
   'Through': 'Par',
+  'Animate a property': 'Animer une propriété',
+  'All properties': 'Toutes les propriétés',
+  'by +': 'de +',
+  'by −': 'de −',
+  'go back': 'revenir',
+  'towards': 'vers',
 };

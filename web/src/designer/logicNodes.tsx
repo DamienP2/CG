@@ -1,5 +1,6 @@
 import {
   AlarmClock,
+  Move,
   MoveRight,
   GitBranch,
   ArrowDown,
@@ -231,6 +232,7 @@ function projectEntries(tpl: Template): Entry[] {
     .filter((e) => e.fam !== 'layer' && e.fam !== 'graphic' && !NOT_IN_PROJECT.has(e.key))
     .flatMap((e): Entry[] => {
       if (e.key === 'start') return [{ ...e, label: 'Project loaded' }];
+      if (e.key === 'animate') return [{ ...e, can: undefined, make: (_t, x, y) => ({ ...base(x, y), type: 'animate', template: '', layer: '', sets: [{ key: 'x', mode: 'to', value: '0' }] }) }];
       if (e.key === 'take')
         return [
           { ...e, label: 'Take a graphic', can: undefined },
@@ -311,6 +313,7 @@ function templateEntries(tpl: Template): Entry[] {
     { key: 'take', fam: 'action', label: 'Take another graphic', icon: SquareStack, can: (h) => h.others > 0, make: (_t, x, y) => ({ ...base(x, y), type: 'take', template: '' }) },
     { key: 'resumePlaylist', fam: 'action', label: 'Resume a playlist', icon: ListVideo, can: hasPlaylists, make: (_t, x, y) => ({ ...base(x, y), type: 'resumePlaylist', playlist: '' }) },
     { key: 'stopAuto', fam: 'action', label: 'Stop the Auto', icon: Pause, can: hasPlaylists, make: (_t, x, y) => ({ ...base(x, y), type: 'stopAuto', playlist: '' }) },
+    { key: 'animate', fam: 'action', label: 'Animate a property', icon: Move, can: (h) => h.t.layers.length > 0, make: (tt, x, y) => ({ ...base(x, y), type: 'animate', layer: tt.layers[0]?.id ?? '', sets: [{ key: 'x', mode: 'to', value: '0' }] }) },
     { key: 'widget', fam: 'action', label: 'Widget control', icon: Hand, can: (h) => h.t.layers.some(timedLayer), make: (tt, x, y) => ({ ...base(x, y), type: 'widget', layer: tt.layers.find(timedLayer)?.id ?? '', control: 'start' }) },
     // Variables
     { key: 'setVar', fam: 'var', label: 'Set a variable', icon: Variable, make: (tt, x, y) => ({ ...base(x, y), type: 'setVar', name: varNames(tt)[0] ?? 'var1', value: '1', transition: 0 }) },

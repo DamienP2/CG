@@ -349,6 +349,10 @@ fn item_key(item: &cg_core::PlayoutItem) -> u64 {
     k.add(&item.template_id).add(&item.data);
     k.add(&serde_json::to_string(&item.widgets).unwrap_or_default());
     k.add(&serde_json::to_string(&item.clocks).unwrap_or_default());
+    // Properties a Logic changed (« Animate a property »).
+    if !item.tweaks.is_empty() {
+        k.add(&serde_json::to_string(&item.tweaks).unwrap_or_default());
+    }
     k.finish()
 }
 
@@ -884,7 +888,11 @@ impl Renderer {
                 let logic = match a.logic.get() {
                     Some(l) => l,
                     None => {
-                        let l = self.logic_values(t, a.item.frame, &a.data, clock);
+                        let mut l = self.logic_values(t, a.item.frame, &a.data, clock);
+                        // Properties a Logic changed (« Animate a property »).
+                        if !a.item.tweaks.is_empty() {
+                            cg_core::playout::apply_tweaks(&mut l, t, a.item, &a.data);
+                        }
                         a.logic.get_or_init(|| l)
                     }
                 };
@@ -925,7 +933,11 @@ impl Renderer {
             self.steps.plan = Some(Vec::new());
             for (i, a) in on_air.iter().enumerate() {
                 self.steps.item = i;
-                if fading(a.item).is_some() || moved(a) || !a.item.changes.is_empty() {
+                if fading(a.item).is_some()
+                    || moved(a)
+                    || !a.item.changes.is_empty()
+                    || a.item.tweaks.iter().any(|t| !t.done())
+                {
                     self.plan_step(cache::Motion::Moving);
                 } else {
                     let ctx = ctx!(i);

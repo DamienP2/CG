@@ -420,6 +420,17 @@ pub enum NodeKind {
     },
     /// Takes everything out (as « Clear all »).
     ClearAll {},
+    /// Changes properties of the layer `layer` (of the graphic `template`
+    /// in the project's Logic): to a value, by an offset, or back to the
+    /// animation's, over the length and curve of the How… before it.
+    Animate {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        template: String,
+        #[serde(default)]
+        layer: String,
+        #[serde(default)]
+        sets: Vec<crate::playout::PropSet>,
+    },
     /// Starts, pauses, resets… a widget of the graphic (`control`: start,
     /// pause, toggle, reset, restart).
     Widget {
@@ -504,6 +515,7 @@ impl NodeKind {
                 | NodeKind::ResumePlaylist { .. }
                 | NodeKind::StopAuto { .. }
                 | NodeKind::ClearAll {}
+                | NodeKind::Animate { .. }
                 | NodeKind::Widget { .. }
         )
     }

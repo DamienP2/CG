@@ -97,6 +97,8 @@ export const Program = memo(function Program({ project, live, width, height, max
         // Fading or sliding in or out the way a Logic said (« How… »).
         const look = motionLook(item.motion, item.motion ? item.motion.frame + since * fps : 0);
         if (look.alpha <= 0) return null;
+        // Properties a Logic changed, on their way.
+        const tweaks = item.tweaks?.length ? item.tweaks.map((tw) => ({ ...tw, frame: Math.min(tw.length, tw.frame + since * fps) })) : undefined;
         const laid = (l: { alpha: number; dx: number; dy: number }) => ({ position: 'absolute' as const, inset: 0, ...(l.alpha < 1 ? { opacity: l.alpha } : {}), ...(l.dx || l.dy ? { transform: `translate(${l.dx * 100}%, ${l.dy * 100}%)` } : {}) });
         return (
           // Only what is inside the zone shows on air.
@@ -122,14 +124,14 @@ export const Program = memo(function Program({ project, live, width, height, max
                       {turning.size ? (
                         <>
                           <ValueMotionContext.Provider value={{ layers: turning, old: false }}>
-                            <Scene template={t} frame={frame} data={shown} />
+                            <Scene template={t} frame={frame} data={shown} tweaks={tweaks} />
                           </ValueMotionContext.Provider>
                           <ValueMotionContext.Provider value={{ layers: turning, old: true }}>
                             <Scene template={t} frame={frame} data={oldData(shown, moves)} />
                           </ValueMotionContext.Provider>
                         </>
                       ) : (
-                        <Scene template={t} frame={frame} data={shown} />
+                        <Scene template={t} frame={frame} data={shown} tweaks={tweaks} />
                       )}
                     </div>
                     {k < 1 && item.fade && (
@@ -166,4 +168,4 @@ function LayerTime({ item, template, ageSecs, since, now, maxFps, fps, lang, chi
 /** A timeline on its way to its target (not held at a stop). */
 const advancing = (item: PlayoutItem) => item.phase !== 'holding' && item.phase !== 'outHold' && item.frame < item.target;
 /** Something moves: the timeline, or a fade. */
-const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length) || !!item.changes?.length || (!!item.leaving && item.leaving.frame < item.leaving.length) || (!!item.motion && item.motion.frame < item.motion.length);
+const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length) || !!item.changes?.length || (!!item.leaving && item.leaving.frame < item.leaving.length) || (!!item.motion && item.motion.frame < item.motion.length) || !!item.tweaks?.some((tw) => tw.frame < tw.length);

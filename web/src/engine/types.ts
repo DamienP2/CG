@@ -434,6 +434,8 @@ export type LogicNodeKind =
   | { type: 'stopAuto'; playlist: string }
   /** Takes everything out. */
   | { type: 'clearAll' }
+  /** Changes properties of a layer (of the graphic `template` in the project's Logic) over the How… before it. */
+  | { type: 'animate'; template?: string; layer: string; sets: PropSet[] }
   // The project's Logic
   /** A graphic: flows `in` / `out`, value `onAir`. */
   | { type: 'template'; template: string }
@@ -629,6 +631,8 @@ export interface PlayoutItem {
   leaving?: { item: PlayoutItem; frame: number; length: number } | null;
   /** Fading or sliding in or out the way a Logic said (« How… », cg_core::playout::Motion). */
   motion?: HowMotion | null;
+  /** Properties of its layers a Logic changed (« Animate a property »). */
+  tweaks?: Tweak[];
   /** What its Logic saw on air (events, triggers, Continue: `__ev_<node>`; variables: `__var_<name>`), shown with its data. */
   vals?: Record<string, string>;
 }
@@ -648,6 +652,24 @@ export interface HowMotion {
   frame: number;
   length: number;
   going?: boolean;
+}
+
+/** A property of a layer changed by a Logic (cg_core::playout::Tweak). */
+export interface Tweak {
+  layer: string;
+  prop: Prop;
+  mode: 'to' | 'by' | 'back';
+  from: number | Color;
+  to: number | Color;
+  frame: number;
+  length: number;
+  easing?: Easing;
+}
+/** One change of « Animate a property » (cg_core::playout::PropSet). */
+export interface PropSet {
+  key: string;
+  mode: 'to' | 'add' | 'sub' | 'back';
+  value: string;
 }
 
 /** Own time of a widget layer, in frames on air. */

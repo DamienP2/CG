@@ -1,10 +1,10 @@
 import { BookMarked, BoxSelect, ChevronDown, ChevronRight, ClipboardPaste, Copy, Database, Link2, Plus, Search, Sparkles, Star, Trash2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
+import { holdFrame, interpolateText, newId, resolveLayer, toHex } from '../engine/evaluate';
 import { accepts, clockAt, fromPortOf, measureLayer, metricOf, nodeValues, portsOf, rowType, type LVal, type Port, type PortType } from '../engine/logic';
 import { exprError, names, parse } from '../engine/expr';
-import type { Layer, Logic, LogicClip, LogicEdge, LogicFlow, LogicFrame, LogicNode, Template, TriggerEvent } from '../engine/types';
+import { COLOR_PROPS, type Color, type Layer, type Logic, type LogicClip, type LogicEdge, type LogicFlow, type LogicFrame, type LogicNode, type Prop, type PropSet, type Template, type TriggerEvent } from '../engine/types';
 import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { HexColorField, NumberField, Segmented, TextInput } from '../ui/fields';
@@ -24,7 +24,7 @@ import { hasMoments, lineFor, momentsOf, needsSteps, needsValue, sourceOf, subje
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { t, tc } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
-import { entries, FAMS, isProjectLogic, kindOf, layerNode, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, type Entry, type Fam } from './logicNodes';
+import { entries, FAMS, isProjectLogic, kindOf, layerNode, propsOf, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, type Entry, type Fam } from './logicNodes';
 
 /*
  * The Logic canvas. Every node has its inputs on the left and its outputs on the right; value
@@ -36,7 +36,7 @@ import { entries, FAMS, isProjectLogic, kindOf, layerNode, rowLabel, rowsFor, sc
  */
 
 const NODE_W = 210;
-const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when', 'how']);
+const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when', 'how', 'animate']);
 const FRAME_COLORS = ['#8fa3ff', '#a78bfa', '#22d3ee', '#f59e0b', '#f472b6', '#4ade80', '#fb7185', '#facc15'];
 const CLIP_KEY = 'strata.logic.clipboard';
 const TYPES: { id: PortType; label: string }[] = [
@@ -284,7 +284,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       setDisplayPref(sizesKey, next);
       return next;
     });
-  const widthOf = (n: LogicNode) => sizes[n.id] ?? (WIDE.has(n.type) ? (n.type === 'if' || n.type === 'check' || n.type === 'how' ? 300 : 240) : NODE_W);
+  const widthOf = (n: LogicNode) => sizes[n.id] ?? (WIDE.has(n.type) ? (n.type === 'if' || n.type === 'check' || n.type === 'how' || n.type === 'animate' ? 300 : 240) : NODE_W);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [selFrame, setSelFrame] = useState<string | null>(null);
   const [wire, setWire] = useState<{ from: PortRef; x: number; y: number } | null>(null);
@@ -1457,6 +1457,51 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         return flowRows(<Dropdown value={n.playlist} placeholder={t('Choose a playlist')} options={(projectLists ?? []).map((l) => ({ value: l.id, label: l.name }))} onChange={(playlist) => set({ playlist } as Partial<LogicNode>)} />);
       case 'clearAll':
         return flowRows();
+      case 'animate': {
+        // In the project's Logic: a graphic, then one of its layers.
+        const graphics = proj ? (useApp.getState().project?.templates ?? []) : [];
+        const g = proj ? graphics.find((x) => x.id === n.template) : template;
+        const l = g?.layers.find((x) => x.id === n.layer);
+        const props = propsOf(l);
+        const isColor = (k: string) => COLOR_PROPS.has(k as Prop);
+        const now = (k: string) => {
+          const v = l && g ? (resolveLayer(l, holdFrame(g), {}) as unknown as Record<string, unknown>)[k] : undefined;
+          return isColor(k) ? (Array.isArray(v) ? toHex(v as Color) : '#ffffff') : typeof v === 'number' ? String(Math.round(v * 100) / 100) : '0';
+        };
+        const setRow = (i: number, patch: Partial<PropSet>, key?: string) => mutate(n.id, (m) => Object.assign((m as typeof n).sets[i], patch), key);
+        return flowRows(
+          <>
+            {proj && <Dropdown value={n.template ?? ''} placeholder={t('Choose a graphic')} options={graphics.map((x) => ({ value: x.id, label: x.name }))} onChange={(tpl) => set({ template: tpl, layer: '' } as Partial<LogicNode>)} />}
+            <Dropdown value={n.layer} placeholder={t('Choose a layer')} options={(g?.layers ?? []).map((x) => ({ value: x.id, label: x.name }))} onChange={(layer) => set({ layer } as Partial<LogicNode>)} />
+            {n.sets.map((r, i) => (
+              <div key={i} className="lx-phrase lx-set">
+                <Dropdown value={r.key} options={[...(r.mode === 'back' ? [{ value: '*', label: t('All properties') }] : []), ...props.map((p) => ({ value: p, label: rowLabel(p) }))]} onChange={(key) => setRow(i, { key, value: key === '*' ? '' : now(key) })} />
+                <Dropdown
+                  value={r.mode}
+                  options={[
+                    { value: 'to', label: t('towards') },
+                    ...(isColor(r.key) ? [] : [{ value: 'add', label: t('by +') }, { value: 'sub', label: t('by −') }]),
+                    { value: 'back', label: t('go back') },
+                  ]}
+                  onChange={(mode) => setRow(i, { mode: mode as PropSet['mode'], ...(mode === 'add' || mode === 'sub' ? { value: '0' } : mode === 'to' && r.key !== '*' ? { value: now(r.key) } : {}), ...(mode !== 'back' && r.key === '*' ? { key: props[0] ?? 'x', value: now(props[0] ?? 'x') } : {}) })}
+                />
+                {r.mode !== 'back' &&
+                  (isColor(r.key) ? (
+                    <HexColorField value={r.value || '#ffffff'} onChange={(x) => setRow(i, { value: x }, `lx-${n.id}-v${i}`)} />
+                  ) : (
+                    <NumberField value={parseFloat(r.value) || 0} onChange={(x) => setRow(i, { value: String(x) }, `lx-${n.id}-v${i}`)} />
+                  ))}
+                <button className="lx-x" title={t('Remove')} onClick={() => mutate(n.id, (m) => void (m as typeof n).sets.splice(i, 1))}>
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+            <button className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).sets.push({ key: props[0] ?? 'x', mode: 'to', value: now(props[0] ?? 'x') }))}>
+              <Plus size={11} /> {t('property')}
+            </button>
+          </>,
+        );
+      }
       case 'how':
         return flowRows(<HowBody how={howOf(n)} set={(patch, key) => set(patch as Partial<LogicNode>, key && `lx-${n.id}-${key}`)} />);
       case 'template': {

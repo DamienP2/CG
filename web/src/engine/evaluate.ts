@@ -269,6 +269,20 @@ export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
 
+/** The value of a property a Logic changed, over the animation's `base` (cg_core::playout::Tweak::value). */
+export function tweakValue(tw: import('./types').Tweak, base: unknown): unknown {
+  const p = tw.length <= 0 ? 1 : applyEasing(tw.easing ?? { type: 'linear' }, Math.min(1, Math.max(0, tw.frame / tw.length)));
+  const mix = (a: unknown, b: unknown) => {
+    if (typeof a === 'number' && typeof b === 'number') return a + (b - a) * p;
+    if (Array.isArray(a) && Array.isArray(b)) return a.map((x, i) => (x as number) + ((b[i] as number) - (x as number)) * p);
+    return b;
+  };
+  if (tw.mode === 'to') return mix(tw.from, tw.to);
+  if (tw.mode === 'back') return mix(tw.from, base ?? tw.from);
+  const off = mix(tw.from, tw.to);
+  return typeof base === 'number' && typeof off === 'number' ? base + off : base;
+}
+
 /** How a whole graphic is laid by a « How… » motion at `frame` (cg_core::playout::Motion::look). */
 export function motionLook(m: import('./types').HowMotion | null | undefined, frame = m?.frame ?? 0): { alpha: number; dx: number; dy: number } {
   if (!m) return { alpha: 1, dx: 0, dy: 0 };

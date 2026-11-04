@@ -1307,6 +1307,7 @@ mod tests {
                 vals: Default::default(),
                 leaving: None,
                 motion: None,
+                tweaks: Vec::new(),
             },
         );
     }

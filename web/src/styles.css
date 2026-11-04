@@ -22210,6 +22210,15 @@ textarea.tx-grow {
   padding-top: 6px;
   border-top: 1px dashed var(--line-2);
 }
+/* Animate a property: property · way · value on one line. */
+.lx-phrase.lx-set {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 1fr) 16px;
+}
+/* « go back »: no value, the way takes its place. */
+.lx-phrase.lx-set > :nth-child(2):nth-last-child(2) {
+  grid-column: span 2;
+}
 .lx-adds {
   display: flex;
   gap: 8px;
