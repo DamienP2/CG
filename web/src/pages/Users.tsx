@@ -43,6 +43,8 @@ function Scope({ label, all, value, onChange }: { label: string; all: { id: stri
 
 function UserDialog({ initial, onClose, onSaved }: { initial: Draft; onClose: () => void; onSaved: () => void }) {
   const { projects, channels, toast } = useApp();
+  // With SSO on: accounts made ahead for the directory need no password.
+  const ssoOn = !!useApp((s) => s.auth?.sso);
   const [d, setD] = useState(initial);
   const [busy, setBusy] = useState(false);
   const isNew = !initial.id;
@@ -79,10 +81,17 @@ function UserDialog({ initial, onClose, onSaved }: { initial: Draft; onClose: ()
             <span className="set-label">{t('Display name')}</span>
             <input value={d.displayName} onChange={(e) => setD({ ...d, displayName: e.target.value })} />
           </label>
-          <label className="set-field">
-            <span className="set-label">{isNew ? t('Password') : t('New password')}</span>
-            <input type="password" value={d.password} autoComplete="new-password" placeholder={isNew ? t('At least 8 characters') : t('Leave empty to keep it')} onChange={(e) => setD({ ...d, password: e.target.value })} />
-          </label>
+          {d.sso ? (
+            <label className="set-field">
+              <span className="set-label">{t('Sign-in')}</span>
+              <span className="badge sso">SSO</span>
+            </label>
+          ) : (
+            <label className="set-field">
+              <span className="set-label">{isNew ? t('Password') : t('New password')}</span>
+              <input type="password" value={d.password} autoComplete="new-password" placeholder={isNew ? (ssoOn ? t('Empty: through SSO only') : t('At least 8 characters')) : t('Leave empty to keep it')} onChange={(e) => setD({ ...d, password: e.target.value })} />
+            </label>
+          )}
           <label className="set-field">
             <span className="set-label">{t('Status')}</span>
             <label className="check">
@@ -101,6 +110,12 @@ function UserDialog({ initial, onClose, onSaved }: { initial: Draft; onClose: ()
               </button>
             ))}
           </div>
+          {(d.sso || ssoOn) && (
+            <label className="check">
+              <input type="checkbox" checked={!!d.roleFixed} onChange={(e) => setD({ ...d, roleFixed: e.target.checked })} />
+              {t('Role set by hand (the directory groups do not change it)')}
+            </label>
+          )}
         </div>
         {scoped && (
           <div className="set-grid two">
@@ -112,7 +127,7 @@ function UserDialog({ initial, onClose, onSaved }: { initial: Draft; onClose: ()
           <button type="button" className="btn" onClick={onClose}>
             {t('Cancel')}
           </button>
-          <button className="btn primary" disabled={busy || !d.username.trim() || (isNew && d.password.length < 8)}>
+          <button className="btn primary" disabled={busy || !d.username.trim() || (isNew && d.password.length < 8 && !(ssoOn && !d.password))}>
             {isNew ? <Plus size={14} /> : <KeyRound size={14} />} {isNew ? t('Create user') : t('Save')}
           </button>
         </footer>
@@ -208,6 +223,7 @@ export function Users() {
                   <span className="muted">
                     @{u.username}
                     {me ? ` · ${t('you')}` : ''}
+                    {u.sso && <span className="badge sso">SSO</span>}
                   </span>
                 </div>
                 <span className={`badge role-${u.role}`}>
@@ -231,9 +247,11 @@ export function Users() {
                 <button className="btn small" onClick={() => setEditing({ ...u, password: '' })}>
                   <Pencil size={13} /> {t('Edit')}
                 </button>
-                <button className="btn small" onClick={() => setEditing({ ...u, password: '' })} title={t('Set a new password')}>
-                  <KeyRound size={13} /> {t('Password')}
-                </button>
+                {!u.sso && (
+                  <button className="btn small" onClick={() => setEditing({ ...u, password: '' })} title={t('Set a new password')}>
+                    <KeyRound size={13} /> {t('Password')}
+                  </button>
+                )}
                 <div className="spacer" />
                 {!me && (
                   <button className="icon-btn ghost" title={t('Delete')} onClick={() => void remove(u)}>

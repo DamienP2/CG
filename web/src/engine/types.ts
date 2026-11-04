@@ -760,6 +760,10 @@ export interface User {
   lang?: string;
   /** Colour theme of the interface ("dark", "light", "system"); empty = dark. */
   theme?: string;
+  /** Signs in through the company's directory (SSO). */
+  sso?: boolean;
+  /** The role stays as an admin set it (the directory's groups do not change it). */
+  roleFixed?: boolean;
 }
 
 /** Layer types whose text is styled with a FontStyle. */

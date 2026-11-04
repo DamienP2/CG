@@ -1,4 +1,4 @@
-import { Clock, CloudDownload, Cpu, Keyboard, Network, RotateCcw, Server, SlidersHorizontal, Timer } from 'lucide-react';
+import { Clock, CloudDownload, Cpu, Keyboard, Lock, Network, RotateCcw, Server, SlidersHorizontal, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
@@ -12,6 +12,7 @@ import { VideoSync } from './VideoSync';
 import { Updates } from './Updates';
 import { LibraryUpdates } from './LibraryUpdates';
 import { ShortcutsPage } from './Shortcuts';
+import { SecurityPage } from './Security';
 
 const TIMEZONES: string[] = (() => {
   try {
@@ -28,8 +29,8 @@ function uptime(s: number) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
 }
 
-type Section = 'shortcuts' | 'general' | 'network' | 'time' | 'sync' | 'updates' | 'system';
-const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'time', 'sync', 'updates', 'system'];
+type Section = 'shortcuts' | 'general' | 'network' | 'time' | 'sync' | 'security' | 'updates' | 'system';
+const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'time', 'sync', 'security', 'updates', 'system'];
 const sectionOf = (hash: string): Section => SECTIONS.find((s) => `#${s}` === hash) ?? 'general';
 
 /** Your own settings; an admin's also the server's. */
@@ -90,6 +91,7 @@ function ServerSettings() {
       {item('network', <Network size={15} />, t('Networks'))}
       {item('time', <Clock size={15} />, t('Time'))}
       {item('sync', <Timer size={15} />, t('Video sync'))}
+      {item('security', <Lock size={15} />, t('Security'))}
       {item('updates', <CloudDownload size={15} />, t('Updates'))}
       {item('system', <Cpu size={15} />, t('System'))}
       <div className="lib-nav-foot">
@@ -131,6 +133,8 @@ function ServerSettings() {
       {section === 'time' && <TimePage cfg={cfg} edit={edit} det={det} zone={info.timezone} timezones={TIMEZONES} onRefresh={() => void detect()} />}
 
       {section === 'sync' && <VideoSync cfg={cfg} edit={edit} det={det} onRefresh={() => void detect()} />}
+
+      {section === 'security' && <SecurityPage cfg={cfg} edit={edit} />}
 
       {section === 'updates' && (
         <>

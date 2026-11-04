@@ -35,11 +35,13 @@ mod schedule;
 mod service;
 mod social;
 mod sound;
+mod sso;
 mod state;
 mod sync;
 mod thumbs;
 mod timecode;
 mod timectl;
+mod tls;
 mod update;
 mod web;
 mod webimages;
@@ -191,6 +193,7 @@ fn user_command(cmd: UserCmd) -> anyhow::Result<()> {
                 channels: None,
                 disabled: false,
                 password,
+                role_fixed: false,
             };
             let u = a.create(input).map_err(err)?;
             give_to_service(&dir);
@@ -631,6 +634,69 @@ pub async fn serve(
             .layer(CorsLayer::permissive())
             .with_state(shared.clone());
 
+        // HTTPS, when on: its certificate read (or made); a certificate that
+        // cannot be used leaves plain HTTP as it is, never a locked door.
+        let https = shared.config.security.https.clone();
+        let tls_config = if https.mode == tls::CertMode::Off {
+            tls::set_running(false, 0, String::new());
+            None
+        } else {
+            tls::install_crypto();
+            let dir = data_dir.clone();
+            let pair = tokio::task::spawn_blocking(move || tls::pem_pair(&dir, https.mode))
+                .await
+                .map_err(anyhow::Error::from)
+                .and_then(|r| r);
+            let made = match pair {
+                Ok((cert, key)) => axum_server::tls_rustls::RustlsConfig::from_pem(cert, key)
+                    .await
+                    .map_err(anyhow::Error::from),
+                Err(e) => Err(e),
+            };
+            match made {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    tracing::error!("HTTPS not started: {e}");
+                    tls::set_running(false, https.port, e.to_string());
+                    None
+                }
+            }
+        };
+        let secure_app = app
+            .clone()
+            .layer(axum::middleware::from_fn(tls::host_from_authority))
+            .layer(axum::Extension(tls::Https));
+        let app = if tls_config.is_some() {
+            app.layer(axum::middleware::from_fn_with_state(
+                (https.http, https.port),
+                tls::http_policy,
+            ))
+        } else {
+            app
+        };
+        let https_task = tls_config.map(|config| {
+            let addr = SocketAddr::new(bind.ip(), https.port);
+            let handle = axum_server::Handle::new();
+            let stopping = handle.clone();
+            let mut closing = shared.closing.subscribe();
+            tokio::spawn(async move {
+                let _ = closing.wait_for(|c| *c).await;
+                stopping.graceful_shutdown(Some(std::time::Duration::from_secs(2)));
+            });
+            tls::set_running(true, https.port, String::new());
+            tracing::info!("listening on https://{addr}");
+            tokio::spawn(async move {
+                let served = axum_server::bind_rustls(addr, config)
+                    .handle(handle)
+                    .serve(secure_app.into_make_service_with_connect_info::<SocketAddr>())
+                    .await;
+                if let Err(e) = served {
+                    tracing::error!("HTTPS on {addr}: {e}");
+                    tls::set_running(false, addr.port(), e.to_string());
+                }
+            })
+        });
+
         tracing::info!("listening on http://{bind} — designer: /designer, operator: /operator, settings: /settings, HTML5 outputs: /output/<address>");
         let stop = state::until_true(stop_rx.clone());
         let cycle = shared.clone();
@@ -658,6 +724,9 @@ pub async fn serve(
         })
         .await?;
         if let Some(h) = loopback {
+            let _ = h.await;
+        }
+        if let Some(h) = https_task {
             let _ = h.await;
         }
         // Channels stop by themselves once `closing` is set, closing their

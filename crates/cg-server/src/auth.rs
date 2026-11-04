@@ -59,6 +59,12 @@ pub struct User {
     /// Colour theme of the interface ("dark", "light", "system"); empty = dark.
     #[serde(default)]
     pub theme: String,
+    /// Signed in through the company's directory (SSO): "issuer|subject".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sso: String,
+    /// The role an admin set stays: the directory's groups do not change it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub role_fixed: bool,
     password_hash: String,
 }
 
@@ -75,6 +81,9 @@ pub struct PublicUser {
     pub disabled: bool,
     pub lang: String,
     pub theme: String,
+    /// Signs in through the company's directory.
+    pub sso: bool,
+    pub role_fixed: bool,
 }
 
 impl From<&User> for PublicUser {
@@ -89,6 +98,8 @@ impl From<&User> for PublicUser {
             disabled: u.disabled,
             lang: u.lang.clone(),
             theme: u.theme.clone(),
+            sso: !u.sso.is_empty(),
+            role_fixed: u.role_fixed,
         }
     }
 }
@@ -182,6 +193,19 @@ pub struct UserInput {
     /// Required on creation; empty keeps the current password on edit.
     #[serde(default)]
     pub password: String,
+    /// The role stays as set here (SSO accounts: the groups do not change it).
+    #[serde(default)]
+    pub role_fixed: bool,
+}
+
+/// Who the directory says signed in.
+#[derive(Debug, Clone)]
+pub struct SsoIdentity {
+    /// "issuer|subject": stable.
+    pub key: String,
+    /// Their e-mail or sign-in name.
+    pub login: String,
+    pub name: String,
 }
 
 struct Session {
@@ -436,6 +460,8 @@ impl Auth {
             disabled: input.disabled,
             lang: String::new(),
             theme: String::new(),
+            sso: String::new(),
+            role_fixed: input.role_fixed,
             password_hash: hash_password(&input.password).map_err(|e| e.to_string())?,
         };
         list.push(user.clone());
@@ -461,6 +487,7 @@ impl Auth {
             input.display_name.trim().to_string()
         };
         u.role = input.role;
+        u.role_fixed = input.role_fixed;
         u.projects = input.projects;
         u.channels = input.channels;
         u.disabled = input.disabled;
@@ -710,6 +737,10 @@ impl Auth {
         let hash = user.as_ref().map(|u| u.password_hash.clone()).unwrap_or_else(|| "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$ZmFrZWZha2VmYWtlZmFrZWZha2VmYWtlZmFrZWZha2U".into());
         let ok = verify_password(password, &hash);
         let user = user.filter(|u| ok && !u.disabled)?;
+        Some((self.open_session(&user.id), user))
+    }
+
+    fn open_session(&self, user_id: &str) -> String {
         let token = format!(
             "{}{}",
             uuid::Uuid::new_v4().simple(),
@@ -720,12 +751,100 @@ impl Auth {
             s.insert(
                 token.clone(),
                 Session {
-                    user_id: user.id.clone(),
+                    user_id: user_id.to_string(),
                     expires: Instant::now() + SESSION_TTL,
                 },
             );
         }
-        Some((token, user))
+        token
+    }
+
+    /// Someone the company's directory vouched for: their account (found by
+    /// their directory id, or a pre-made one named after their e-mail;
+    /// made on the first sign-in), its role from their groups unless an admin
+    /// fixed it. `role`: what the groups (or the default) give, if anything.
+    pub fn sso_login(
+        &self,
+        who: &SsoIdentity,
+        role: Option<Role>,
+    ) -> Result<(String, User), String> {
+        let mut list = self.users();
+        let login = who.login.trim();
+        let idx = list.iter().position(|u| u.sso == who.key).or_else(|| {
+            list.iter().position(|u| {
+                u.sso.is_empty()
+                    && u.username.contains('@')
+                    && u.username.eq_ignore_ascii_case(login)
+            })
+        });
+        let user = match idx {
+            Some(i) => {
+                let u = &mut list[i];
+                if u.disabled {
+                    return Err("this account is disabled".into());
+                }
+                if !u.role_fixed {
+                    let r = role.ok_or("no group of yours gives access to Strata")?;
+                    // Never the last admin lost through the directory.
+                    let other_admin = list
+                        .iter()
+                        .enumerate()
+                        .any(|(j, x)| j != i && x.role == Role::Admin && !x.disabled);
+                    let u = &mut list[i];
+                    if u.role != Role::Admin || r == Role::Admin || other_admin {
+                        u.role = r;
+                    }
+                }
+                let u = &mut list[i];
+                u.sso = who.key.clone();
+                if !who.name.trim().is_empty() {
+                    u.display_name = who.name.trim().to_string();
+                }
+                u.clone()
+            }
+            None => {
+                let role = role.ok_or("no group of yours gives access to Strata")?;
+                let base: String = login
+                    .chars()
+                    .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | '@'))
+                    .take(60)
+                    .collect();
+                let base = if base.is_empty() {
+                    "user".to_string()
+                } else {
+                    base
+                };
+                let mut name = base.clone();
+                let mut n = 2;
+                while list.iter().any(|u| u.username.eq_ignore_ascii_case(&name)) {
+                    name = format!("{base}-{n}");
+                    n += 1;
+                }
+                let u = User {
+                    id: cg_core::new_id(),
+                    display_name: if who.name.trim().is_empty() {
+                        name.clone()
+                    } else {
+                        who.name.trim().to_string()
+                    },
+                    username: name,
+                    role,
+                    projects: None,
+                    channels: None,
+                    disabled: false,
+                    lang: String::new(),
+                    theme: String::new(),
+                    sso: who.key.clone(),
+                    role_fixed: false,
+                    // No password: signs in through the directory only.
+                    password_hash: String::new(),
+                };
+                list.push(u.clone());
+                u
+            }
+        };
+        self.save(list).map_err(|e| e.to_string())?;
+        Ok((self.open_session(&user.id), user))
     }
 
     pub fn logout(&self, token: &str) {
@@ -849,7 +968,64 @@ mod tests {
             channels: None,
             disabled: false,
             password: pw.into(),
+            role_fixed: false,
         }
+    }
+
+    #[test]
+    fn directory_accounts_follow_their_groups_unless_fixed() {
+        let dir = std::env::temp_dir().join(format!("cg-auth-sso-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let auth = Auth::load(&dir);
+        auth.create(input("admin", Role::Admin, "correct horse"))
+            .unwrap();
+        let marie = SsoIdentity {
+            key: "https://id|42".into(),
+            login: "marie@redac.fr".into(),
+            name: "Marie".into(),
+        };
+        // No role given: refused, no account made.
+        assert!(auth.sso_login(&marie, None).is_err());
+        let (token, u) = auth.sso_login(&marie, Some(Role::Operator)).unwrap();
+        assert_eq!(
+            (u.username.as_str(), u.role),
+            ("marie@redac.fr", Role::Operator)
+        );
+        assert_eq!(auth.user_for_token(&token).unwrap().id, u.id);
+        // No password works for it.
+        assert!(auth.login("marie@redac.fr", "").is_none());
+        // Her groups changed.
+        let (_, u2) = auth.sso_login(&marie, Some(Role::Designer)).unwrap();
+        assert_eq!((u2.id.as_str(), u2.role), (u.id.as_str(), Role::Designer));
+        // An admin fixed her role: the groups no longer change it.
+        let mut fixed = input("marie@redac.fr", Role::Viewer, "");
+        fixed.role_fixed = true;
+        auth.update(&u.id, fixed).unwrap();
+        let (_, u3) = auth.sso_login(&marie, Some(Role::Admin)).unwrap();
+        assert_eq!(u3.role, Role::Viewer);
+        // An account made ahead under her e-mail is hers on first sign-in.
+        auth.create(input("paul@redac.fr", Role::Designer, "a long password"))
+            .unwrap();
+        let paul = SsoIdentity {
+            key: "https://id|7".into(),
+            login: "Paul@Redac.fr".into(),
+            name: String::new(),
+        };
+        let (_, p) = auth.sso_login(&paul, Some(Role::Operator)).unwrap();
+        assert_eq!(
+            (p.username.as_str(), p.role, p.sso.as_str()),
+            ("paul@redac.fr", Role::Operator, "https://id|7")
+        );
+        // A local name without @ is never taken over.
+        let other = SsoIdentity {
+            key: "https://id|9".into(),
+            login: "admin".into(),
+            name: String::new(),
+        };
+        let (_, o) = auth.sso_login(&other, Some(Role::Viewer)).unwrap();
+        assert_eq!(o.username, "admin-2");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

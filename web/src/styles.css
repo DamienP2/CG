@@ -22870,3 +22870,99 @@ textarea.tx-grow {
 .sch-tc.lost .sch-tc-l {
   color: #f59e0b;
 }
+
+/* Settings › Security, sign-in through the directory (SSO) */
+.sso-btn {
+  justify-content: center;
+  text-decoration: none;
+}
+.login-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  margin: 2px 0;
+}
+.login-sep::before,
+.login-sep::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.badge.sso {
+  margin-left: 6px;
+  font-size: 10px;
+  padding: 1px 6px;
+}
+.sec-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.sec-picks {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sec-pick {
+  cursor: pointer;
+}
+.sec-certs:not(:empty) {
+  margin-top: 14px;
+}
+.sec-cert {
+  margin: 0;
+  flex: 1 1 420px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+}
+.sec-cert dt {
+  color: var(--text-3);
+}
+.sec-cert dd {
+  margin: 0;
+}
+.sec-cert dd.warn {
+  color: var(--warn);
+}
+.sec-fp {
+  font-size: 10px;
+  word-break: break-all;
+}
+.sec-url {
+  font-size: 12px;
+  word-break: break-all;
+}
+.sec-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.sec-group {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 160px auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+}
+.sec-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.sec-state.ok a {
+  color: inherit;
+}
+.sec-state.warn {
+  color: var(--warn);
+}
+.sec-ok {
+  color: var(--pvw);
+  font-size: 12px;
+}

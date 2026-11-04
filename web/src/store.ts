@@ -54,6 +54,10 @@ export interface AuthState {
   user: User | null;
   serverName: string;
   publicOutputs: boolean;
+  /** The SSO button's name, when SSO is on. */
+  sso?: string | null;
+  /** Who may sign in with a password while SSO is on. */
+  localAccounts?: 'none' | 'adminOnly' | 'all';
 }
 
 /** Channel state plus when it arrived, to extrapolate widget time. */

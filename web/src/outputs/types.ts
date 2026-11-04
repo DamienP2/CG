@@ -1,4 +1,4 @@
-import type { FrameRate } from '../engine/types';
+import type { FrameRate, Role } from '../engine/types';
 import type { MosConfig } from '../mos/MosPage';
 
 /** Mirrors crates/cg-server/src/config.rs and crates/cg-output. */
@@ -231,6 +231,43 @@ export interface ServerConfig {
   hardware?: HardwareConfig;
   /** OSC and TCP control (Bitfocus Buttons), see crates/cg-server/src/apiv1. */
   control?: { oscEnabled: boolean; oscPort: number; tcpEnabled: boolean; tcpPort: number; allow: string[] };
+  /** HTTPS and SSO (Settings › Security). */
+  security?: { https: HttpsConfig; sso: SsoConfig };
+}
+
+export interface HttpsConfig {
+  mode: 'off' | 'selfSigned' | 'custom';
+  port: number;
+  /** What plain HTTP does once HTTPS is on. */
+  http: 'redirect' | 'httpsOnly' | 'open';
+}
+
+export interface SsoConfig {
+  enabled: boolean;
+  provider: string;
+  issuer: string;
+  clientId: string;
+  /** Shown masked. */
+  clientSecret: string;
+  groupsClaim: string;
+  groups: { group: string; role: Role }[];
+  /** The role of someone in no group of the list (null: refused). */
+  defaultRole: Role | null;
+  localAccounts: 'none' | 'adminOnly' | 'all';
+}
+
+export interface CertInfo {
+  subject: string;
+  names: string[];
+  notAfter: number;
+  selfSigned: boolean;
+  fingerprint: string;
+}
+
+export interface TlsStatus {
+  running: { on: boolean; port: number; error: string };
+  selfSigned: CertInfo | null;
+  custom: CertInfo | null;
 }
 
 // ---- Hardware (crates/cg-server/src/hardware.rs) ----

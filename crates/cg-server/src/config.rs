@@ -516,9 +516,21 @@ pub struct ServerConfig {
     /// Control surfaces without HTTP (Bitfocus Buttons over OSC or TCP).
     #[serde(default)]
     pub control: ControlConfig,
+    /// HTTPS and sign-in through the company's directory (SSO).
+    #[serde(default)]
+    pub security: SecurityConfig,
     /// Pre-0.2 single-channel outputs, moved into the first channel on load.
     #[serde(default, skip_serializing)]
     outputs: Option<OutputsConfig>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityConfig {
+    #[serde(default)]
+    pub https: crate::tls::HttpsConfig,
+    #[serde(default)]
+    pub sso: crate::sso::SsoConfig,
 }
 
 fn default_name() -> String {
@@ -545,6 +557,7 @@ impl Default for ServerConfig {
             inputs: Vec::new(),
             hardware: HardwareConfig::default(),
             control: ControlConfig::default(),
+            security: SecurityConfig::default(),
             outputs: None,
         }
     }

@@ -40,8 +40,13 @@ rpassword = "7"
 # Over-the-air updates: GitHub releases client and package extraction.
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 sha2 = "0.10"
-# Sealed copies of the API keys (shown again to an admin).
+# Sealed copies of the API keys (shown again to an admin); SSO tokens checked.
 ring = "0.17"
+# HTTPS (src/tls.rs): the listener, a self-signed certificate, what a certificate says.
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
+x509-parser = "0.18"
 flate2 = "1"
 tar = "0.4"
 roxmltree = "0.20"

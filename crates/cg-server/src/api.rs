@@ -27,6 +27,8 @@ pub fn router() -> Router<Shared> {
         .merge(crate::media::router())
         .merge(crate::iconlib::router())
         .merge(crate::sound::router())
+        .merge(crate::tls::router())
+        .merge(crate::sso::router())
         .merge(crate::health::router())
         .merge(crate::apiv1::router())
         .merge(crate::social::api::router())
@@ -258,10 +260,12 @@ pub(crate) fn require(ok: bool) -> ApiResult<()> {
 
 // ------------------------------------------------------------------ auth ----
 
-fn session_cookie(token: &str, max_age: i64) -> String {
+/// The session cookie (only sent over HTTPS once it came over HTTPS).
+pub(crate) fn session_cookie(token: &str, max_age: i64, secure: bool) -> String {
     format!(
-        "{}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}",
-        auth::COOKIE
+        "{}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{}",
+        auth::COOKIE,
+        if secure { "; Secure" } else { "" }
     )
 }
 
@@ -282,14 +286,25 @@ struct AuthState {
     user: Option<PublicUser>,
     server_name: String,
     public_outputs: bool,
+    /// The SSO button's name, when SSO is on.
+    sso: Option<&'static str>,
+    /// Who may still sign in with a password (with SSO on).
+    local_accounts: crate::sso::LocalAccounts,
 }
 
 async fn auth_state(State(s): State<Shared>, MaybeUser(user): MaybeUser) -> Json<AuthState> {
+    let sso = &s.config.security.sso;
     Json(AuthState {
         needs_setup: s.auth.needs_setup(),
         user: user.as_ref().map(PublicUser::from),
         server_name: s.config.name.clone(),
         public_outputs: s.config.public_outputs,
+        sso: sso.ready().then(|| sso.label()),
+        local_accounts: if sso.ready() {
+            sso.local_accounts
+        } else {
+            crate::sso::LocalAccounts::All
+        },
     })
 }
 
@@ -309,8 +324,8 @@ struct LoginReply {
     token: String,
 }
 
-fn login_response(token: String, user: &User) -> Response {
-    let cookie = session_cookie(&token, 14 * 24 * 3600);
+fn login_response(token: String, user: &User, secure: bool) -> Response {
+    let cookie = session_cookie(&token, 14 * 24 * 3600, secure);
     (
         [(header::SET_COOKIE, cookie)],
         Json(LoginReply {
@@ -343,13 +358,14 @@ async fn auth_setup(
         channels: None,
         disabled: false,
         password: c.password.clone(),
+        role_fixed: false,
     };
     let user = s.auth.create(input).map_err(bad)?;
     let (token, user) = s
         .auth
         .login(&user.username, &c.password)
         .ok_or_else(|| internal("login failed"))?;
-    Ok(login_response(token, &user))
+    Ok(login_response(token, &user, false))
 }
 
 static LOGINS: std::sync::LazyLock<crate::guard::Logins> =
@@ -360,8 +376,15 @@ static CHECKING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
 async fn auth_login(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    https: Option<axum::Extension<crate::tls::Https>>,
+    headers: HeaderMap,
     Json(c): Json<Credentials>,
 ) -> ApiResult<Response> {
+    let secure = https.is_some()
+        || headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.eq_ignore_ascii_case("https"));
     let ip = peer.ip();
     let name = c.username.clone();
     if let Some(w) = LOGINS.wait(ip, &name) {
@@ -379,7 +402,17 @@ async fn auth_login(
     match res {
         Some((token, user)) => {
             LOGINS.succeeded(ip, &name);
-            Ok(login_response(token, &user))
+            // With SSO on, passwords may be for admins only (or nobody);
+            // the server itself always gets in, to fix the settings.
+            let sso = &s.config.security.sso;
+            if !sso.local_allowed(user.role) && !crate::guard::this_machine(&peer, &headers) {
+                s.auth.logout(&token);
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    format!("sign in with {}", sso.label()),
+                ));
+            }
+            Ok(login_response(token, &user, secure))
         }
         None => {
             LOGINS.failed(ip, &name);
@@ -399,7 +432,7 @@ async fn auth_logout(State(s): State<Shared>, headers: HeaderMap) -> Response {
         s.auth.logout(&t);
     }
     (
-        [(header::SET_COOKIE, session_cookie("", 0))],
+        [(header::SET_COOKIE, session_cookie("", 0, false))],
         StatusCode::NO_CONTENT,
     )
         .into_response()
@@ -448,9 +481,18 @@ async fn list_users(
 async fn create_user(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
-    Json(input): Json<UserInput>,
+    Json(mut input): Json<UserInput>,
 ) -> ApiResult<Json<PublicUser>> {
     require(me.is_admin())?;
+    // Made ahead for the company's directory (SSO on): a password nobody
+    // knows, the directory signs them in.
+    if input.password.is_empty() && s.config.security.sso.ready() {
+        input.password = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+    }
     let auth = s.auth.clone();
     let u = tokio::task::spawn_blocking(move || auth.create(input))
         .await
@@ -2612,8 +2654,14 @@ async fn get_system(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> Js
         bind: s.bind.to_string(),
         uptime_secs: s.started_at.elapsed().map(|d| d.as_secs()).unwrap_or(0),
         timezone: server_timezone(&s),
-        // Re-read so the loaded projects are current.
-        config: me.is_admin().then(|| ServerConfig::load(&s.data_dir)),
+        // Re-read so the loaded projects are current; the SSO secret masked.
+        config: me.is_admin().then(|| {
+            let mut c = ServerConfig::load(&s.data_dir);
+            if !c.security.sso.client_secret.is_empty() {
+                c.security.sso.client_secret = crate::sso::SECRET_MASK.into();
+            }
+            c
+        }),
         interfaces,
     })
 }
@@ -2641,6 +2689,18 @@ async fn put_system_config(
     }
     let dir = s.data_dir.clone();
     let before = ServerConfig::load(&dir);
+    // The secret shown masked stays as it is.
+    if cfg.security.sso.client_secret == crate::sso::SECRET_MASK {
+        cfg.security.sso.client_secret = before.security.sso.client_secret.clone();
+    }
+    if cfg.security.https.mode != crate::tls::CertMode::Off {
+        let port = cfg.security.https.port;
+        if port == 0 || cfg.bind.unwrap_or(s.bind).port() == port {
+            return Err(bad(format!(
+                "HTTPS port {port}: choose another port than HTTP's"
+            )));
+        }
+    }
     let time = (before.time != cfg.time).then(|| cfg.time.clone());
     // Only the time changed: the engine goes on.
     let restart = {
