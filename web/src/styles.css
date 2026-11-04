@@ -17418,6 +17418,15 @@ button.ux1-pill.lost:hover {
   flex: 0 1 auto;
   min-width: 0;
 }
+/* NEXT: the name of the next graphic gives way first; the icon, NEXT and its key always show. */
+.ux1-transport .opx-btn.big.red:has(> .opx-next-name) {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-template-columns: auto auto minmax(0, max-content);
+  align-items: center;
+  justify-content: center;
+  min-width: auto;
+}
 .ux1-transport .opx-next-name {
   max-width: 260px;
   min-width: 0;
@@ -17464,6 +17473,14 @@ button.ux1-pill.lost:hover {
   bottom: calc(100% + 10px);
   left: 0;
   right: auto;
+}
+@media (max-width: 1360px) {
+  .ux1-transport {
+    gap: 6px;
+  }
+  .ux1-transport .opx-btn:not(.ux1-help) {
+    padding: 0 10px;
+  }
 }
 /* The shortcuts layer (« ? ») */
 .ux1-sc.modal {
@@ -18812,10 +18829,13 @@ a.opx-html5 {
   font-weight: 800;
 }
 
-/* The Operator's top bar holds the monitors, the output and its page: the project tabs keep their label on the open one only. */
+/* The Operator's top bar holds the monitors, the output and its page: the project tabs keep their label on the open one only, the others their icon. */
 @media (max-width: 1800px) {
   .topbar:has(.opx-top) .project-tabs button:not(.on) .tab-label {
     display: none;
+  }
+  .topbar:has(.opx-top) .project-tabs button:not(.on) svg {
+    display: inline-block;
   }
 }
 .opx-aircard .opx-controls:empty {
@@ -18876,6 +18896,17 @@ a.opx-html5 {
 }
 .opx-pvrow .cc.air .cc-l {
   flex-wrap: nowrap;
+}
+/* Short of room, its settings go under its buttons. */
+.opx-pvrow .cc.air {
+  flex-wrap: wrap;
+}
+.opx-pvrow .cc.air .cc-l2 {
+  flex: none;
+}
+.opx-pvrow .cc.air .cc-l3 {
+  flex: 1 1 240px;
+  min-width: 0;
 }
 .opx-pvrow .cc.air .cc-ob,
 .opx-pvrow .cc.air .cc-sq {
@@ -20453,17 +20484,20 @@ input.lc-pal-name:focus {
 .opx-pltabs-scroll .opx-pl {
   margin-bottom: 0;
 }
+/* The other tabs show their name only (their count in their tooltip); short of room, they narrow before the strip scrolls. The open one keeps its size. */
 .opx-pltabs .opx-pl {
   flex: none;
   padding-right: 6px;
 }
-.opx-pltabs .opx-pl .opx-pl-more {
-  visibility: hidden;
+.opx-pltabs .opx-pl:not(.on) {
+  flex: 0 1 auto;
+  min-width: 78px;
+  justify-content: center;
+  padding: 0 10px;
 }
-.opx-pltabs .opx-pl.on .opx-pl-more,
-.opx-pltabs .opx-pl:hover .opx-pl-more,
-.opx-pltabs .opx-pl .opx-pl-more.open {
-  visibility: visible;
+.opx-pltabs .opx-pl:not(.on) .opx-pl-n,
+.opx-pltabs .opx-pl:not(.on) .opx-pl-more:not(.open) {
+  display: none;
 }
 .opx-pltabs .opx-pl .opx-pl-more.open {
   color: var(--text);
@@ -20947,6 +20981,14 @@ input.lc-pal-name:focus {
   font: 700 26px/1 var(--mono);
   letter-spacing: 0.02em;
   color: var(--text);
+}
+@media (max-width: 1360px) {
+  .ux1-transport .sch-tc {
+    padding: 0 4px;
+  }
+  .ux1-transport .sch-tc b {
+    font-size: 20px;
+  }
 }
 
 /* Operator · a rundown row's menu (« … », right-click). */

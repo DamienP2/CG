@@ -1062,10 +1062,10 @@ function PlaylistTabs({ project, active, onSelect, children }: { project: Projec
     el.addEventListener('scroll', read, { passive: true });
     return () => (ro.disconnect(), el.removeEventListener('scroll', read));
   }, [project.playlists.length]);
-  // The open playlist stays in sight.
+  // The open playlist stays in sight (a new one too, once its tab is there, and once the arrows take their room).
   useEffect(() => {
     box.current?.querySelector<HTMLElement>('.opx-pl.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [active]);
+  }, [active, project.playlists.length, edge.over]);
   useEffect(() => {
     if (!list) return;
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setList(null));
@@ -1389,7 +1389,8 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
     <>
       {groups.map((g) => (
         <Fragment key={g.title}>
-          {g.title && <div className="opx-vt-group">{g.title}</div>}
+          {/* No group title over its only value of the same name. */}
+          {g.title && !(g.fields.length === 1 && g.fields[0].f.kind !== 'credits' && g.fields[0].label.toLowerCase() === g.title.toLowerCase()) && <div className="opx-vt-group">{g.title}</div>}
           {g.fields.map(({ f, label }) =>
             !grid(f) && fromData(f) && !byHand(f.key) ? (
               linkedRow(f.key, label, boundDraft[f.key] ?? draft[f.key] ?? '', (f.binding!.path || bindingLabel(f.binding!)).split('.').pop()!.replace(/\[.*$/, ''), 'live', `src:${f.binding!.source}`, handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? ''))
