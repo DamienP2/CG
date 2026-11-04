@@ -431,6 +431,25 @@ pub enum NodeKind {
         #[serde(default)]
         sets: Vec<crate::playout::PropSet>,
     },
+    /// Plays a sound of the media libraries (`/assets/…`) on an audio output
+    /// of the channel (`output`: its id, "" = every one), fading in over the
+    /// How… before it.
+    PlaySound {
+        #[serde(default)]
+        sound: String,
+        /// Volume in dB (0 = as recorded).
+        #[serde(default)]
+        volume: f64,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        output: String,
+        #[serde(default, rename = "loop", skip_serializing_if = "std::ops::Not::not")]
+        looped: bool,
+    },
+    /// Stops a sound ("" = every one), fading out over the How… before it.
+    StopSound {
+        #[serde(default)]
+        sound: String,
+    },
     /// Starts, pauses, resets… a widget of the graphic (`control`: start,
     /// pause, toggle, reset, restart).
     Widget {
@@ -516,6 +535,8 @@ impl NodeKind {
                 | NodeKind::StopAuto { .. }
                 | NodeKind::ClearAll {}
                 | NodeKind::Animate { .. }
+                | NodeKind::PlaySound { .. }
+                | NodeKind::StopSound { .. }
                 | NodeKind::Widget { .. }
         )
     }

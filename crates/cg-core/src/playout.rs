@@ -284,6 +284,25 @@ pub struct Motion {
     pub going: bool,
 }
 
+/// A sound a Logic plays or stops, done by the server on the channel's
+/// audio outputs (fades in seconds, from the « Fade » How… before it).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "do")]
+pub enum SoundAsk {
+    Play {
+        /// `/assets/…`: a sound of the shared or the project's library.
+        sound: String,
+        /// dB.
+        volume: f64,
+        /// Its audio output ("" = every one of the channel).
+        output: String,
+        looped: bool,
+        fade: f64,
+    },
+    /// "" = every sound.
+    Stop { sound: String, fade: f64 },
+}
+
 /// How a Logic changes a property (« Animate a property »).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1233,6 +1252,9 @@ pub struct ChannelState {
     /// The way the next take or out goes (« How… » of a Logic), then none.
     #[serde(skip)]
     pub how: Scratch<Option<How>>,
+    /// The sounds the Logics asked for, taken by the server after each tick.
+    #[serde(skip)]
+    pub sounds: Scratch<Vec<SoundAsk>>,
 }
 
 /// What a playlist last took: its row, and how many rows so far (a change
@@ -2506,6 +2528,7 @@ impl ChannelState {
                         ));
                     }
                 }
+                Act::Sound(ask) => self.sounds.0.push(ask),
                 // A graphic's own actions: none in the project's Logic.
                 Act::Out(_) | Act::Resume(_) | Act::NextRow(_) | Act::Widget { .. } => {}
             }
@@ -2722,6 +2745,7 @@ impl ChannelState {
         let mut asks: Vec<PlaylistAsk> = Vec::new();
         let mut clear_all: Option<Option<How>> = None;
         let mut animations: Vec<(String, String, Vec<PropSet>, Option<How>)> = Vec::new();
+        let mut sounds: Vec<SoundAsk> = Vec::new();
         for (layer, item) in self.layers.iter_mut() {
             if matches!(item.phase, Phase::Out) {
                 continue;
@@ -2855,6 +2879,7 @@ impl ChannelState {
                             animations.push((template, l, sets, how));
                         }
                     }
+                    Act::Sound(ask) => sounds.push(ask),
                     Act::Widget { layer: l, control } => {
                         if let Ok(control) = serde_json::from_value::<WidgetControl>(
                             serde_json::Value::String(control),
@@ -2936,6 +2961,7 @@ impl ChannelState {
         }
         // Done by run_project, on the playlists' outputs.
         self.run.0.asked.extend(asks);
+        self.sounds.0.extend(sounds);
         for (template, l, sets, how) in animations {
             for item in self.layers.values_mut() {
                 if item.template_id == template

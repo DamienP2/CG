@@ -147,6 +147,7 @@ fn short(e: &OutputError) -> String {
 pub fn start(state: &Shared) -> Vec<tokio::task::JoinHandle<()>> {
     cg_output::ndi::set_library_path(&state.config.ndi_library);
     crate::webimages::install(state.assets_dir());
+    crate::sound::start(state);
     state
         .channels
         .values()
@@ -1007,6 +1008,7 @@ async fn advance(
         .as_ref()
         .map(|p| p.frame_rate.as_f64() / channel_fps)
         .unwrap_or(1.0);
+    crate::sound::loaded_on(state, &ch.config.id, project.as_ref());
     let (changed, snapshot) = {
         let mut st = ch.state.write().await;
         let mut changed = st.tick(step);
@@ -1106,6 +1108,9 @@ async fn advance(
                 fired.extend(st.run_project(p, &buses));
                 fired
             };
+            // Sounds the Logics asked for.
+            let sounds = std::mem::take(&mut st.sounds.0);
+            crate::sound::run(state, &ch.config.id, p, sounds);
             // Graphics a Logic took: their data read as for a take (data sets, sources;
             // the rows read « on take » read now).
             if !fired.is_empty() {

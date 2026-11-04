@@ -20,6 +20,7 @@ import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { useDesigner } from './designerStore';
 import { useProjectLogic } from './projectLogic';
 import { HowBody, howOf } from './logicHow';
+import { PlaySoundBody, StopSoundBody } from './logicSound';
 import { hasMoments, lineFor, momentsOf, needsSteps, needsValue, sourceOf, subjectsOf, testsOf, toSteps } from './logicSteps';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { t, tc } from '../i18n';
@@ -36,7 +37,7 @@ import { entries, FAMS, isProjectLogic, kindOf, layerNode, propsOf, rowLabel, ro
  */
 
 const NODE_W = 210;
-const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when', 'how', 'animate']);
+const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when', 'how', 'animate', 'playSound']);
 const FRAME_COLORS = ['#8fa3ff', '#a78bfa', '#22d3ee', '#f59e0b', '#f472b6', '#4ade80', '#fb7185', '#facc15'];
 const CLIP_KEY = 'strata.logic.clipboard';
 const TYPES: { id: PortType; label: string }[] = [
@@ -1502,6 +1503,10 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
           </>,
         );
       }
+      case 'playSound':
+        return flowRows(<PlaySoundBody n={n} set={set} />);
+      case 'stopSound':
+        return flowRows(<StopSoundBody n={n} set={set} />);
       case 'how':
         return flowRows(<HowBody how={howOf(n)} set={(patch, key) => set(patch as Partial<LogicNode>, key && `lx-${n.id}-${key}`)} />);
       case 'template': {

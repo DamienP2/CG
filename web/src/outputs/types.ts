@@ -176,6 +176,36 @@ export interface ChannelConfig {
   unwired?: OutputsConfig;
   /** What the channel clock follows (none: the Hardware default). */
   clock?: ClockReference | null;
+  /** Audio outputs: where the sounds a Logic plays go. */
+  audio?: AudioOutput[];
+}
+
+/** An audio output: AES67 / ST 2110-30 multicast, or a sound card (Dante Virtual Soundcard…). */
+export interface AudioOutput {
+  id: string;
+  enabled?: boolean;
+  name: string;
+  kind: 'aes67' | 'device';
+  /** AES67: "239.69.10.10:5004". */
+  dest?: string;
+  interface?: string | null;
+  ttl?: number;
+  payloadType?: number;
+  /** Sound card: its name ("" = the system's default). */
+  device?: string;
+  /** Sound card: first of the two channels (1 = 1-2). */
+  firstChannel?: number;
+}
+
+/** What a running audio output tells (`/api/audio/status`). */
+export interface AudioState {
+  channel: string;
+  id: string;
+  name: string;
+  running: boolean;
+  sent: number;
+  error: string;
+  playing: string[];
 }
 
 export interface Location {

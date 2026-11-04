@@ -48,6 +48,8 @@ import {
   ListVideo,
   CircleSlash,
   type LucideIcon,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { useApp } from '../store';
 import { newId } from '../engine/evaluate';
@@ -314,6 +316,8 @@ function templateEntries(tpl: Template): Entry[] {
     { key: 'resumePlaylist', fam: 'action', label: 'Resume a playlist', icon: ListVideo, can: hasPlaylists, make: (_t, x, y) => ({ ...base(x, y), type: 'resumePlaylist', playlist: '' }) },
     { key: 'stopAuto', fam: 'action', label: 'Stop the Auto', icon: Pause, can: hasPlaylists, make: (_t, x, y) => ({ ...base(x, y), type: 'stopAuto', playlist: '' }) },
     { key: 'animate', fam: 'action', label: 'Animate a property', icon: Move, can: (h) => h.t.layers.length > 0, make: (tt, x, y) => ({ ...base(x, y), type: 'animate', layer: tt.layers[0]?.id ?? '', sets: [{ key: 'x', mode: 'to', value: '0' }] }) },
+    { key: 'playSound', fam: 'action', label: 'Play a sound', icon: Volume2, make: (_t, x, y) => ({ ...base(x, y), type: 'playSound', sound: '', volume: 0 }) },
+    { key: 'stopSound', fam: 'action', label: 'Stop a sound', icon: VolumeX, make: (_t, x, y) => ({ ...base(x, y), type: 'stopSound', sound: '' }) },
     { key: 'widget', fam: 'action', label: 'Widget control', icon: Hand, can: (h) => h.t.layers.some(timedLayer), make: (tt, x, y) => ({ ...base(x, y), type: 'widget', layer: tt.layers.find(timedLayer)?.id ?? '', control: 'start' }) },
     // Variables
     { key: 'setVar', fam: 'var', label: 'Set a variable', icon: Variable, make: (tt, x, y) => ({ ...base(x, y), type: 'setVar', name: varNames(tt)[0] ?? 'var1', value: '1', transition: 0 }) },

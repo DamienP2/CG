@@ -44,6 +44,8 @@ pub enum Act {
         sets: Vec<crate::playout::PropSet>,
         how: Option<How>,
     },
+    /// A sound to play or stop: done by the server (see [`crate::playout::SoundAsk`]).
+    Sound(crate::playout::SoundAsk),
     Widget {
         layer: String,
         control: String,
@@ -376,6 +378,28 @@ pub fn run(
                 },
                 &mut queue,
             ),
+            NodeKind::PlaySound {
+                sound,
+                volume,
+                output,
+                looped,
+            } if !sound.is_empty() => act(
+                Act::Sound(crate::playout::SoundAsk::Play {
+                    sound: sound.clone(),
+                    volume: *volume,
+                    output: output.clone(),
+                    looped: *looped,
+                    fade: fade_of(how.as_ref()),
+                }),
+                &mut queue,
+            ),
+            NodeKind::StopSound { sound } => act(
+                Act::Sound(crate::playout::SoundAsk::Stop {
+                    sound: sound.clone(),
+                    fade: fade_of(how.as_ref()),
+                }),
+                &mut queue,
+            ),
             NodeKind::Widget { layer, control } => act(
                 Act::Widget {
                     layer: layer.clone(),
@@ -387,6 +411,14 @@ pub fn run(
         }
     }
     acts
+}
+
+/// The fade of a sound: the length of a « Fade » How… (none otherwise).
+fn fade_of(how: Option<&How>) -> f64 {
+    match how {
+        Some(h) if h.mode == crate::playout::HowMode::Fade => h.seconds.max(0.0),
+        _ => 0.0,
+    }
 }
 
 /// The value of a node's output as a flow sees it (no layers: data only).

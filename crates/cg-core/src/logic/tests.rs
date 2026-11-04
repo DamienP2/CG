@@ -807,3 +807,74 @@ fn animate_takes_the_how_before_it() {
         }]
     );
 }
+
+#[test]
+fn a_sound_plays_and_stops_with_the_fade_of_its_how() {
+    use crate::playout::{How, HowMode, SoundAsk};
+    let fade = How {
+        mode: HowMode::Fade,
+        seconds: 1.5,
+        ..Default::default()
+    };
+    let logic = Logic {
+        nodes: vec![
+            when("w", "trigger"),
+            node(
+                "p",
+                NodeKind::PlaySound {
+                    sound: "/assets/whoosh.wav".into(),
+                    volume: -6.0,
+                    output: String::new(),
+                    looped: false,
+                },
+            ),
+            when("x", "trigger"),
+            node(
+                "h",
+                NodeKind::How {
+                    mode: fade.mode,
+                    seconds: fade.seconds,
+                    easing: fade.easing,
+                    side: fade.side,
+                },
+            ),
+            node(
+                "s",
+                NodeKind::StopSound {
+                    sound: "/assets/jingle.wav".into(),
+                },
+            ),
+        ],
+        edges: vec![
+            edge2("w", "out", "p", "run"),
+            edge2("x", "out", "h", "run"),
+            edge2("h", "next", "s", "run"),
+        ],
+        frames: vec![],
+    };
+    let mut w = BTreeMap::new();
+    step(&logic, Scope::Graphic, &[], &mut w);
+    assert_eq!(
+        step(&logic, Scope::Graphic, &[(event_key("w"), "1")], &mut w),
+        vec![Act::Sound(SoundAsk::Play {
+            sound: "/assets/whoosh.wav".into(),
+            volume: -6.0,
+            output: String::new(),
+            looped: false,
+            fade: 0.0,
+        })]
+    );
+    assert_eq!(
+        step(&logic, Scope::Graphic, &[(event_key("x"), "1")], &mut w),
+        vec![Act::Sound(SoundAsk::Stop {
+            sound: "/assets/jingle.wav".into(),
+            fade: 1.5,
+        })]
+    );
+    // As the editor saves it.
+    let n: NodeKind = serde_json::from_str(
+        r#"{"type":"playSound","sound":"/assets/a.mp3","volume":-3,"output":"audio-1","loop":true}"#,
+    )
+    .unwrap();
+    assert!(matches!(n, NodeKind::PlaySound { looped: true, .. }));
+}

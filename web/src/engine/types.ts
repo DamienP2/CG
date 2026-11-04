@@ -436,6 +436,10 @@ export type LogicNodeKind =
   | { type: 'clearAll' }
   /** Changes properties of a layer (of the graphic `template` in the project's Logic) over the How… before it. */
   | { type: 'animate'; template?: string; layer: string; sets: PropSet[] }
+  /** Plays a sound of the media libraries (`/assets/…`) on the channel's audio outputs (`output`: one of them), fading in over a « Fade » How… before it. Volume in dB. */
+  | { type: 'playSound'; sound: string; volume?: number; output?: string; loop?: boolean }
+  /** Stops a sound ("" = every one), fading out over a « Fade » How… before it. */
+  | { type: 'stopSound'; sound: string }
   // The project's Logic
   /** A graphic: flows `in` / `out`, value `onAir`. */
   | { type: 'template'; template: string }

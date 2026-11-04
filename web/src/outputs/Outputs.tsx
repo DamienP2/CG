@@ -1,8 +1,8 @@
-import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe, MonitorPlay } from 'lucide-react';
+import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Volume2, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe, MonitorPlay } from 'lucide-react';
 import { HexColorField } from '../ui/fields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
-import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
+import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type AudioOutput, type AudioState, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
 import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, sdiPorts, usedHardware } from '../hardware/model';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { navigate } from '../router';
@@ -28,8 +28,8 @@ import '../perf/perf.css';
  * desk…). The INPUTS mode of the page lists the live video inputs (Inputs.tsx).
  */
 
-type Kind = 'program' | 'picture' | 'source' | 'html5' | 'sdi' | 'st2110' | 'ndi' | 'stream';
-type DestKind = Exclude<Kind, 'program' | 'picture' | 'source'>;
+type Kind = 'program' | 'picture' | 'source' | 'html5' | 'sdi' | 'st2110' | 'ndi' | 'stream' | 'audio';
+type DestKind = Exclude<Kind, 'program' | 'picture' | 'source' | 'audio'>;
 
 /** Labels translated where shown. */
 const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = {
@@ -41,6 +41,7 @@ const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = 
   st2110: { label: 'ST 2110', color: '#e879f9', icon: Network },
   ndi: { label: 'NDI', color: '#14b8a6', icon: Radio },
   stream: { label: 'Stream', color: '#fb7185', icon: RadioTower },
+  audio: { label: 'Sound', color: '#34d399', icon: Volume2 },
 };
 
 const DEST_KINDS: DestKind[] = ['html5', 'ndi', 'stream', 'sdi', 'st2110'];
@@ -61,6 +62,14 @@ const PROTOCOLS: { value: StreamProtocol; label: string; placeholder: string }[]
   { value: 'hls', label: 'HLS', placeholder: '' },
 ];
 const protocolLabel = (p: StreamProtocol) => PROTOCOLS.find((x) => x.value === p)?.label ?? p.toUpperCase();
+/** Audio outputs: AES67 / ST 2110-30, or a sound card. Labels translated where shown. */
+const AUDIO_KINDS: { value: AudioOutput['kind']; label: string }[] = [
+  { value: 'aes67', label: 'AES67 / ST 2110-30' },
+  { value: 'device', label: 'Sound card' },
+];
+/** "239.69.10.10:5004" / "DVS Transmit 1-2". */
+const audioSub = (a: AudioOutput) => (a.kind === 'aes67' ? `${a.dest ?? '239.69.10.10:5004'}\n48 kHz · 24 bits · 2 ch · 1 ms` : `${a.device || t('System default')}\n${t('Channels {a}-{b}', { a: a.firstChannel ?? 1, b: (a.firstChannel ?? 1) + 1 })}`);
+
 /** "SRT · Listener". */
 const streamBadge = (o: StreamOutput) => (o.protocol === 'srt' ? `SRT · ${tc('short', o.listen ? 'Listener' : 'Caller')}` : protocolLabel(o.protocol));
 /** SRT outputs: Strata calls the receiver, or waits for the receivers. Labels translated where shown. */
@@ -256,6 +265,8 @@ export function Outputs({ mode }: { mode: Mode }) {
   const [info, setInfo] = useState<SystemInfo | null>(null);
   const [cfg, setCfg] = useState<ServerConfig | null>(null);
   const [status, setStatus] = useState<Record<string, Record<string, OutputState>>>({});
+  const [audioStatus, setAudioStatus] = useState<AudioState[]>([]);
+  const [soundCards, setSoundCards] = useState<string[] | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const [sel, setSel] = useState<string>('program');
   // Narrow screens: the inspector is a drawer over the graph.
@@ -292,6 +303,13 @@ export function Outputs({ mode }: { mode: Mode }) {
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
   });
+  // The sound cards, once an audio output is selected.
+  useEffect(() => {
+    if (!sel.startsWith('aud:') || soundCards) return;
+    api<string[]>('GET', '/api/audio/devices')
+      .then(setSoundCards)
+      .catch(() => setSoundCards([]));
+  }, [sel, soundCards]);
   // Arrange lays the nodes out from left to right (the graph is only known further down).
   const arrangeRef = useRef<() => void>(() => {});
   const cv = useCanvasView('outputs', '.oc-node', { onArrange: () => arrangeRef.current() });
@@ -326,9 +344,15 @@ export function Outputs({ mode }: { mode: Mode }) {
       api<Record<string, Record<string, OutputState>>>('GET', '/api/outputs/status')
         .then(setStatus)
         .catch(() => {});
+    const pollAudio = () =>
+      api<AudioState[]>('GET', '/api/audio/status')
+        .then(setAudioStatus)
+        .catch(() => {});
     poll();
+    pollAudio();
+    const ha = setInterval(() => document.hidden || void pollAudio(), 1500);
     const h = setInterval(() => document.hidden || void poll(), 3000);
-    return () => clearInterval(h);
+    return () => (clearInterval(h), clearInterval(ha));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -387,6 +411,8 @@ export function Outputs({ mode }: { mode: Mode }) {
     const ys = allDests.filter((d) => d.picture === p.id).map((d) => pos[d.value.id].y);
     pos[`pic:${p.id}`] = { x: COL.picture + shift, y: ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 50 + i * 170 };
   });
+  const audios = ch?.audio ?? [];
+  audios.forEach((a, i) => (pos[`aud:${a.id}`] = { x: COL.dest + shift, y: 50 + (allDests.length + i) * 128 + 30 }));
   const picYs = pics.map((p) => pos[`pic:${p.id}`].y);
   pos.program = { x: COL.program, y: picYs.length ? (Math.min(...picYs) + Math.max(...picYs)) / 2 : 50 };
   srcIds.forEach((id, i) => (pos[`src:${id}`] = { x: COL.program + shift, y: 50 + i * 128 }));
@@ -405,6 +431,17 @@ export function Outputs({ mode }: { mode: Mode }) {
     if (!s) return { tone: 'idle', text: t('Starting…') };
     if (s.message === 'Off') return { tone: 'idle', text: tc('output', 'Off') };
     return s.ok ? { tone: 'ok', text: !s.message || s.message === 'Running' ? t('Running') : friendlyError(s.message), raw: s.message } : { tone: 'warn', text: friendlyError(s.message), raw: s.message };
+  };
+  const savedAudio = (a: AudioOutput) => JSON.stringify(saved?.audio?.find((x) => x.id === a.id)) === JSON.stringify(a);
+  const audioState = (a: AudioOutput): { tone: 'ok' | 'warn' | 'idle'; text: string; raw?: string } => {
+    if (a.enabled === false) return { tone: 'idle', text: tc('output', 'Off') };
+    if (!savedAudio(a)) return { tone: 'idle', text: t('Not applied yet') };
+    const s = audioStatus.find((x) => x.channel === ch?.id && x.id === a.id);
+    if (!s) return { tone: 'idle', text: t('Starting…') };
+    if (s.error) return { tone: 'warn', text: friendlyError(s.error), raw: s.error };
+    if (!s.running) return { tone: 'idle', text: tc('output', 'Off') };
+    if (s.playing.length) return { tone: 'ok', text: s.playing.map((x) => decodeURIComponent(x.split('/').pop() ?? x)).join(', ') };
+    return { tone: 'ok', text: a.kind === 'aes67' ? t('Sending') : t('Running') };
   };
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name;
   const liveCh = live.find((c) => c.id === ch?.id);
@@ -515,6 +552,10 @@ export function Outputs({ mode }: { mode: Mode }) {
           const st = destStatus(d);
           return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch, hw), tone: st.tone, status: st.text, raw: st.raw, badge: d.kind === 'stream' ? streamBadge(d.value as StreamOutput) : sameKind(d),  chip: d.kind === 'html5' || !d.picture ? undefined : rateChip(d.value.id), on: d.kind === 'html5' ? undefined : isOn(d), loose: !d.picture };
         }),
+        ...audios.map((a): GNode => {
+          const st = audioState(a);
+          return { id: `aud:${a.id}`, kind: 'audio', title: a.name, sub: audioSub(a), badge: a.kind === 'aes67' ? 'AES67' : undefined, tone: st.tone, status: st.text, raw: st.raw, on: a.enabled !== false };
+        }),
       ]
     : [];
   // Format → destination wires can be removed (the destination stays, unwired).
@@ -523,6 +564,7 @@ export function Outputs({ mode }: { mode: Mode }) {
         ...(bgInput ? [{ from: 'program', to: `src:${bgInput.id}`, color: famLook(familyOf(bgInput.kind)).color, src: true }] : []),
         ...pics.map((p) => (bgInput && !graphicsOnly(p.id) ? { from: `src:${bgInput.id}`, to: `pic:${p.id}`, color: famLook(familyOf(bgInput.kind)).color, via: p.id } : { from: 'program', to: `pic:${p.id}`, color: KIND.picture.color })),
         ...allDests.filter((d) => d.picture).map((d) => ({ from: `pic:${d.picture}`, to: d.value.id, color: KIND[d.kind].color, dest: d.value.id })),
+        ...audios.map((a) => ({ from: 'program', to: `aud:${a.id}`, color: KIND.audio.color })),
       ]
     : [];
   // Program first, the destinations last (wired or not); saved like a drag of the nodes.
@@ -647,8 +689,37 @@ export function Outputs({ mode }: { mode: Mode }) {
     setSel(`src:${id}`);
   };
   const selSrc = sel.startsWith('src:') ? inputOf(sel.slice(4)) : undefined;
+  const selAudio = sel.startsWith('aud:') ? audios.find((a) => `aud:${a.id}` === sel) : undefined;
+  const editAudio = (id: string, fn: (a: AudioOutput) => void) =>
+    editCh((c) => {
+      const a = (c.audio ?? []).find((x) => x.id === id);
+      if (a) fn(a);
+    });
+  /** A new audio output on the channel (its id is unique on the server's channels). */
+  const addAudio = (kind: AudioOutput['kind']) => {
+    if (!ch) return;
+    const taken = new Set(cfg.channels.flatMap((c) => [...pictures(c).flatMap((p) => dests(p).map((d) => d.value.id)), ...(c.audio ?? []).map((a) => a.id)]));
+    let n = 1;
+    while (taken.has(`audio-${n}`)) n++;
+    const id = `audio-${n}`;
+    // The next multicast group of the AES67 outputs (239.69.10.10, .11…).
+    const groups = new Set(cfg.channels.flatMap((c) => (c.audio ?? []).map((a) => a.dest)));
+    let g = 10;
+    while (groups.has(`239.69.10.${g}:5004`)) g++;
+    const a: AudioOutput = kind === 'aes67' ? { id, name: t('Audio {n}', { n }), kind, dest: `239.69.10.${g}:5004` } : { id, name: t('Audio {n}', { n }), kind, device: '', firstChannel: 1 };
+    editCh((c) => void (c.audio ??= []).push(a));
+    setSel(`aud:${id}`);
+  };
 
   const removeSelected = async () => {
+    if (selAudio) {
+      editCh((c) => {
+        c.audio = (c.audio ?? []).filter((a) => a.id !== selAudio.id);
+        if (!c.audio.length) delete c.audio;
+      });
+      setSel('program');
+      return;
+    }
     if (selSrc) {
       editCh((c) => {
         c.sources = (c.sources ?? []).filter((x) => x !== selSrc.id);
@@ -695,7 +766,7 @@ export function Outputs({ mode }: { mode: Mode }) {
       if (d) fn(d.value as T);
     });
   const editDest = <T,>(fn: (d: T) => void) => selDest && editDestById<T>(selDest.value.id, fn);
-  const setOn = (id: string, on: boolean) => editDestById<{ enabled?: boolean }>(id, (d) => void (d.enabled = on));
+  const setOn = (id: string, on: boolean) => (id.startsWith('aud:') ? editAudio(id.slice(4), (a) => void (a.enabled = on)) : editDestById<{ enabled?: boolean }>(id, (d) => void (d.enabled = on)));
   const setSlate = (picture: string, src: string) =>
     editCh((c) => {
       const target = picture === 'main' ? c : (c.renditions ?? []).find((r) => r.id === picture);
@@ -993,6 +1064,16 @@ export function Outputs({ mode }: { mode: Mode }) {
                       );
                     })}
                   </div>
+                  <span className="oc-tool-sep" aria-hidden="true" />
+                  <div className="oc-tool-group" role="group" aria-label={t('Sound')}>
+                    <span className="oc-tool-label">{t('Sound')}</span>
+                    <button className="oc-tool" onClick={() => addAudio('aes67')} title={t('Add an AES67 / ST 2110-30 audio output')}>
+                      <Volume2 size={15} color={KIND.audio.color} /> AES67
+                    </button>
+                    <button className="oc-tool" onClick={() => addAudio('device')} title={t('Add a sound card output (Dante Virtual Soundcard…)')}>
+                      <Volume2 size={15} color={KIND.audio.color} /> {t('Sound card')}
+                    </button>
+                  </div>
                 </div>
               </header>
 
@@ -1146,7 +1227,8 @@ export function Outputs({ mode }: { mode: Mode }) {
                             )}
                           </div>
                           {n.kind === 'picture' && <span className="oc-port in" />}
-                          {n.kind !== 'program' && n.kind !== 'picture' && n.kind !== 'source' && (
+                          {n.kind === 'audio' && <span className="oc-port in" />}
+                          {n.kind !== 'program' && n.kind !== 'picture' && n.kind !== 'source' && n.kind !== 'audio' && (
                             <span className="oc-port in grab" title={t('Drag to a format to feed this output from it')} onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
                           )}
                           {n.kind === 'program' && (srcIds.length > 0 ? <span className="oc-port out grab" title={t('Drag to a source to put its video under the graphics, or to a format for the graphics only')} onPointerDown={(e) => startWire(e, 'program')} /> : <span className="oc-port out" />)}
@@ -1199,7 +1281,8 @@ export function Outputs({ mode }: { mode: Mode }) {
                         </strong>
                       </div>
                       {selDest && selDest.kind !== 'html5' && <OnSwitch on={isOn(selDest)} onChange={(v) => setOn(selDest.value.id, v)} label={isOn(selDest) ? tc('output', 'On') : tc('output', 'Off')} />}
-                      {(selDest || selSrc || (selPic && selPic.id !== 'main')) && (
+                      {selAudio && <OnSwitch on={selAudio.enabled !== false} onChange={(v) => setOn(`aud:${selAudio.id}`, v)} label={selAudio.enabled !== false ? tc('output', 'On') : tc('output', 'Off')} />}
+                      {(selDest || selSrc || selAudio || (selPic && selPic.id !== 'main')) && (
                         <button className="icon-btn ghost" title={t('Remove')} onClick={removeSelected}>
                           <Trash2 size={15} />
                         </button>
@@ -1210,6 +1293,97 @@ export function Outputs({ mode }: { mode: Mode }) {
                     </div>
                   )}
                   {selDest && !selDest.picture && note(t('Not connected: this destination is kept but not started. Drag a wire from a format to its input to send it again.'))}
+
+                  {selAudio &&
+                    (() => {
+                      const a = selAudio;
+                      const set = (fn: (x: AudioOutput) => void) => editAudio(a.id, fn);
+                      const destOk = /^(\d{1,3}\.){3}\d{1,3}:\d{1,5}$/.test(a.dest ?? '');
+                      const cards = soundCards ?? [];
+                      return (
+                        <>
+                          <Field label={t('Name')}>
+                            <input value={a.name} onChange={(e) => set((x) => void (x.name = e.target.value))} />
+                          </Field>
+                          <Field label={t('Type')}>
+                            <select
+                              value={a.kind}
+                              onChange={(e) =>
+                                set((x) => {
+                                  x.kind = e.target.value as AudioOutput['kind'];
+                                  if (x.kind === 'aes67') x.dest ??= '239.69.10.10:5004';
+                                  else (x.device ??= ''), (x.firstChannel ??= 1);
+                                })
+                              }
+                            >
+                              {AUDIO_KINDS.map((k) => (
+                                <option key={k.value} value={k.value}>
+                                  {t(k.label)}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          {a.kind === 'aes67' && (
+                            <>
+                              <Field label={t('Multicast')}>
+                                <input value={a.dest ?? ''} aria-invalid={!destOk} placeholder="239.69.10.10:5004" spellCheck={false} onChange={(e) => set((x) => void (x.dest = e.target.value.trim()))} />
+                                {!destOk && <span className="set-error">{t('Address:port expected')}</span>}
+                              </Field>
+                              <Field label={t('Network interface')}>
+                                <select value={a.interface ?? ''} onChange={(e) => set((x) => void (x.interface = e.target.value || null))}>
+                                  <option value="">{t('System default')}</option>
+                                  {info.interfaces.map((i) => (
+                                    <option key={i.ip} value={i.ip}>
+                                      {i.name} — {i.ip}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <dl className="oc-hw-sum">
+                                <dt>{t('Format')}</dt>
+                                <dd>48 kHz · 24 bits · 2 ch · 1 ms</dd>
+                                <dt>{t('Clock')}</dt>
+                                <dd>PTP</dd>
+                              </dl>
+                              <div className="set-field">
+                                <span className="set-label">SDP</span>
+                                {savedAudio(a) ? (
+                                  <span className="oc-sdp">
+                                    <a href={`/api/audio/${encodeURIComponent(ch.id)}/${encodeURIComponent(a.id)}/sdp`}>{`${a.id}.sdp`}</a>
+                                  </span>
+                                ) : (
+                                  <span className="muted small">{t('Apply to generate the SDP files.')}</span>
+                                )}
+                              </div>
+                            </>
+                          )}
+                          {a.kind === 'device' && (
+                            <>
+                              <Field label={t('Sound card')}>
+                                <select value={a.device ?? ''} onChange={(e) => set((x) => void (x.device = e.target.value))}>
+                                  <option value="">{t('System default')}</option>
+                                  {[...new Set([...cards, ...(a.device ? [a.device] : [])])].map((d) => (
+                                    <option key={d} value={d}>
+                                      {d}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label={t('Channels')}>
+                                <select value={a.firstChannel ?? 1} onChange={(e) => set((x) => void (x.firstChannel = +e.target.value))}>
+                                  {Array.from({ length: 32 }, (_, i) => i * 2 + 1).map((c) => (
+                                    <option key={c} value={c}>
+                                      {c}-{c + 1}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              {soundCards && !soundCards.length && note(info.os === 'linux' ? t('Sound cards are played on macOS and Windows.') : t('No sound card found.'))}
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
 
                   {selNode?.kind === 'source' &&
                     selSrc &&

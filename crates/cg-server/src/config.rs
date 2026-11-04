@@ -249,6 +249,10 @@ pub struct ChannelConfig {
     /// not started.
     #[serde(default, skip_serializing_if = "OutputsConfig::is_empty")]
     pub unwired: OutputsConfig,
+    /// Audio outputs: where the sounds a Logic plays go (AES67 / ST 2110-30,
+    /// a sound card such as Dante Virtual Soundcard).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio: Vec<cg_output::audio::AudioOutConfig>,
 }
 
 fn default_render_ahead() -> u32 {
@@ -332,6 +336,7 @@ impl ChannelConfig {
             render_ahead: default_render_ahead(),
             clock: None,
             unwired: OutputsConfig::default(),
+            audio: Vec::new(),
         }
     }
 
@@ -353,6 +358,17 @@ impl ChannelConfig {
             r.outputs.ensure_ids(&mut taken);
         }
         self.unwired.ensure_ids(&mut taken);
+        for a in &mut self.audio {
+            if !a.id.is_empty() && taken.insert(a.id.clone()) {
+                continue;
+            }
+            let mut n = 1;
+            while taken.contains(&format!("audio-{n}")) {
+                n += 1;
+            }
+            a.id = format!("audio-{n}");
+            taken.insert(a.id.clone());
+        }
     }
 
     /// Every destination list: the pictures', then the unwired ones.

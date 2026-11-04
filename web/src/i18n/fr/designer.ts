@@ -612,4 +612,11 @@ export const designer: Record<string, string> = {
   'by −': 'de −',
   'go back': 'revenir',
   'towards': 'vers',
+  // Sound (Logic)
+  'Play a sound': 'Jouer un son',
+  'Stop a sound': 'Arrêter un son',
+  'Every audio output': 'Toutes les sorties son',
+  'Choose a sound': 'Choisir un son',
+  'Volume': 'Volume',
+  'Every sound': 'Tous les sons',
 };

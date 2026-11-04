@@ -34,6 +34,7 @@ mod rt;
 mod schedule;
 mod service;
 mod social;
+mod sound;
 mod state;
 mod sync;
 mod thumbs;

@@ -540,4 +540,16 @@ export const operator: Record<string, string> = {
   Playlist: 'Playlist',
   'Duplicate into {list}': 'Dupliquer dans {list}',
   '“{name}” duplicated into {list}': '« {name} » dupliqué dans {list}',
+  // Audio outputs (Flux sorties)
+  'Channels {a}-{b}': 'Canaux {a}-{b}',
+  'Sending': 'Envoie',
+  'Audio {n}': 'Audio {n}',
+  'Sound': 'Son',
+  'Add an AES67 / ST 2110-30 audio output': 'Ajouter une sortie son AES67 / ST 2110-30',
+  'Add a sound card output (Dante Virtual Soundcard…)': 'Ajouter une sortie carte son (Dante Virtual Soundcard…)',
+  'Sound card': 'Carte son',
+  'Multicast': 'Multicast',
+  'Address:port expected': 'Adresse:port attendue',
+  'Sound cards are played on macOS and Windows.': 'Cartes son : macOS et Windows uniquement.',
+  'No sound card found.': 'Aucune carte son trouvée.',
 };

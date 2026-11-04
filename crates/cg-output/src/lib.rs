@@ -4,6 +4,7 @@
 //! the server over WebSocket (see `cg-server`), rendering the same scene with
 //! the web engine, which is what OBS / vMix / CasparCG browser sources expect.
 
+pub mod audio;
 pub mod colorspace;
 pub mod decklink;
 pub mod ffmpeg;
@@ -24,6 +25,8 @@ pub enum OutputError {
     Io(#[from] std::io::Error),
     #[error("output not supported: {0}")]
     Unsupported(String),
+    #[error("{0}")]
+    Message(String),
     #[error("frame dropped (sender busy)")]
     Dropped,
     #[error("output closed")]
