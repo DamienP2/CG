@@ -396,6 +396,10 @@ export default defineWidget({
   icon: PenTool,
   create: () => ({ points: DEFAULT_PTS(), arrowEnd: 'none', refW: 1100, refH: 560, props: { width: 1100, height: 560, stroke: [1, 1, 1, 1], strokeWidth: 16 } }),
   ownsLook: true,
+  outline: (layer, _r, w, h) => {
+    const k = cfg(layer);
+    return k.closed && k.fillOn && segments(layer, w, h).length ? { d: pathD(layer, w, h), rule: k.fillRule } : null;
+  },
   live: (l) => l.drawIn !== false,
   Render: ({ layer, r, w, h, data, time, frame, hold, fps, designer }) => {
     const k = cfg(layer);

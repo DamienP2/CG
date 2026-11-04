@@ -206,6 +206,9 @@ pub struct SsoIdentity {
     /// Their e-mail or sign-in name.
     pub login: String,
     pub name: String,
+    /// An address the provider vouches for (a verified e-mail, Entra's
+    /// UPN): the only one that can claim an account made ahead.
+    pub vouched: Option<String>,
 }
 
 struct Session {
@@ -770,11 +773,12 @@ impl Auth {
     ) -> Result<(String, User), String> {
         let mut list = self.users();
         let login = who.login.trim();
+        let vouched = who.vouched.as_deref().map(str::trim).unwrap_or("");
         let idx = list.iter().position(|u| u.sso == who.key).or_else(|| {
             list.iter().position(|u| {
                 u.sso.is_empty()
                     && u.username.contains('@')
-                    && u.username.eq_ignore_ascii_case(login)
+                    && u.username.eq_ignore_ascii_case(vouched)
             })
         });
         let user = match idx {
@@ -984,6 +988,7 @@ mod tests {
             key: "https://id|42".into(),
             login: "marie@redac.fr".into(),
             name: "Marie".into(),
+            vouched: Some("marie@redac.fr".into()),
         };
         // No role given: refused, no account made.
         assert!(auth.sso_login(&marie, None).is_err());
@@ -1007,10 +1012,20 @@ mod tests {
         // An account made ahead under her e-mail is hers on first sign-in.
         auth.create(input("paul@redac.fr", Role::Designer, "a long password"))
             .unwrap();
+        // Not by an address the provider does not vouch for.
+        let mallory = SsoIdentity {
+            key: "https://id|8".into(),
+            login: "paul@redac.fr".into(),
+            name: String::new(),
+            vouched: None,
+        };
+        let (_, m) = auth.sso_login(&mallory, Some(Role::Viewer)).unwrap();
+        assert_eq!(m.username, "paul@redac.fr-2");
         let paul = SsoIdentity {
             key: "https://id|7".into(),
             login: "Paul@Redac.fr".into(),
             name: String::new(),
+            vouched: Some("Paul@Redac.fr".into()),
         };
         let (_, p) = auth.sso_login(&paul, Some(Role::Operator)).unwrap();
         assert_eq!(
@@ -1022,6 +1037,7 @@ mod tests {
             key: "https://id|9".into(),
             login: "admin".into(),
             name: String::new(),
+            vouched: None,
         };
         let (_, o) = auth.sso_login(&other, Some(Role::Viewer)).unwrap();
         assert_eq!(o.username, "admin-2");

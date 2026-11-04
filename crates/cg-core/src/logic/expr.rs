@@ -521,11 +521,27 @@ fn hex(c: &str) -> Option<[f64; 4]> {
     }
 }
 
+static DEFAULT_TZ: std::sync::RwLock<Option<jiff::tz::TimeZone>> = std::sync::RwLock::new(None);
+
+/// The time zone of `heure()`, `minute()`, `seconde()`: the server's setting
+/// (`""`: the machine's), as the clocks show it.
+pub fn set_default_tz(name: &str) {
+    let tz = jiff::tz::TimeZone::get(name.trim()).ok();
+    if let Ok(mut t) = DEFAULT_TZ.write() {
+        *t = tz;
+    }
+}
+
 fn hour_parts(now_ms: i64) -> (f64, f64, f64) {
     let Ok(ts) = jiff::Timestamp::from_millisecond(now_ms) else {
         return (0.0, 0.0, 0.0);
     };
-    let z = ts.to_zoned(jiff::tz::TimeZone::system());
+    let tz = DEFAULT_TZ
+        .read()
+        .ok()
+        .and_then(|t| t.clone())
+        .unwrap_or_else(jiff::tz::TimeZone::system);
+    let z = ts.to_zoned(tz);
     (z.hour() as f64, z.minute() as f64, z.second() as f64)
 }
 

@@ -481,7 +481,9 @@ function maskStyle(m: Layer, r: Resolved, gm: GroupMask, gw: number, gh: number,
   const ay = num(r.anchorY) * h;
   const tf = `translate(${pad + num(r.x) + ax} ${pad + num(r.y) + ay}) rotate(${num(r.rotation)}) scale(${num(r.scaleX)} ${num(r.scaleY)}) translate(${-ax} ${-ay})`;
   let shape: string;
-  if (m.type === 'ellipse') shape = `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}"/>`;
+  // A shape: its outline as it is drawn (rounded corners, star, polygon, pen…).
+  const ol = widgetOf(m)?.outline?.(m as never, r, w, h);
+  if (ol) shape = `<path d="${svgEsc(ol.d)}" fill-rule="${ol.rule ?? 'nonzero'}"/>`;
   else if ((m.type === 'text' || m.type === 'typewriter') && text) {
     const f = m as Layer & FontStyle;
     const size = num(r.fontSize) || 40;

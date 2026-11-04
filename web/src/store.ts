@@ -4,6 +4,7 @@ import { setTheme } from './theme';
 import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
+import { setDefaultTz } from './engine/expr';
 import type { ChannelInfo, ChannelState, Command, DataStatus, Project, ProjectSummary, RundownItem, Template, User, Zone } from './engine/types';
 
 type ServerEvent =
@@ -306,6 +307,7 @@ export const useApp = create<AppStore>((set, get) => {
           const now = clientNow();
           switch (msg.type) {
             case 'hello': {
+              setDefaultTz(msg.timezone);
               set({ channels: msg.channels, timezone: msg.timezone, serverOffset: clockOffset(msg.serverTime, now) });
               if (!outputChannel) {
                 set({ projects: msg.projects });

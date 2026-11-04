@@ -614,7 +614,19 @@ async fn loaded(s: &Shared, channel: &str) -> Result<std::sync::Arc<Project>, Fa
         .await
         .clone()
         .ok_or_else(|| bad("no project loaded on this channel"))?;
-    s.project(&pid).await.ok_or_else(|| not_found("project"))
+    s.project(&pid)
+        .await
+        .map(shared_only)
+        .ok_or_else(|| not_found("project"))
+}
+
+/// The project without its personal playlists (and their graphics): what
+/// the automation API sees and plays.
+pub fn shared_only(p: std::sync::Arc<Project>) -> std::sync::Arc<Project> {
+    match p.for_user("", false) {
+        std::borrow::Cow::Borrowed(_) => p,
+        std::borrow::Cow::Owned(o) => std::sync::Arc::new(o),
+    }
 }
 
 async fn send(s: &Shared, channel: &str, cmd: Command, actor: &Actor) -> Result<(), Fail> {

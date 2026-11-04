@@ -320,6 +320,11 @@ export default defineWidget({
   icon: Pentagon,
   create: () => ({ sides: 5, props: { width: 600, height: 600 } }),
   ownsLook: true,
+  outline: (layer, _r, w, h) => {
+    const k = cfg(layer);
+    const pts = points(layer, w, h);
+    return pts.length < 3 ? null : { d: roundedPolygon(pts, [k.round]), rule: k.mode === 'free' ? k.fillRule : 'nonzero' };
+  },
   Render: ({ layer, r, w, h, data }) => {
     const k = cfg(layer);
     const pts = points(layer, w, h);

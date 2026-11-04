@@ -138,6 +138,10 @@ export default defineWidget({
   icon: Circle,
   create: () => ({ lockRatio: true, strokeStyle: { position: 'inside' }, props: { width: 600, height: 600 } }),
   ownsLook: true,
+  outline: (layer, r, w, h) => {
+    const p = outline(layer, w, h, spanAt(r));
+    return p?.closed ? { d: p.d, rule: 'evenodd' } : null;
+  },
   Render: ({ layer, r, w, h, data }) => {
     const p = outline(layer, w, h, spanAt(r));
     if (!p) return null;

@@ -183,7 +183,13 @@ fn binding_value(prop: Prop, raw: &str) -> Option<Value> {
         match raw.trim() {
             "true" => Some(Value::Number(1.0)),
             "false" => Some(Value::Number(0.0)),
-            t => t.parse::<f64>().ok().map(Value::Number),
+            // « 0,5 » as the Logic reads it (crate::logic::expr::as_number).
+            t => t
+                .replace(',', ".")
+                .parse::<f64>()
+                .ok()
+                .filter(|x| x.is_finite())
+                .map(Value::Number),
         }
     }
 }

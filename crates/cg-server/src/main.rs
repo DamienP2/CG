@@ -554,6 +554,7 @@ pub async fn serve(
                 }),
             );
         }
+        cg_core::logic::expr::set_default_tz(&config.timezone);
         let events = state::Events::new(256);
         let (closing, _) = watch::channel(false);
         let shared: Shared = Arc::new(AppState {

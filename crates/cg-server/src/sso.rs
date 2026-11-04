@@ -329,6 +329,10 @@ fn identity(
             .filter(|v| !v.trim().is_empty())
     };
     let email = s("email").filter(|_| c["email_verified"].as_bool() != Some(false));
+    let verified =
+        c["email_verified"].as_bool() == Some(true) || c["email_verified"].as_str() == Some("true");
+    // Entra sends no `email_verified`: its UPN, unique in the tenant, set by its admins.
+    let vouched = email.clone().filter(|_| verified).or_else(|| s("upn"));
     let login = email
         .or_else(|| s("preferred_username"))
         .or_else(|| s("upn"))
@@ -349,6 +353,7 @@ fn identity(
             key: format!("{issuer}|{sub}"),
             login,
             name: s("name").unwrap_or_default(),
+            vouched,
         },
         groups,
     ))
@@ -681,6 +686,19 @@ mod tests {
         // An e-mail the provider did not verify is not used.
         let c = json!({"sub": "42", "email": "x@y", "email_verified": false, "preferred_username": "marie"});
         assert_eq!(identity(&c, "i", "groups").unwrap().0.login, "marie");
+        // Only a verified e-mail (or Entra's UPN) can claim an account made ahead.
+        let c = json!({"sub": "42", "email": "x@y"});
+        assert_eq!(identity(&c, "i", "groups").unwrap().0.vouched, None);
+        let c = json!({"sub": "42", "email": "x@y", "email_verified": true});
+        assert_eq!(
+            identity(&c, "i", "groups").unwrap().0.vouched.as_deref(),
+            Some("x@y")
+        );
+        let c = json!({"sub": "42", "upn": "a@b"});
+        assert_eq!(
+            identity(&c, "i", "groups").unwrap().0.vouched.as_deref(),
+            Some("a@b")
+        );
     }
 
     #[test]

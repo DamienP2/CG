@@ -118,6 +118,7 @@ export default defineWidget({
   icon: Square,
   create: () => ({ props: { width: 500, height: 120 } }),
   ownsLook: true,
+  outline: (layer, r, w, h) => ({ d: outline(layer, w, h, num(r.cornerRadius), [num(r.cornerTl), num(r.cornerTr), num(r.cornerBr), num(r.cornerBl)]) }),
   Render: ({ layer, r, w, h, data }) => <ShapeSvg d={outline(layer, w, h, num(r.cornerRadius), [num(r.cornerTl), num(r.cornerTr), num(r.cornerBr), num(r.cornerBl)])} w={w} h={h} r={r} fill={layer.fillStyle} stroke={layer.strokeStyle} data={data} />,
   Inspector: ({ layer, edit }) => {
     const k = cfg(layer);

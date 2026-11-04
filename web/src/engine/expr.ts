@@ -292,6 +292,24 @@ export interface Clock {
   nowMs: number;
 }
 
+let zoneFmt: Intl.DateTimeFormat | null = null;
+
+/** The time zone of `heure()`, `minute()`, `seconde()`: the server's setting, as on air. */
+export function setDefaultTz(tz: string) {
+  try {
+    zoneFmt = tz ? new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' }) : null;
+  } catch {
+    zoneFmt = null;
+  }
+}
+
+/** Hours, minutes and seconds of `ms` in that zone. */
+function wallClock(ms: number) {
+  if (!zoneFmt) return new Date(ms);
+  const p = Object.fromEntries(zoneFmt.formatToParts(ms).map((x) => [x.type, Number(x.value)]));
+  return { getHours: () => p.hour ?? 0, getMinutes: () => p.minute ?? 0, getSeconds: () => p.second ?? 0 };
+}
+
 /** A text read as a number, when it is one (`12`, `-3,5`, ` 4.0 `). */
 export function asNumber(v: LVal): number | undefined {
   if (typeof v === 'number') return v;
@@ -375,7 +393,7 @@ function call(f: string, args: Expr[], get: (n: string) => LVal, clock: Clock): 
   const n = (i: number) => (i < v.length ? toNum(v[i]) : 0);
   const s = (i: number) => (i < v.length ? text(v[i]) : '');
   const has = (i: number) => i < v.length;
-  const d = new Date(clock.nowMs);
+  const d = wallClock(clock.nowMs);
   switch (f) {
     case 'min':
       return fin(Math.min(...v.map(toNum)));

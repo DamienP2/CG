@@ -39,12 +39,15 @@ fn host_only(a: &str) -> &str {
 /// neither this server's address, nor the address a reverse proxy forwarded,
 /// nor one of `trusted`).
 pub fn cross_site(headers: &HeaderMap, trusted: &[String]) -> bool {
-    // Browsers on HTTPS or localhost tell it directly.
+    // Browsers on HTTPS or localhost tell it directly (« same-site »: another
+    // port or name of the same site, an application of its own: checked below).
     if let Some(site) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
         if site.eq_ignore_ascii_case("cross-site") {
             return !origin_trusted(headers, trusted);
         }
-        return false;
+        if !site.eq_ignore_ascii_case("same-site") {
+            return false;
+        }
     }
     let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) else {
         return false;
@@ -60,10 +63,8 @@ pub fn cross_site(headers: &HeaderMap, trusted: &[String]) -> bool {
         .unwrap_or("http")
         .to_ascii_lowercase();
     let mine = |v: &str| {
-        v.split(',').any(|h| {
-            let a = authority(&format!("{scheme}://{}", h.trim()));
-            a == o || (host_only(&a) == host_only(&o) && !a.contains(':'))
-        })
+        v.split(',')
+            .any(|h| authority(&format!("{scheme}://{}", h.trim())) == o)
     };
     let ok = ["host", "x-forwarded-host"].iter().any(|k| {
         headers
@@ -116,6 +117,16 @@ fn changes(req: &Request) -> bool {
             .is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"websocket"))
 }
 
+/// `?key=pcg_…`: the API key is what signs the request in (never the cookie).
+fn with_api_key(query: Option<&str>) -> bool {
+    query.is_some_and(|q| {
+        q.split('&').any(|kv| {
+            kv.strip_prefix("key=")
+                .is_some_and(|k| k.starts_with(crate::auth::API_KEY_PREFIX))
+        })
+    })
+}
+
 fn with_cookie_only(h: &HeaderMap) -> bool {
     h.get(header::AUTHORIZATION).is_none() && h.contains_key(header::COOKIE)
 }
@@ -125,7 +136,7 @@ fn with_cookie_only(h: &HeaderMap) -> bool {
 pub async fn csrf(State(s): State<Shared>, req: Request, next: Next) -> Response {
     if changes(&req)
         && with_cookie_only(req.headers())
-        && !req.uri().query().is_some_and(|q| q.contains("key="))
+        && !with_api_key(req.uri().query())
         && cross_site(req.headers(), &s.config.trusted_origins)
     {
         let origin = req
@@ -297,6 +308,19 @@ mod tests {
         ]);
         assert!(cross_site(&x, &[]));
         assert!(cross_site(&h(&[("host", "a:1"), ("origin", "null")]), &[]));
+        // Another port of the same machine, or a site of the same domain.
+        let y = h(&[
+            ("host", "cg.example.org"),
+            ("sec-fetch-site", "same-site"),
+            ("origin", "https://other.example.org"),
+        ]);
+        assert!(cross_site(&y, &[]));
+        let y = h(&[("host", "10.0.0.2"), ("origin", "http://10.0.0.2:9999")]);
+        assert!(cross_site(&y, &[]));
+        // A key only passes as an API key.
+        assert!(!with_api_key(Some("key=x")));
+        assert!(!with_api_key(Some("monkey=pcg_1")));
+        assert!(with_api_key(Some("a=1&key=pcg_abc")));
         // Unless trusted.
         assert!(!cross_site(&x, &["https://evil.example".into()]));
     }

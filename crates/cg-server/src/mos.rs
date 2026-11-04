@@ -602,6 +602,21 @@ async fn accept_loop(state: Shared, listener: TcpListener) {
         let Ok((sock, peer)) = listener.accept().await else {
             continue;
         };
+        // The newsroom system given in the settings only (when one is).
+        if !from_ncs(&state.config.mos.ncs_host, peer.ip()).await {
+            tracing::warn!(%peer, "MOS: refused (not the newsroom system of the settings)");
+            continue;
+        }
+        if STATUS
+            .lock()
+            .ok()
+            .and_then(|s| s.as_ref().map(|s| s.connections))
+            .unwrap_or(0)
+            >= MAX_CONNECTIONS
+        {
+            tracing::warn!(%peer, "MOS: refused (too many connections)");
+            continue;
+        }
         tracing::info!(%peer, "MOS: newsroom system connected");
         set_status(|s| s.connections += 1);
         let st = state.clone();
@@ -679,6 +694,26 @@ fn take_messages(buf: &mut Vec<u8>, enc: Encoding) -> Vec<String> {
     out
 }
 
+/// Connections at once (a newsroom system opens one or two per port).
+const MAX_CONNECTIONS: u32 = 8;
+/// A message at most (a running order of a few hundred stories).
+const MAX_MESSAGE: usize = 4 * 1024 * 1024;
+
+/// Whether `ip` is the newsroom system `host` names ("": any), or this machine.
+async fn from_ncs(host: &str, ip: std::net::IpAddr) -> bool {
+    let host = host.trim();
+    if host.is_empty() || ip.is_loopback() {
+        return true;
+    }
+    let ip = ip.to_canonical();
+    match tokio::net::lookup_host((host, 0)).await {
+        Ok(mut addrs) => addrs.any(|a| a.ip().to_canonical() == ip),
+        Err(_) => host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|h| h.to_canonical() == ip),
+    }
+}
+
 async fn connection(state: Shared, mut sock: TcpStream) -> std::io::Result<()> {
     let mut buf = Vec::new();
     let mut enc = None;
@@ -718,7 +753,7 @@ async fn connection(state: Shared, mut sock: TcpStream) -> std::io::Result<()> {
                 sock.write_all(&encode(&r, e)).await?;
             }
         }
-        if buf.len() > 32 * 1024 * 1024 {
+        if buf.len() > MAX_MESSAGE {
             return Err(std::io::Error::other("message too large"));
         }
     }

@@ -334,7 +334,7 @@ pub async fn channel_status(s: &Shared, ch: &ChannelRt, user: Option<&User>) -> 
     let id = ch.config.id.clone();
     let pid = ch.project_id.read().await.clone();
     let project = match pid.filter(|p| user.is_none_or(|u| u.sees_project(p))) {
-        Some(p) => s.project(&p).await,
+        Some(p) => s.project(&p).await.map(super::shared_only),
         None => None,
     };
     let st = ch.state.read().await.clone();

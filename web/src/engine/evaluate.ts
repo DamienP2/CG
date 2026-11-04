@@ -1,4 +1,5 @@
 // Animation evaluation — mirror of crates/cg-core/src/{easing,anim}.rs.
+import { asNumber } from './expr';
 import { COLOR_PROPS, PROPS, type Color, type Data, type Easing, type Keyframe, type Layer, type Prop, type Template, type TextTransform, type Value } from './types';
 
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number, x: number): number {
@@ -226,7 +227,7 @@ export function resolveLayer(layer: Layer, frame: number, data: Data, hold = 0):
     let bound: Value | undefined;
     if (key && data[key] !== undefined) {
       const raw = data[key].trim();
-      bound = COLOR_PROPS.has(p) ? parseHex(raw) : raw === 'true' ? 1 : raw === 'false' ? 0 : Number.isFinite(parseFloat(raw)) ? parseFloat(raw) : undefined;
+      bound = COLOR_PROPS.has(p) ? parseHex(raw) : raw === 'true' ? 1 : raw === 'false' ? 0 : asNumber(raw);
     }
     const track = layer.tracks?.[p];
     const animated = sampleTrack(track, frame);

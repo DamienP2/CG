@@ -47,13 +47,13 @@ const thumb = (id: string) => `/api/template-library/${encodeURIComponent(id)}/t
 export async function fromLibrary(project: Project, id: string, zone: string): Promise<Template> {
   const e = await api<{ name: string; width: number; height: number; template: Template }>('GET', `/api/template-library/${encodeURIComponent(id)}`);
   const tpl: Template = { ...structuredClone(e.template), id: newId(), zone, revision: 0 } as Template;
-  const taken = new Set(project.templates.map((x) => x.name));
+  const taken = new Set([...project.templates, ...(project.drafts ?? [])].map((x) => x.name));
   let name = e.name;
   for (let n = 2; taken.has(name); n++) name = `${e.name} ${n}`;
   tpl.name = name;
-  // Another format: everything in a group scaled to the project's width, centred.
+  // Another format: everything in a group scaled to fit the project, centred.
   if (e.width !== project.width || e.height !== project.height) {
-    const k = project.width / Math.max(1, e.width);
+    const k = Math.min(project.width / Math.max(1, e.width), project.height / Math.max(1, e.height));
     const group = {
       id: newId(),
       name: t('Scaled'),
@@ -64,7 +64,7 @@ export async function fromLibrary(project: Project, id: string, zone: string): P
       locked: false,
       tracks: {},
       bindings: {},
-      props: { x: 0, y: Math.round((project.height - e.height * k) / 2), width: e.width, height: e.height, scaleX: k, scaleY: k, anchorX: 0, anchorY: 0 },
+      props: { x: Math.round((project.width - e.width * k) / 2), y: Math.round((project.height - e.height * k) / 2), width: e.width, height: e.height, scaleX: k, scaleY: k, anchorX: 0, anchorY: 0 },
     } as unknown as Layer;
     tpl.layers = [group, ...tpl.layers.map((l) => (l.parent ? l : { ...l, parent: group.id }))];
   }

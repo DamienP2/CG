@@ -114,6 +114,8 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   content?: string[];
   /** Draws the layer inside its box (absolute position, w × h). */
   Render?: (p: RenderProps<T>) => ReactNode;
+  /** A shape's outline (SVG path in its box): what a mask folder cuts with. */
+  outline?: (layer: LayerOf<T>, r: Resolved, w: number, h: number) => { d: string; rule?: 'nonzero' | 'evenodd' } | null;
   /** Its warnings are not shown in the inspector (its editor or the Operator shows them). */
   quiet?: boolean;
   /** Groups of the inspector, above Properties (replaces General). */

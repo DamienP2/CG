@@ -1231,7 +1231,7 @@ async fn export_project(
     Path(id): Path<String>,
     Query(q): Query<ExportQuery>,
 ) -> ApiResult<Response> {
-    let p = visible_project(&s, &me, &id).await?;
+    let p = mine(&visible_project(&s, &me, &id).await?, &me);
     let name: String = p
         .name
         .chars()
@@ -2325,7 +2325,10 @@ async fn item_command(
         .await
         .clone()
         .ok_or_else(|| bad("no project loaded on this channel"))?;
-    let project = s.project(&pid).await.ok_or_else(|| not_found("project"))?;
+    let project = mine(
+        &s.project(&pid).await.ok_or_else(|| not_found("project"))?,
+        &me,
+    );
     let it = project
         .rundown
         .iter()
