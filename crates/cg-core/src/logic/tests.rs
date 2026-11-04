@@ -492,3 +492,187 @@ fn json_shape() {
     assert_eq!(n.frame.as_deref(), Some("f1"));
     assert!(matches!(n.kind, NodeKind::If { ref inputs, .. } if inputs == &["a", "b"]));
 }
+
+fn when(id: &str, on: &str) -> Node {
+    node(
+        id,
+        NodeKind::When {
+            on: on.into(),
+            name: String::new(),
+            seconds: 0.0,
+            dataset: String::new(),
+        },
+    )
+}
+
+fn check(id: &str, rows: &[(&str, &str, &str)]) -> Node {
+    node(
+        id,
+        NodeKind::Check {
+            rows: rows
+                .iter()
+                .map(|(w, t, v)| CheckRow {
+                    what: (*w).into(),
+                    test: (*t).into(),
+                    value: (*v).into(),
+                })
+                .collect(),
+            any: false,
+        },
+    )
+}
+
+/// Runs the graph (made over for `scope`) on `data`; the actions asked.
+fn step(
+    logic: &Logic,
+    scope: Scope,
+    data: &[(String, &str)],
+    watch: &mut BTreeMap<String, String>,
+) -> Vec<Act> {
+    let g = current_in(logic, scope);
+    let d: Data = data.iter().map(|(k, v)| (k.clone(), (*v).into())).collect();
+    flow::run(
+        &g,
+        &Tick {
+            data: &d,
+            secs: 0.0,
+            now_ms: 0,
+        },
+        watch,
+        &mut BTreeMap::new(),
+    )
+}
+
+#[test]
+fn steps_resume_a_playlist_cut_when_a_graphic_goes_out() {
+    // Synthé → When it goes out → If Résultats is interrupted → yes: resume Résultats; no: take Logo.
+    let logic = Logic {
+        nodes: vec![
+            node(
+                "syn",
+                NodeKind::Template {
+                    template: "synthe".into(),
+                },
+            ),
+            when("w", "out"),
+            check("if", &[("pl:res", "interrupted", "")]),
+            node(
+                "go",
+                NodeKind::ResumePlaylist {
+                    playlist: "res".into(),
+                },
+            ),
+            node(
+                "logo",
+                NodeKind::Take {
+                    template: "logo".into(),
+                    out: false,
+                },
+            ),
+        ],
+        edges: vec![
+            edge2("syn", "src", "w", "src"),
+            edge2("w", "out", "if", "run"),
+            edge2("if", "yes", "go", "run"),
+            edge2("if", "no", "logo", "run"),
+        ],
+        frames: vec![],
+    };
+    let air = |v: &'static str, cut: &'static str| {
+        vec![(on_air_key("synthe"), v), (interrupted_key("res"), cut)]
+    };
+    let mut w = BTreeMap::new();
+    assert!(step(&logic, Scope::Project, &air("1", "1"), &mut w).is_empty());
+    assert_eq!(
+        step(&logic, Scope::Project, &air("0", "1"), &mut w),
+        vec![Act::ResumePlaylist("res".into())]
+    );
+    // Not interrupted: the other branch.
+    let mut w = BTreeMap::new();
+    step(&logic, Scope::Project, &air("1", "0"), &mut w);
+    assert_eq!(
+        step(&logic, Scope::Project, &air("0", "0"), &mut w),
+        vec![Act::Take("logo".into())]
+    );
+}
+
+#[test]
+fn steps_in_a_graphic_become_its_events() {
+    let logic = Logic {
+        nodes: vec![
+            layer("l", "roll", &[]),
+            when("w", "scrollEnd"),
+            when("t", "trigger"),
+            node("o", NodeKind::Out {}),
+        ],
+        edges: vec![
+            edge2("l", "src", "w", "src"),
+            edge2("w", "out", "o", "run"),
+            edge2("t", "out", "o", "run"),
+        ],
+        frames: vec![],
+    };
+    let g = current(&logic);
+    let kind = |id: &str| g.nodes.iter().find(|n| n.id == id).unwrap().kind.clone();
+    assert_eq!(
+        kind("w"),
+        NodeKind::Event {
+            on: crate::model::TriggerEvent::ScrollEnd {
+                layer: "roll".into(),
+                passes: 1
+            }
+        }
+    );
+    assert_eq!(
+        kind("t"),
+        NodeKind::TriggerIn {
+            name: String::new()
+        }
+    );
+    // The event seen on air runs the flow.
+    let mut w = BTreeMap::new();
+    assert!(step(&logic, Scope::Graphic, &[], &mut w).is_empty());
+    assert_eq!(
+        step(&logic, Scope::Graphic, &[(event_key("w"), "1")], &mut w),
+        vec![Act::Out]
+    );
+}
+
+#[test]
+fn steps_watch_a_value_and_compare_it() {
+    // Score → When it changes → If score > 50 and the name is not empty → fire « big ».
+    let logic = Logic {
+        nodes: vec![
+            node(
+                "s",
+                NodeKind::Field {
+                    key: "score".into(),
+                },
+            ),
+            when("w", "change"),
+            check(
+                "if",
+                &[("field:score", "gt", "50"), ("field:name", "notEmpty", "")],
+            ),
+            node("f", NodeKind::Fire { name: "big".into() }),
+        ],
+        edges: vec![
+            edge2("s", "src", "w", "src"),
+            edge2("w", "out", "if", "run"),
+            edge2("if", "yes", "f", "run"),
+        ],
+        frames: vec![],
+    };
+    let d = |score: &'static str, name: &'static str| {
+        vec![("score".to_string(), score), ("name".to_string(), name)]
+    };
+    let mut w = BTreeMap::new();
+    assert!(step(&logic, Scope::Graphic, &d("10", "Léa"), &mut w).is_empty());
+    assert!(step(&logic, Scope::Graphic, &d("30", "Léa"), &mut w).is_empty());
+    assert_eq!(
+        step(&logic, Scope::Graphic, &d("60", "Léa"), &mut w),
+        vec![Act::Fire("big".into())]
+    );
+    assert!(step(&logic, Scope::Graphic, &d("60", "Léa"), &mut w).is_empty());
+    assert!(step(&logic, Scope::Graphic, &d("70", ""), &mut w).is_empty());
+}

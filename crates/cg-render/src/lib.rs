@@ -308,7 +308,8 @@ fn with_presence<'a, 'b>(
     items: impl Iterator<Item = &'b cg_core::playout::PlayoutItem> + Clone,
     fps: f64,
 ) -> std::borrow::Cow<'a, cg_core::anim::Data> {
-    let watched = cg_core::logic::on_air_watched(&t.logic);
+    let logic = cg_core::logic::current(&t.logic);
+    let watched = cg_core::logic::on_air_watched(&logic);
     if watched.is_empty() {
         return data;
     }

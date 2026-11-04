@@ -13,8 +13,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
-    count_key, ended_key, event_key, expr, format_number, on_air_key, played_key, Cx, Graph, LVal,
-    Logic, NodeKind, TextMetric, Values,
+    count_key, ended_key, event_key, expr, format_number, interrupted_key, on_air_key, played_key,
+    Cx, Graph, LVal, Logic, NodeKind, TextMetric, Values,
 };
 use crate::anim::Data;
 use crate::model::{Prop, Value};
@@ -148,6 +148,24 @@ pub fn run(
                     .is_some_and(|v| v == "1");
                 if rising(watch, format!("fl:end:{id}"), ended) {
                     fire(&mut queue, id, "end");
+                }
+                let cut = tick
+                    .data
+                    .get(&interrupted_key(playlist))
+                    .is_some_and(|v| v == "1");
+                if rising(watch, format!("fl:int:{id}"), cut) {
+                    fire(&mut queue, id, "interrupted");
+                }
+            }
+            // When a field or a variable changes (not on the first look).
+            NodeKind::When { on, .. } if on == "change" => {
+                let Some(&(from, from_port)) = g.inputs.get(&(id, "src")) else {
+                    continue;
+                };
+                let now = expr::text(&g.eval(from, from_port, cx!(), 0));
+                let was = watch.insert(format!("fl:chg:{id}"), now.clone());
+                if was.is_some_and(|w| w != now) {
+                    fire(&mut queue, id, "out");
                 }
             }
             NodeKind::Start {} => {

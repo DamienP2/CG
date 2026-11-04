@@ -1852,7 +1852,7 @@ impl ChannelState {
                     ..Default::default()
                 };
             }
-            let graph = crate::logic::current(&project.logic);
+            let graph = crate::logic::current_in(&project.logic, crate::logic::Scope::Project);
             let on_air: std::collections::HashSet<&str> = self
                 .layers
                 .values()
@@ -2252,6 +2252,11 @@ impl ChannelState {
                     NodeKind::Continue {} => {
                         let v = item.watch.contains_key(CONTINUE_FLAG);
                         seen.push((event_key(&n.id), bit(v)));
+                    }
+                    // Another graphic on air (an If… line, an On air node).
+                    NodeKind::OnAir { template, .. } => {
+                        let v = on_air.contains(template);
+                        seen.push((crate::logic::on_air_key(template), bit(v)));
                     }
                     NodeKind::SetVar { name, .. } | NodeKind::Var { name, .. } => {
                         item.vals.entry(var_key(name)).or_insert_with(|| "0".into());

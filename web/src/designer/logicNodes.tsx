@@ -1,5 +1,6 @@
 import {
   AlarmClock,
+  GitBranch,
   ArrowDown,
   ArrowLeftRight,
   Ampersand,
@@ -19,7 +20,6 @@ import {
   Palette,
   Pause,
   Percent,
-  Play,
   Radio,
   Repeat,
   Replace,
@@ -50,7 +50,7 @@ import {
 import { useApp } from '../store';
 import { newId } from '../engine/evaluate';
 import { metricOf, rowType, type PortType } from '../engine/logic';
-import { COLOR_PROPS, PROPS, TEXT_LIKE, type Layer, type LayerRow, type LogicNode, type Prop, type Template, type TriggerEvent } from '../engine/types';
+import { COLOR_PROPS, PROPS, TEXT_LIKE, type Layer, type LayerRow, type LogicNode, type Prop, type Template } from '../engine/types';
 import { widgetOf } from '../widgets';
 import { settingPorts } from '../engine/settingPorts';
 import { PROP_LABELS } from './Inspector';
@@ -68,15 +68,14 @@ export const FAMS: { id: Fam; label: string }[] = [
   { id: 'layer', label: 'Layers' },
   { id: 'graphic', label: 'Templates' },
   { id: 'playlist', label: 'Playlists' },
+  { id: 'event', label: 'When' },
+  { id: 'cond', label: 'If' },
+  { id: 'action', label: 'Actions' },
+  { id: 'time', label: 'Timing' },
+  { id: 'var', label: 'Variables' },
   { id: 'input', label: 'Inputs' },
   { id: 'math', label: 'Maths' },
   { id: 'text', label: 'Text' },
-  { id: 'cond', label: 'Conditions' },
-  { id: 'time', label: 'Timing' },
-  { id: 'event', label: 'Events' },
-  { id: 'trigger', label: 'Triggers' },
-  { id: 'action', label: 'Actions' },
-  { id: 'var', label: 'Variables' },
 ];
 
 /** What a template offers: a palette entry shows under « Useful here » only when it can serve. */
@@ -227,7 +226,7 @@ function projectEntries(tpl: Template): Entry[] {
     }),
   );
   const rest = templateEntries(tpl)
-    .filter((e) => e.fam !== 'layer' && !e.key.startsWith('ev:') && !NOT_IN_PROJECT.has(e.key))
+    .filter((e) => e.fam !== 'layer' && e.fam !== 'graphic' && !NOT_IN_PROJECT.has(e.key))
     .flatMap((e): Entry[] => {
       if (e.key === 'start') return [{ ...e, label: 'Project loaded' }];
       if (e.key === 'take')
@@ -241,10 +240,9 @@ function projectEntries(tpl: Template): Entry[] {
 }
 
 function templateEntries(tpl: Template): Entry[] {
-  const fieldKey = tpl.fields[0]?.key ?? '';
-  const of = (f: (l: Layer) => boolean) => tpl.layers.find(f)?.id ?? '';
-  const ev = (key: string, label: string, icon: LucideIcon, on: () => TriggerEvent, can: (h: Has) => boolean): Entry => ({ key, fam: 'event', label, icon, can, make: (_t, x, y) => ({ ...base(x, y), type: 'event', on: on() }) });
+  const others = (useApp.getState().project?.templates ?? []).filter((x) => x.id !== tpl.id);
   return [
+    ...others.map((x): Entry => ({ key: `tpl:${x.id}`, fam: 'graphic', label: x.name, icon: SquareStack, make: (_t, x0, y0) => ({ ...base(x0, y0), type: 'template', template: x.id }) })),
     ...tpl.layers.map(
       (l): Entry => ({
         key: `layer:${l.id}`,
@@ -280,7 +278,8 @@ function templateEntries(tpl: Template): Entry[] {
     calc('line', 'text', 'Line n', Rows3, 'ligne(a, 1)', ['a']),
     calc('length', 'text', 'Length', Ruler, 'longueur(a)', ['a']),
     { key: 'lookup', fam: 'text', label: 'Lookup table', icon: Table2, make: (_t, x, y) => ({ ...base(x, y), type: 'lookup', rows: [{ key: '', value: '' }], otherwise: '' }) },
-    // Conditions
+    // If…: a phrase, true or false
+    { key: 'check', fam: 'cond', label: 'If…', icon: GitBranch, make: (_t, x, y) => ({ ...base(x, y), type: 'check', rows: [] }) },
     { key: 'if', fam: 'cond', label: 'If / else if / else', icon: Split, make: (_t, x, y) => ({ ...base(x, y), type: 'if', inputs: ['a', 'b'], branches: [{ when: 'a > b', value: '1' }], otherwise: '0' }) },
     calc('compare', 'cond', 'Compare', Equal, 'a > b'),
     calc('and', 'cond', 'And / or', Ampersand, 'a et b'),
@@ -289,23 +288,17 @@ function templateEntries(tpl: Template): Entry[] {
     calc('empty', 'cond', 'Is empty', Diamond, 'vide(a)', ['a']),
     // Time
     { key: 'wait', fam: 'time', label: 'Wait', icon: Hourglass, make: (_t, x, y) => ({ ...base(x, y), type: 'wait', seconds: 2 }) },
-    { key: 'every', fam: 'time', label: 'Every N seconds', icon: Repeat, make: (_t, x, y) => ({ ...base(x, y), type: 'every', seconds: 5 }) },
     { key: 'once', fam: 'time', label: 'Only once', icon: AlarmClock, make: (_t, x, y) => ({ ...base(x, y), type: 'once' }) },
     calc('blink', 'time', 'Blink', Zap, 'clignoter(1)', []),
     calc('osc', 'time', 'Oscillate', Waves, 'osciller(2)', []),
     calc('since', 'time', 'Time since in', Timer, 'temps()', []),
     calc('hour', 'time', 'Hour of the day', Clock, 'heure()', []),
-    // Events
-    { key: 'start', fam: 'event', label: 'When taken', icon: Rocket, make: (_t, x, y) => ({ ...base(x, y), type: 'start' }) },
-    ev('ev:scrollEnd', 'End of the scroll', ArrowLeftRight, () => ({ kind: 'scrollEnd', layer: of(scrollLayer), passes: 1 }), (h) => h.t.layers.some(scrollLayer)),
-    ev('ev:timerZero', 'Timer', Timer, () => ({ kind: 'timerZero', layer: of(timerLayer) }), (h) => h.t.layers.some(timerLayer)),
-    ev('ev:videoEnd', 'End of the video', Play, () => ({ kind: 'videoEnd', layer: of(videoLayer) }), (h) => h.t.layers.some(videoLayer)),
-    ev('ev:lastRow', 'Last row', Rows3, () => ({ kind: 'lastRow', dataset: tpl.datasets?.[0]?.key ?? '' }), (h) => (h.t.datasets?.length ?? 0) > 0),
-    ev('ev:dataChange', 'Value changes', Diamond, () => ({ kind: 'dataChange', key: fieldKey }), (h) => h.t.fields.length > 0),
-    ev('ev:graphic', 'Another graphic comes in / out', SquareStack, () => ({ kind: 'graphic', template: '' }), (h) => h.others > 0),
-    // Triggers
-    { key: 'triggerIn', fam: 'trigger', label: 'Trigger received', icon: Zap, make: (_t, x, y) => ({ ...base(x, y), type: 'triggerIn', name: '' }) },
-    { key: 'continue', fam: 'trigger', label: 'Continue (F2)', icon: ChevronsRight, make: (_t, x, y) => ({ ...base(x, y), type: 'continue' }) },
+    // When: a moment of a source (wired in), or of the graphic
+    { key: 'when', fam: 'event', label: 'When…', icon: Zap, make: (_t, x, y) => ({ ...base(x, y), type: 'when', on: '' }) },
+    { key: 'start', fam: 'event', label: 'When taken', icon: Rocket, make: (_t, x, y) => ({ ...base(x, y), type: 'when', on: 'start' }) },
+    { key: 'triggerIn', fam: 'event', label: 'Trigger received', icon: Zap, make: (_t, x, y) => ({ ...base(x, y), type: 'when', on: 'trigger', name: '' }) },
+    { key: 'continue', fam: 'event', label: 'Continue (F2)', icon: ChevronsRight, make: (_t, x, y) => ({ ...base(x, y), type: 'when', on: 'continue' }) },
+    { key: 'every', fam: 'event', label: 'Every N seconds', icon: Repeat, make: (_t, x, y) => ({ ...base(x, y), type: 'when', on: 'every', seconds: 5 }) },
     // Actions
     { key: 'out', fam: 'action', label: 'Take out (OUT)', icon: Square, make: (_t, x, y) => ({ ...base(x, y), type: 'out' }) },
     { key: 'resume', fam: 'action', label: 'Resume the pause', icon: Pause, can: (h) => h.t.markers.some((m) => m.kind === 'pause'), make: (tt, x, y) => ({ ...base(x, y), type: 'resume', marker: tt.markers.find((m) => m.kind === 'pause')?.id ?? '' }) },
@@ -328,11 +321,8 @@ export function kindOf(n: LogicNode, tpl: Template): { fam: Fam; label: string; 
     const l = tpl.layers.find((x) => x.id === n.layer);
     return { fam: 'layer', label: l?.name ?? t('Missing layer'), icon: (l && LAYER_ICONS[l.type]) ?? Square };
   }
-  if (n.type === 'event') {
-    const k = n.on.kind === 'timerAt' ? 'timerZero' : n.on.kind === 'dataIs' ? 'dataChange' : n.on.kind;
-    const e = all.find((x) => x.key === `ev:${k}`)!;
-    return { fam: 'event', label: t(e.label), icon: e.icon };
-  }
+  if (n.type === 'event' || n.type === 'when') return { fam: 'event', label: t('When'), icon: Zap };
+  if (n.type === 'check') return { fam: 'cond', label: t('If'), icon: GitBranch };
   if (n.type === 'expr') {
     const e = all.find((x) => x.key === 'expr')!;
     const preset = n.title ? all.find((x) => x.fam !== 'layer' && x.label === n.title) : undefined;

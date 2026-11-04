@@ -368,6 +368,12 @@ export interface LayerRow {
   key: string;
   mode?: TargetMode;
 }
+/** A line of an If…: `what` (`tpl:<id>`, `pl:<id>`, `field:<key>`, `var:<name>`, `in`), its `test`, the `value` compared with. */
+export interface CheckRow {
+  what: string;
+  test: string;
+  value?: string;
+}
 /** A branch of an If: its condition and its value (expressions). */
 export interface Branch {
   when: string;
@@ -394,7 +400,12 @@ export type LogicNodeKind =
   | { type: 'var'; name: string; test?: number }
   /** Writes its input into the data value `key`: a text showing {{key}} shows the result. */
   | { type: 'setField'; key: string }
-  // Flows: what starts them
+  // Steps: Source → When → If… → actions (cg_core::logic::NodeKind::When / Check)
+  /** A moment `on` of its source (input `src`), or with no source of the graphic / the channel. */
+  | { type: 'when'; on: string; name?: string; seconds?: number; dataset?: string }
+  /** The phrase `rows` holds (all, or one when `any`): flow `yes`, else `no`; value `out`. */
+  | { type: 'check'; rows: CheckRow[]; any?: boolean }
+  // Flows: what starts them (older graphs; made into When steps when opened)
   | { type: 'event'; on: TriggerEvent }
   | { type: 'triggerIn'; name: string }
   | { type: 'continue' }

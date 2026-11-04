@@ -172,6 +172,26 @@ pub struct LookupRow {
     pub value: String,
 }
 
+/// A line of an If… phrase: `what` (`tpl:<id>`, `pl:<id>`, `field:<key>`,
+/// `var:<name>`, or `in`: the value wired into input `in`), its `test`
+/// (`onAir`, `notOnAir`, `interrupted`, `notInterrupted`, `ended`,
+/// `notEnded`, `yes`, `no`, `gt`, `ge`, `lt`, `le`, `eq`, `ne`, `contains`,
+/// `empty`, `notEmpty`) and the `value` it is compared with.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckRow {
+    #[serde(default)]
+    pub what: String,
+    #[serde(default)]
+    pub test: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub value: String,
+}
+
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
+}
+
 fn ab() -> Vec<String> {
     vec!["a".into(), "b".into()]
 }
@@ -272,6 +292,32 @@ pub enum NodeKind {
     /// `interrupted` (its graphic replaced by another playlist's, not played on since).
     Playlist {
         playlist: String,
+    },
+
+    // ── Steps: Source → When → If → actions ────────────────────────────
+    /// When…: a moment `on` of its source (input `src`: a graphic, a
+    /// playlist, a layer, a data field, a variable), or with no source of
+    /// the graphic or the channel (`start`, `continue`, `trigger` `name`,
+    /// `every` `seconds`, `lastRow` of `dataset`). Flow output `out`. Made
+    /// into the nodes below by [`current`].
+    When {
+        #[serde(default)]
+        on: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        name: String,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        seconds: f64,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        dataset: String,
+    },
+    /// If…: the phrase `rows` holds (all of them, or one when `any`): flow
+    /// `yes`, else `no` (each time `run` comes in, or when it changes);
+    /// value `out` (1 / 0). Made into an If by [`current`].
+    Check {
+        #[serde(default)]
+        rows: Vec<CheckRow>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        any: bool,
     },
 
     // ── Flows: what starts them (output `out`) ─────────────────────────
@@ -399,9 +445,11 @@ impl NodeKind {
             | NodeKind::TriggerIn { .. }
             | NodeKind::Continue {}
             | NodeKind::Start {}
-            | NodeKind::Every { .. } => vec!["out".into()],
+            | NodeKind::Every { .. }
+            | NodeKind::When { .. } => vec!["out".into()],
+            NodeKind::Check { .. } => vec!["yes".into(), "no".into()],
             NodeKind::Template { .. } => vec!["in".into(), "out".into()],
-            NodeKind::Playlist { .. } => vec!["taken".into(), "end".into()],
+            NodeKind::Playlist { .. } => vec!["taken".into(), "end".into(), "interrupted".into()],
             NodeKind::If { branches, .. } => (0..branches.len())
                 .map(|i| format!("b{i}"))
                 .chain(["else".to_string()])
@@ -413,7 +461,7 @@ impl NodeKind {
     /// Its flow inputs.
     pub fn flow_inputs(&self) -> &'static [&'static str] {
         match self {
-            NodeKind::If { .. } => &["run"],
+            NodeKind::If { .. } | NodeKind::Check { .. } => &["run"],
             NodeKind::Counter { .. } | NodeKind::Once {} => &["run", "reset"],
             k if k.takes_flow() => &["run"],
             _ => &[],
@@ -701,10 +749,10 @@ impl<'a> Graph<'a> {
             ),
             NodeKind::SetField { .. } => self.input(id, "in", cx, depth).unwrap_or_else(empty),
             NodeKind::Playlist { playlist } => {
-                let key = if port == "interrupted" {
-                    interrupted_key(playlist)
-                } else {
-                    playlist_air_key(playlist)
+                let key = match port {
+                    "interrupted" => interrupted_key(playlist),
+                    "ended" => ended_key(playlist),
+                    _ => playlist_air_key(playlist),
                 };
                 LVal::Num(cx.data.get(&key).is_some_and(|v| v == "1") as u8 as f64)
             }
@@ -758,7 +806,9 @@ pub struct Cx<'v, 'm> {
 pub fn input_ports(k: &NodeKind) -> Vec<String> {
     match k {
         NodeKind::Expr { inputs, .. } | NodeKind::If { inputs, .. } => inputs.clone(),
-        NodeKind::Lookup { .. } | NodeKind::SetField { .. } => vec!["in".into()],
+        NodeKind::Lookup { .. } | NodeKind::SetField { .. } | NodeKind::Check { .. } => {
+            vec!["in".into()]
+        }
         NodeKind::Layer { rows, .. } => rows.iter().map(|r| r.key.clone()).collect(),
         NodeKind::Wait { .. } => vec!["seconds".into()],
         NodeKind::SetVar { .. } => vec!["value".into()],
@@ -1076,8 +1126,26 @@ pub fn targeted(logic: &Logic) -> HashSet<&str> {
         .collect()
 }
 
-/// The graph as the current model has it (an older one made over, see [`upgrade`]).
+/// Where a graph runs: in a graphic, or as the project's Logic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    Graphic,
+    Project,
+}
+
+/// The graph as the engine runs it: an older one made over (see
+/// [`upgrade`]), its When and If… steps made into the nodes that do them
+/// (see [`lower`]); a graphic's.
 pub fn current(logic: &Logic) -> std::borrow::Cow<'_, Logic> {
+    current_in(logic, Scope::Graphic)
+}
+
+/// [`current`] for a graph running in `scope`.
+pub fn current_in(logic: &Logic, scope: Scope) -> std::borrow::Cow<'_, Logic> {
+    let steps = logic
+        .nodes
+        .iter()
+        .any(|n| matches!(n.kind, NodeKind::When { .. } | NodeKind::Check { .. }));
     let old = logic.nodes.iter().any(|n| {
         matches!(
             n.kind,
@@ -1090,12 +1158,262 @@ pub fn current(logic: &Logic) -> std::borrow::Cow<'_, Logic> {
                 | NodeKind::Bool { .. }
         )
     }) || logic.edges.iter().any(|e| e.port == "when");
-    if !old {
+    if !old && !steps {
         return std::borrow::Cow::Borrowed(logic);
     }
     let mut l = logic.clone();
-    upgrade(&mut l);
+    if old {
+        upgrade(&mut l);
+    }
+    if steps {
+        lower(&mut l, scope);
+    }
     std::borrow::Cow::Owned(l)
+}
+
+/// The node wired into input `port` of `id`.
+fn source_of<'a>(logic: &'a Logic, id: &str, port: &str) -> Option<&'a Node> {
+    let e = logic.edges.iter().find(|e| e.to == id && e.port == port)?;
+    logic.nodes.iter().find(|n| n.id == e.from)
+}
+
+/// Makes the When and If… steps into the nodes that do them, keeping their
+/// ids (the flows wired from them go on from there):
+/// - When: an Event (a layer's moment, another graphic in / out, a value
+///   that changes, the last row), Start, Continue, a trigger received,
+///   Every; in the project, a graphic or a playlist node whose flow it is.
+///   A variable's or a field's change stays a When (see [`flow`]).
+/// - If…: an If over one input per line (`v0`, `v1`…: the subject, `w0`…:
+///   the value compared with), from nodes added beside it (`<id>~v0`…).
+pub fn lower(logic: &mut Logic, scope: Scope) {
+    use crate::model::TriggerEvent as Ev;
+    let mut kinds: Vec<(String, NodeKind)> = Vec::new();
+    let mut from_ports: Vec<(String, String)> = Vec::new(); // (node, its new flow port for `out`)
+    let mut added: Vec<Node> = Vec::new();
+    let mut edges: Vec<Edge> = Vec::new();
+    let mut renames: Vec<(String, &'static str, &'static str)> = Vec::new(); // (node, old port, new)
+    for n in &logic.nodes {
+        match &n.kind {
+            NodeKind::When {
+                on,
+                name,
+                seconds,
+                dataset,
+            } => {
+                let src = source_of(logic, &n.id, "src").map(|s| &s.kind);
+                let ev = |e: Ev| Some(NodeKind::Event { on: e });
+                let new = match (src, on.as_str()) {
+                    (Some(NodeKind::Template { template }), "in" | "out") => match scope {
+                        Scope::Project => {
+                            from_ports.push((n.id.clone(), on.clone()));
+                            Some(NodeKind::Template {
+                                template: template.clone(),
+                            })
+                        }
+                        Scope::Graphic => ev(Ev::Graphic {
+                            template: template.clone(),
+                            out: on == "out",
+                        }),
+                    },
+                    (Some(NodeKind::OnAir { template, .. }), "in" | "out") => ev(Ev::Graphic {
+                        template: template.clone(),
+                        out: on == "out",
+                    }),
+                    (Some(NodeKind::Playlist { playlist }), "taken" | "end" | "interrupted") => {
+                        from_ports.push((n.id.clone(), on.clone()));
+                        Some(NodeKind::Playlist {
+                            playlist: playlist.clone(),
+                        })
+                    }
+                    (Some(NodeKind::Layer { layer, .. }), "scrollEnd") => ev(Ev::ScrollEnd {
+                        layer: layer.clone(),
+                        passes: 1,
+                    }),
+                    (Some(NodeKind::Layer { layer, .. }), "timerZero") => ev(Ev::TimerZero {
+                        layer: layer.clone(),
+                    }),
+                    (Some(NodeKind::Layer { layer, .. }), "timerAt") => ev(Ev::TimerAt {
+                        layer: layer.clone(),
+                        seconds: *seconds,
+                    }),
+                    (Some(NodeKind::Layer { layer, .. }), "videoEnd") => ev(Ev::VideoEnd {
+                        layer: layer.clone(),
+                    }),
+                    (Some(NodeKind::Field { .. }) | None, "lastRow") => ev(Ev::LastRow {
+                        dataset: dataset.clone(),
+                    }),
+                    // A field's or a variable's change: watched by the flow itself.
+                    (Some(NodeKind::Field { .. } | NodeKind::Var { .. }), "change") => None,
+                    (None, "start") => Some(NodeKind::Start {}),
+                    (None, "continue") => Some(NodeKind::Continue {}),
+                    (None, "trigger") => Some(NodeKind::TriggerIn { name: name.clone() }),
+                    (None, "every") => Some(NodeKind::Every {
+                        seconds: if *seconds > 0.0 { *seconds } else { 1.0 },
+                    }),
+                    _ => None,
+                };
+                if let Some(k) = new {
+                    kinds.push((n.id.clone(), k));
+                }
+            }
+            NodeKind::Check { rows, any } => {
+                let mut whens = Vec::new();
+                let mut inputs = Vec::new();
+                for (i, r) in rows.iter().enumerate() {
+                    let (v, w) = (format!("v{i}"), format!("w{i}"));
+                    let sub = |kind: NodeKind, port: &str| {
+                        (
+                            Some(Node {
+                                id: format!("{}~{v}", n.id),
+                                kind,
+                                x: n.x,
+                                y: n.y,
+                                frame: n.frame.clone(),
+                                title: None,
+                            }),
+                            port.to_string(),
+                        )
+                    };
+                    let (node, port) = match r.what.split_once(':') {
+                        Some(("tpl", t)) => match scope {
+                            Scope::Project => sub(
+                                NodeKind::Template {
+                                    template: t.to_string(),
+                                },
+                                "onAir",
+                            ),
+                            Scope::Graphic => sub(
+                                NodeKind::OnAir {
+                                    template: t.to_string(),
+                                    transition: 0.0,
+                                    test: false,
+                                },
+                                "out",
+                            ),
+                        },
+                        Some(("pl", p)) => sub(
+                            NodeKind::Playlist {
+                                playlist: p.to_string(),
+                            },
+                            match r.test.as_str() {
+                                "interrupted" | "notInterrupted" => "interrupted",
+                                "ended" | "notEnded" => "ended",
+                                _ => "onAir",
+                            },
+                        ),
+                        Some(("field", k)) => sub(NodeKind::Field { key: k.to_string() }, "out"),
+                        Some(("var", name)) => sub(
+                            NodeKind::Var {
+                                name: name.to_string(),
+                                test: 0.0,
+                            },
+                            "out",
+                        ),
+                        _ => (None, String::new()),
+                    };
+                    match node {
+                        Some(node) => {
+                            edges.push(Edge {
+                                from: node.id.clone(),
+                                from_port: port,
+                                to: n.id.clone(),
+                                port: v.clone(),
+                            });
+                            added.push(node);
+                        }
+                        // The value wired into `in`.
+                        None if r.what == "in" => {
+                            if let Some(e) =
+                                logic.edges.iter().find(|e| e.to == n.id && e.port == "in")
+                            {
+                                edges.push(Edge {
+                                    port: v.clone(),
+                                    ..e.clone()
+                                });
+                            }
+                        }
+                        None => continue,
+                    }
+                    let cmp = |op: &str| format!("{v} {op} {w}");
+                    let test = match r.test.as_str() {
+                        "onAir" | "interrupted" | "ended" | "yes" => format!("{v} > 0.5"),
+                        "notOnAir" | "notInterrupted" | "notEnded" | "no" => format!("{v} < 0.5"),
+                        "gt" => cmp(">"),
+                        "ge" => cmp(">="),
+                        "lt" => cmp("<"),
+                        "le" => cmp("<="),
+                        "eq" => cmp("="),
+                        "ne" => cmp("!="),
+                        "contains" => format!("contient({v}, {w})"),
+                        "empty" => format!("vide({v})"),
+                        "notEmpty" => format!("non vide({v})"),
+                        _ => continue,
+                    };
+                    if test.contains(&w) {
+                        let id = format!("{}~{w}", n.id);
+                        edges.push(Edge {
+                            from: id.clone(),
+                            from_port: "out".into(),
+                            to: n.id.clone(),
+                            port: w.clone(),
+                        });
+                        added.push(Node {
+                            id,
+                            kind: NodeKind::Text {
+                                value: r.value.clone(),
+                            },
+                            x: n.x,
+                            y: n.y,
+                            frame: n.frame.clone(),
+                            title: None,
+                        });
+                        inputs.push(w);
+                    }
+                    inputs.push(v);
+                    whens.push(format!("({test})"));
+                }
+                kinds.push((
+                    n.id.clone(),
+                    NodeKind::If {
+                        inputs,
+                        branches: vec![Branch {
+                            // No line: never true.
+                            when: if whens.is_empty() {
+                                "0".into()
+                            } else {
+                                whens.join(if *any { " ou " } else { " et " })
+                            },
+                            value: "1".into(),
+                        }],
+                        otherwise: "0".into(),
+                    },
+                ));
+                renames.push((n.id.clone(), "yes", "b0"));
+                renames.push((n.id.clone(), "no", "else"));
+            }
+            _ => {}
+        }
+    }
+    for (id, k) in kinds {
+        if let Some(n) = logic.nodes.iter_mut().find(|n| n.id == id) {
+            n.kind = k;
+        }
+    }
+    for e in &mut logic.edges {
+        if let Some((_, p)) = from_ports.iter().find(|(id, _)| *id == e.from) {
+            if e.from_port == "out" {
+                e.from_port = p.clone();
+            }
+        }
+        if let Some((_, _, new)) = renames
+            .iter()
+            .find(|(id, old, _)| *id == e.from && e.from_port == *old)
+        {
+            e.from_port = (*new).into();
+        }
+    }
+    logic.nodes.extend(added);
+    logic.edges.extend(edges);
 }
 
 /// Makes an older graph over: one Layer node for a layer property, a text

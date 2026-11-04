@@ -19,6 +19,7 @@ import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { useDesigner } from './designerStore';
 import { useProjectLogic } from './projectLogic';
+import { hasMoments, lineFor, momentsOf, needsSteps, needsValue, sourceOf, subjectsOf, testsOf, toSteps } from './logicSteps';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { t, tc } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
@@ -34,7 +35,7 @@ import { entries, FAMS, isProjectLogic, kindOf, layerNode, rowLabel, rowsFor, sc
  */
 
 const NODE_W = 210;
-const WIDE = new Set(['expr', 'if', 'lookup', 'layer']);
+const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when']);
 const FRAME_COLORS = ['#8fa3ff', '#a78bfa', '#22d3ee', '#f59e0b', '#f472b6', '#4ade80', '#fb7185', '#facc15'];
 const CLIP_KEY = 'strata.logic.clipboard';
 const TYPES: { id: PortType; label: string }[] = [
@@ -282,7 +283,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       setDisplayPref(sizesKey, next);
       return next;
     });
-  const widthOf = (n: LogicNode) => sizes[n.id] ?? (WIDE.has(n.type) ? (n.type === 'if' ? 300 : 240) : NODE_W);
+  const widthOf = (n: LogicNode) => sizes[n.id] ?? (WIDE.has(n.type) ? (n.type === 'if' || n.type === 'check' ? 300 : 240) : NODE_W);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [selFrame, setSelFrame] = useState<string | null>(null);
   const [wire, setWire] = useState<{ from: PortRef; x: number; y: number } | null>(null);
@@ -412,6 +413,30 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       if (n) fn(n);
     }, key);
   const toWorld = cv.toWorld;
+  // An older graph (moments on its graphics and playlists, event nodes): made into steps when opened.
+  const old = needsSteps(template.logic);
+  useEffect(() => {
+    if (old) edit((l) => void toSteps(l));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.id, old]);
+  // A When wired to a source it cannot watch that way: its source's first moment.
+  const unfit = logic.nodes.flatMap((n) => {
+    if (n.type !== 'when') return [];
+    const src = sourceOf(logic, n.id);
+    const o = src ? momentsOf(src, template) : [];
+    return o.length && !o.some((x) => x.value === n.on) ? [[n.id, o[0].value] as const] : [];
+  });
+  const unfitKey = unfit.map((x) => x.join('=')).join(',');
+  useEffect(() => {
+    if (!unfit.length) return;
+    edit((l) => {
+      for (const [id, on] of unfit) {
+        const m = l.nodes.find((x) => x.id === id);
+        if (m?.type === 'when') m.on = on;
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unfitKey]);
 
   /**
    * Puts the data nodes left of the logic ones: always (`align`, after Arrange: side by side, tops
@@ -1089,6 +1114,11 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
           .map((r) => ({ value: r.key, label: label(r.key), group: t(r.group) }));
         return (
           <>
+            {l && hasMoments(l) && (
+              <Row n={n} outP={pOut(n, 'src')}>
+                <span className="lx-lab right">{t('Moments')}</span>
+              </Row>
+            )}
             {n.rows.map((r) => {
               const inP = metricOf(r.key) ? undefined : pIn(n, r.key);
               const outP = r.key.startsWith('content.') ? undefined : pOut(n, r.key);
@@ -1426,37 +1456,112 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         return flowRows(<Dropdown value={n.playlist} placeholder={t('Choose a playlist')} options={(projectLists ?? []).map((l) => ({ value: l.id, label: l.name }))} onChange={(playlist) => set({ playlist } as Partial<LogicNode>)} />);
       case 'clearAll':
         return flowRows();
-      case 'template':
+      case 'template': {
+        const g = useApp.getState().project?.templates.find((x) => x.id === n.template);
+        const zone = useApp.getState().project?.zones.find((z) => z.id === g?.zone)?.name;
+        return (
+          <Row n={n} outP={pOut(n, 'src')}>
+            <span className="lx-lab">{zone ? `${t('Zone')} · ${zone}` : ''}</span>
+          </Row>
+        );
+      }
+      case 'playlist': {
+        const rows = (useApp.getState().project?.rundown ?? []).filter((r) => r.playlist === n.playlist).length;
+        return (
+          <Row n={n} outP={pOut(n, 'src')}>
+            <span className="lx-lab">{t('{n} rows', { n: rows })}</span>
+          </Row>
+        );
+      }
+      case 'when': {
+        const src = sourceOf(logic, n.id);
+        const opts = momentsOf(src, template);
+        const lastRowOf = (s: LogicNode | undefined) => (s?.type === 'field' ? (template.datasets ?? []).find((d) => s.key.startsWith(`${d.key}_`))?.key : undefined);
         return (
           <>
-            <Row n={n} outP={pOut(n, 'in')}>
-              <span className="lx-lab right">{t('Goes in')}</span>
+            <Row n={n} inP={pIn(n, 'src')}>
+              <span className="lx-lab">{src ? kindOf(src, template).label : ''}</span>
             </Row>
+            <div className="lx-body">
+              <Dropdown
+                value={opts.some((o) => o.value === n.on) ? n.on : ''}
+                placeholder={t('Choose a moment')}
+                options={opts.map((o) => ({ value: o.value, label: t(o.label) }))}
+                onChange={(on) => set({ on, ...(on === 'lastRow' && lastRowOf(src) ? { dataset: lastRowOf(src) } : {}) } as Partial<LogicNode>)}
+              />
+              {n.on === 'trigger' && <TextInput value={n.name ?? ''} placeholder={t('goal, next, line2…')} onChange={(x) => set({ name: x } as Partial<LogicNode>, `lx-${n.id}-n`)} />}
+              {(n.on === 'every' || n.on === 'timerAt') && (
+                <NumberField value={n.seconds ?? 0} min={n.on === 'every' ? 0.1 : 0} step={1} precision={1} suffix="s" onChange={(x) => set({ seconds: Math.max(n.on === 'every' ? 0.1 : 0, x) } as Partial<LogicNode>, `lx-${n.id}-s`)} />
+              )}
+              {n.on === 'lastRow' && !src && (
+                <Dropdown value={n.dataset ?? ''} placeholder={t('Choose a data set')} options={(template.datasets ?? []).map((d) => ({ value: d.key, label: d.name }))} onChange={(dataset) => set({ dataset } as Partial<LogicNode>)} />
+              )}
+            </div>
             <Row n={n} outP={pOut(n, 'out')}>
-              <span className="lx-lab right">{t('Goes out')}</span>
-            </Row>
-            <Row n={n} outP={pOut(n, 'onAir')}>
-              <span className="lx-lab right">{t('On air')}</span>
+              <span className="lx-lab right">{t('Then')}</span>
             </Row>
           </>
         );
-      case 'playlist':
+      }
+      case 'check': {
+        const subjects = subjectsOf(template);
+        const truth = v(n, 'out');
+        const usesIn = n.rows.some((r) => r.what === 'in');
+        const setRow = (i: number, patch: Partial<{ what: string; test: string; value: string }>, key?: string) =>
+          mutate(
+            n.id,
+            (m) => {
+              const r = (m as typeof n).rows[i];
+              if (patch.what && patch.what !== r.what) Object.assign(r, lineFor(patch.what));
+              else Object.assign(r, patch);
+            },
+            key,
+          );
         return (
           <>
-            <Row n={n} outP={pOut(n, 'taken')}>
-              <span className="lx-lab right">{t('Row taken')}</span>
+            <Row n={n} inP={pIn(n, 'run')}>
+              {n.rows.length > 1 && (
+                <Segmented
+                  value={n.any ? 'or' : 'and'}
+                  onChange={(x) => set({ any: x === 'or' || undefined } as Partial<LogicNode>)}
+                  options={[
+                    { value: 'and', label: t('all') },
+                    { value: 'or', label: t('one of them') },
+                  ]}
+                />
+              )}
             </Row>
-            <Row n={n} outP={pOut(n, 'end')}>
-              <span className="lx-lab right">{t('End of playlist')}</span>
+            <div className="lx-body lx-phrases">
+              {n.rows.map((r, i) => (
+                <div key={i} className="lx-phrase">
+                  {i > 0 && <span className="lx-join">{n.any ? t('or') : t('and')}</span>}
+                  <Dropdown value={r.what} placeholder={t('Choose')} options={[...(subjects.some((o) => o.value === r.what) ? [] : [{ value: r.what, label: r.what }]), ...subjects.map((o) => ({ value: o.value, label: t(o.label), group: o.group && t(o.group) }))]} onChange={(what) => setRow(i, { what })} />
+                  <Dropdown value={r.test} options={testsOf(r.what).map((o) => ({ value: o.value, label: t(o.label) }))} onChange={(test) => setRow(i, { test })} />
+                  {needsValue(r.test) && <TextInput value={r.value ?? ''} placeholder={t('value')} onChange={(x) => setRow(i, { value: x }, `lx-${n.id}-v${i}`)} />}
+                  <button className="lx-x" title={t('Remove')} onClick={() => mutate(n.id, (m) => void (m as typeof n).rows.splice(i, 1))}>
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+              <button className="lx-add" onClick={() => mutate(n.id, (m) => void (m as typeof n).rows.push(lineFor(subjects[0]?.value ?? 'in')))}>
+                <Plus size={11} /> {t('condition')}
+              </button>
+            </div>
+            {usesIn && (
+              <Row n={n} inP={pIn(n, 'in')}>
+                <span className="lx-lab">{t('Value')}</span>
+                <Val v={v(n, 'in:in')} />
+              </Row>
+            )}
+            <Row n={n} outP={pOut(n, 'yes')} className={`lx-branch ${truth === 1 ? 'chosen' : ''}`}>
+              <span className="lx-kw yes">{t('True')}</span>
             </Row>
-            <Row n={n} outP={pOut(n, 'onAir')}>
-              <span className="lx-lab right">{t('On air')}</span>
-            </Row>
-            <Row n={n} outP={pOut(n, 'interrupted')}>
-              <span className="lx-lab right">{t('Interrupted')}</span>
+            <Row n={n} outP={pOut(n, 'no')} className={`lx-branch ${truth === 0 && n.rows.length ? 'chosen' : ''}`}>
+              <span className="lx-kw no">{t('False')}</span>
             </Row>
           </>
         );
+      }
       case 'widget':
         return flowRows(
           <>
@@ -1501,7 +1606,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
 
   /** The value a node shows in its header (its main output). */
   const headValue = (n: LogicNode) => {
-    if (n.type === 'layer' || n.type === 'if' || n.type === 'expr' || n.type === 'lookup' || n.type === 'var' || n.type === 'onAir' || n.type === 'counter' || n.type === 'template' || n.type === 'playlist') return undefined;
+    if (n.type === 'layer' || n.type === 'if' || n.type === 'check' || n.type === 'when' || n.type === 'expr' || n.type === 'lookup' || n.type === 'var' || n.type === 'onAir' || n.type === 'counter' || n.type === 'template' || n.type === 'playlist') return undefined;
     const out = portsOf(n).outs.find((p) => p.type !== 'flow');
     return out ? values.get(`${n.id}|${out.id}`) : undefined;
   };

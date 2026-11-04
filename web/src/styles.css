@@ -22172,6 +22172,42 @@ textarea.tx-grow {
 .lx-branch.chosen {
   background: color-mix(in srgb, var(--pvw) 8%, transparent);
 }
+/* If…: a phrase of menus, its True / False outputs. */
+.lx-phrase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.lx-phrase > * {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.lx-phrase > .lx-x,
+.lx-phrase > .lx-join {
+  flex: none;
+}
+.lx-join {
+  width: 100%;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a78bfa;
+}
+.lx-kw.yes,
+.lx-branch.chosen .lx-kw.yes {
+  color: #22c55e;
+}
+.lx-kw.no,
+.lx-branch.chosen .lx-kw.no {
+  color: #f97316;
+}
+.lx-branch.chosen .lx-kw.yes,
+.lx-branch.chosen .lx-kw.no {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .lx-table {
   gap: 4px;
 }

@@ -32,6 +32,9 @@ export function rowType(key: string): PortType {
   return COLOR_PROPS.has(key as Prop) ? 'color' : 'num';
 }
 
+/** The output of a source (a graphic, a playlist, a layer) into a When step. */
+const SRC: Port = { id: 'src', label: 'Source', type: 'any' };
+
 /** A node's inputs (left) and outputs (right). */
 export function portsOf(n: LogicNode): { ins: Port[]; outs: Port[] } {
   const named = (names: string[], type: PortType = 'any'): Port[] => names.map((id) => ({ id, label: id, type, raw: true }));
@@ -41,7 +44,14 @@ export function portsOf(n: LogicNode): { ins: Port[]; outs: Port[] } {
     case 'layer':
       return {
         ins: n.rows.filter((r) => !metricOf(r.key)).map((r) => ({ id: r.key, label: r.key, type: rowType(r.key), raw: true })),
-        outs: n.rows.filter((r) => !r.key.startsWith('content.')).map((r) => ({ id: r.key, label: r.key, type: rowType(r.key), raw: true })),
+        outs: [SRC, ...n.rows.filter((r) => !r.key.startsWith('content.')).map((r) => ({ id: r.key, label: r.key, type: rowType(r.key), raw: true }))],
+      };
+    case 'when':
+      return { ins: [{ id: 'src', label: 'Source', type: 'any' }], outs: [{ id: 'out', label: 'Then', type: 'flow' }] };
+    case 'check':
+      return {
+        ins: [{ id: 'run', label: 'When', type: 'flow' }, { id: 'in', label: 'Value', type: 'any' }],
+        outs: [{ id: 'yes', label: 'True', type: 'flow' }, { id: 'no', label: 'False', type: 'flow' }, { id: 'out', label: 'Result', type: 'bool' }],
       };
     case 'field':
       return { ins: [], outs: [{ id: 'out', label: 'Value', type: 'any' }] };
@@ -92,10 +102,10 @@ export function portsOf(n: LogicNode): { ins: Port[]; outs: Port[] } {
     case 'stopAuto':
     case 'clearAll':
       return { ins: [run], outs: [next] };
+    // A source: its moments go through a When step, its state through an If… (or straight into a value).
     case 'template':
-      return { ins: [], outs: [{ id: 'in', label: 'Goes in', type: 'flow' }, { id: 'out', label: 'Goes out', type: 'flow' }, { id: 'onAir', label: 'On air', type: 'bool' }] };
     case 'playlist':
-      return { ins: [], outs: [{ id: 'taken', label: 'Row taken', type: 'flow' }, { id: 'end', label: 'End of playlist', type: 'flow' }, { id: 'onAir', label: 'On air', type: 'bool' }, { id: 'interrupted', label: 'Interrupted', type: 'bool' }] };
+      return { ins: [], outs: [{ ...SRC, type: 'bool' }] };
   }
   return { ins: [], outs: [] };
 }
@@ -190,7 +200,16 @@ class Graph {
       case 'event':
       case 'triggerIn':
       case 'continue':
+      case 'when':
         return cx.data[evKey(n.id)] === '1' ? 1 : 0;
+      case 'check':
+        return this.holds(n, cx, depth) ? 1 : 0;
+      case 'template': {
+        const v = parseFloat(cx.data[onAirKey(n.template)] ?? '');
+        return v > 0.5 ? 1 : 0;
+      }
+      case 'playlist':
+        return cx.data[`__plair_${n.playlist}`] === '1' ? 1 : 0;
       case 'var': {
         const v = cx.data[varKey(n.name)];
         if (v === undefined) return n.test ?? 0;
@@ -211,6 +230,40 @@ class Graph {
     return 0;
   }
 
+  /** The phrase of an If… holds (cg_core::logic::lower). */
+  holds(n: LogicNode & { type: 'check' }, cx: Cx, depth: number): boolean {
+    const bit = (k: string) => parseFloat(cx.data[k] ?? '') > 0.5;
+    const res = n.rows.flatMap((r): boolean[] => {
+      const [kind, id] = r.what.split(/:(.*)/s);
+      const v: LVal | undefined =
+        kind === 'tpl' ? (bit(onAirKey(id)) ? 1 : 0)
+        : kind === 'pl' ? (bit(['interrupted', 'notInterrupted'].includes(r.test) ? `__plint_${id}` : ['ended', 'notEnded'].includes(r.test) ? `__ended_${id}` : `__plair_${id}`) ? 1 : 0)
+        : kind === 'field' ? (cx.data[id] ?? '')
+        : kind === 'var' ? (cx.data[varKey(id)] ?? 0)
+        : r.what === 'in' ? this.input(n.id, 'in', cx, depth) ?? ''
+        : undefined;
+      if (v === undefined) return [];
+      const w = r.value ?? '';
+      const c = compare(v, w);
+      switch (r.test) {
+        case 'onAir': case 'interrupted': case 'ended': case 'yes': return [toNum(v) > 0.5];
+        case 'notOnAir': case 'notInterrupted': case 'notEnded': case 'no': return [toNum(v) < 0.5];
+        case 'gt': return [c > 0];
+        case 'ge': return [c >= 0];
+        case 'lt': return [c < 0];
+        case 'le': return [c <= 0];
+        case 'eq': return [c === 0];
+        case 'ne': return [c !== 0];
+        case 'contains': return [text(v).toLowerCase().includes(w.toLowerCase())];
+        case 'empty': return [!text(v).trim()];
+        case 'notEmpty': return [!!text(v).trim()];
+      }
+      return [];
+    });
+    if (!res.length) return false;
+    return n.any ? res.some(Boolean) : res.every(Boolean);
+  }
+
   /** The first branch of an If whose condition holds (-1: else). */
   branch(n: LogicNode & { type: 'if' }, cx: Cx, depth: number): number {
     return n.branches.findIndex((b) => !!b.when.trim() && truthy(this.valueExpr(n.id, b.when, cx, depth)));
@@ -219,6 +272,17 @@ class Graph {
   valueExpr(id: string, e: string, cx: Cx, depth: number): LVal {
     return runExpr(e, (name) => this.input(id, name, cx, depth) ?? empty, cx.clock);
   }
+}
+
+/** Numbers as numbers, else texts (any case), as cg_core::logic::expr::compare. */
+function compare(a: LVal, b: LVal): number {
+  const num = (v: LVal) => (typeof v === 'number' ? v : /^\s*-?\d+([.,]\d+)?\s*$/.test(v) ? parseFloat(v.replace(',', '.')) : NaN);
+  const x = num(a);
+  const y = num(b);
+  if (Number.isFinite(x) && Number.isFinite(y)) return x === y ? 0 : x < y ? -1 : 1;
+  const s = text(a).trim().toLowerCase();
+  const u = text(b).trim().toLowerCase();
+  return s === u ? 0 : s < u ? -1 : 1;
 }
 
 interface Cx {
@@ -243,7 +307,8 @@ export const countKey = (node: string) => `__cnt_${node}`;
 export const onAirKey = (template: string) => `__onair_${template}`;
 
 /** The graphics whose presence the graph reads, with their transition (s). */
-export const onAirWatched = (logic: Logic | undefined): [string, number][] => (logic?.nodes ?? []).flatMap((n) => (n.type === 'onAir' ? [[n.template, n.transition ?? 0] as [string, number]] : []));
+export const onAirWatched = (logic: Logic | undefined): [string, number][] =>
+  (logic?.nodes ?? []).flatMap((n): [string, number][] => (n.type === 'onAir' ? [[n.template, n.transition ?? 0]] : n.type === 'check' ? n.rows.filter((r) => r.what.startsWith('tpl:')).map((r) => [r.what.slice(4), 0]) : []));
 
 /**
  * How much `template` is on air among `items` (cg_core::playout::presence): in over `transition` s
