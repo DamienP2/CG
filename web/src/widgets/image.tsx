@@ -779,7 +779,8 @@ export default defineWidget({
             ? t('No picture chosen: the channel slate is shown (the fallback {fallback} cannot be found either).', v)
             : t('No picture chosen: the channel slate is shown.', v)
           : t('No picture chosen: the fallback {fallback} is shown.', v);
-      out.push({ level: 'error', text, op: true });
+      // Nothing chosen yet (a new layer): said quietly; a file that cannot be found is an error.
+      out.push({ level: wanted ? 'error' : 'info', text, op: true });
     }
     const missingFrames = k.frames.filter((f) => status(interpolateText(f, data)).s === 'missing').length;
     if (k.frames.length && missingFrames) out.push({ level: 'warn', text: tn(missingFrames, '{n} frame of the sequence cannot be found: the fallback shows in their place.', '{n} frames of the sequence cannot be found: the fallback shows in their place.'), op: true });

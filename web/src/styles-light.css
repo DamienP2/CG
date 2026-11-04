@@ -82,7 +82,7 @@
 }
 
 /* The Operator's local surfaces. */
-:root[data-theme='light'] :is(.opx, .wk-op, .opx-spec, .modal.opx-addmodal, .ux1-transport, .opx-top) {
+:root[data-theme='light'] :is(.opx, .wk-op, .opx-spec, .modal.opx-addmodal, .ux1-transport, .opx-top, .template-list, .tl-corner) {
   --op-1: #ffffff;
   --op-2: #f3f4f8;
   --op-3: #e6e9f0;
@@ -417,4 +417,20 @@
 /* Orange (pause) text. */
 :root[data-theme='light'] :is(.c-pause, .btn.mk-pause svg, .zone-card.paused .air-phase, .tally.paused, .wc-row.paused .wc-name::before, .dc-type.t-number) {
   color: var(--t-orange);
+}
+
+/* The cued graphic's button: the bright green, its dark ink readable. */
+:root[data-theme='light'] .opx-sq.big.cue {
+  background: var(--pvw-fill);
+}
+/* The Zones button of the top bar (outside the Operator's surfaces). */
+:root[data-theme='light'] .opl-zbtn {
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+:root[data-theme='light'] :is(.opl-zbtn:hover, .opl-zbtn.open) {
+  border-color: var(--line-2);
+}
+:root[data-theme='light'] .opl-zdots i:not([style]) {
+  background: var(--line-2);
 }

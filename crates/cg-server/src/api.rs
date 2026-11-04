@@ -711,7 +711,8 @@ async fn create_project(
     }
     let mut p = match &n.from {
         Some(src) => {
-            let mut p = (*visible_project(&s, &me, src).await?).clone();
+            // Without the personal playlists of others.
+            let mut p = (*mine(&visible_project(&s, &me, src).await?, &me)).clone();
             p.rundown.iter_mut().for_each(|r| r.id = cg_core::new_id());
             p
         }
