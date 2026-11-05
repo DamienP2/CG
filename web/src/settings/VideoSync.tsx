@@ -75,7 +75,7 @@ export function VideoSync({ cfg, edit, det, onRefresh }: { cfg: ServerConfig; ed
             <button className="btn small" onClick={onRefresh}>
               <RefreshCw size={13} /> {t('Refresh')}
             </button>
-            <button className="btn small" onClick={() => navigate('/hardware#st2110')}>
+            <button className="btn small" onClick={() => navigate('/system/hardware#st2110')}>
               <Settings2 size={13} /> {t('Settings')}
             </button>
           </>

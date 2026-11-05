@@ -1722,7 +1722,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                               <dd>{def.genlock ? t('Yes') : t('No')}</dd>
                             </dl>
                           )}
-                          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware')}>
+                          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/system/hardware')}>
                             <Cpu size={13} /> {t('Edit in Hardware')}
                           </button>
                         </>
@@ -1779,7 +1779,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                               </dd>
                             </dl>
                           )}
-                          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware#st2110')}>
+                          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/system/hardware#st2110')}>
                             <Cpu size={13} /> {t('Edit in Hardware')}
                           </button>
                           <div className="set-field">

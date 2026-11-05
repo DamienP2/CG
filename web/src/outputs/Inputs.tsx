@@ -456,7 +456,7 @@ function Inspector({
               onChange={(v) => editInput((x) => void (x.hardware = v))}
             />
           </Field>
-          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate(i.kind === 'st2110' ? '/hardware#st2110' : '/hardware')}>
+          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate(i.kind === 'st2110' ? '/system/hardware#st2110' : '/system/hardware')}>
             <Cpu size={13} /> {t('Edit in Hardware')}
           </button>
           {i.kind === 'st2110' && <Hint>{t('Receiving ST 2110 is not available yet.')}</Hint>}

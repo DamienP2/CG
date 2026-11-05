@@ -21091,3 +21091,32 @@ textarea.tx-grow {
   gap: 10px;
   min-height: 32px;
 }
+
+/* System page: its groups, then the open section's own list under its item. */
+.sys-group:not(:first-child) > .lib-nav-section:first-child {
+  padding-top: 14px;
+  min-height: 38px;
+}
+.sys-subnav:empty {
+  display: none;
+}
+.sys-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 6px 14px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+.sys-subnav > .lib-nav-section:first-child,
+.sys-subnav .lib-nav-foot {
+  display: none;
+}
+.sys-subnav .lib-nav-section {
+  padding: 8px 10px 4px;
+  min-height: 0;
+}
+.sys-subnav .lib-nav-item {
+  padding: 5px 10px;
+  font-size: var(--fs-12);
+}

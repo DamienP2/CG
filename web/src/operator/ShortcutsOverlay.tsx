@@ -120,8 +120,8 @@ function Overlay() {
   const inProject = location.pathname.startsWith('/project/');
   const edit = () => {
     close();
-    if (inProject) window.open('/settings#shortcuts', '_blank', 'noopener');
-    else navigate('/settings#shortcuts');
+    if (inProject) window.open('/shortcuts', '_blank', 'noopener');
+    else navigate('/shortcuts');
   };
 
   return createPortal(

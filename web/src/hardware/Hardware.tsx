@@ -764,7 +764,7 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
           <header>
             <h3>{t('Media network')}</h3>
             <div className="spacer" />
-            <button className="icon-btn ghost" title={t('Networks')} onClick={() => navigate('/settings#network')}>
+            <button className="icon-btn ghost" title={t('Networks')} onClick={() => navigate('/system/network')}>
               <Settings2 size={14} />
             </button>
           </header>

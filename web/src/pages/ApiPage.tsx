@@ -1,7 +1,8 @@
-import { BookOpen, Download, FileJson, Hash, KeyRound, LayoutGrid } from 'lucide-react';
+import { BookOpen, Download, FileJson, Hash, LayoutGrid } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t, tc, tn } from '../i18n';
 import { api } from '../store';
+import { navigate, systemPath } from '../router';
 import { ApiButtons } from './ApiButtons';
 import { ApiOverview, ApiTag, useApiSpec } from './ApiDocs';
 import { ApiKeys, type ApiKey } from './ApiKeys';
@@ -9,18 +10,16 @@ import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
 
 type View = { kind: 'keys' } | { kind: 'buttons' } | { kind: 'overview' } | { kind: 'tag'; name: string };
 
-/** Automation: API keys and the documentation of the API. */
-export function ApiPage() {
+/** Automation: the API keys (`keys`), or the documentation of the API and Bitfocus Buttons. */
+export function ApiPage({ part }: { part: 'keys' | 'docs' }) {
   const { spec, byTag } = useApiSpec();
   const [keys, setKeys] = useState<ApiKey[]>([]);
-  const [view, setView] = useState<View>({ kind: 'keys' });
+  const [view, setView] = useState<View>(part === 'keys' ? { kind: 'keys' } : { kind: 'overview' });
   const loadKeys = () => api<ApiKey[]>('GET', '/api/keys').then(setKeys).catch(() => {});
   useEffect(() => void loadKeys(), []);
 
-  const nav = (
+  const nav = part === 'keys' ? null : (
     <>
-      <NavSection>{t('Access')}</NavSection>
-      <NavItem on={view.kind === 'keys'} icon={<KeyRound size={15} />} label={t('API keys')} count={keys.length} onClick={() => setView({ kind: 'keys' })} />
       <NavItem on={view.kind === 'buttons'} icon={<LayoutGrid size={15} />} label="Bitfocus Buttons" onClick={() => setView({ kind: 'buttons' })} />
       <NavSection>{t('Documentation')}</NavSection>
       <NavItem on={view.kind === 'overview'} icon={<BookOpen size={15} />} label={t('Overview')} onClick={() => setView({ kind: 'overview' })} />
@@ -51,7 +50,7 @@ export function ApiPage() {
       </>
     );
   } else if (view.kind === 'buttons') {
-    body = <ApiButtons keys={keys} onCreateKey={() => setView({ kind: 'keys' })} />;
+    body = <ApiButtons keys={keys} onCreateKey={() => navigate(systemPath('keys'))} />;
   } else if (!spec) body = <div className="loading">{t('Loading the API description…')}</div>;
   else if (view.kind === 'overview') {
     body = (

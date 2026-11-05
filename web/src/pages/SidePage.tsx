@@ -2,8 +2,25 @@
  * The layout of the main pages (Projects, Assets, Users, API, MOS,
  * Settings): a list on the left, the page on the right.
  */
+import { createContext, useContext } from 'react';
+import { createPortal } from 'react-dom';
+
+/**
+ * Inside the System page: where a page's own list goes (under its item in
+ * the System list); the page itself fills the System page's right part.
+ */
+export const EmbeddedNav = createContext<HTMLElement | null | undefined>(undefined);
 
 export function SidePage({ nav, children, className = '', after, ...rest }: { nav: React.ReactNode; children: React.ReactNode; className?: string; after?: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+  const slot = useContext(EmbeddedNav);
+  if (slot !== undefined)
+    return (
+      <div className={`sys-embed ${className}`} {...rest}>
+        {slot && nav ? createPortal(nav, slot) : null}
+        <div className="library-inner wide">{children}</div>
+        {after}
+      </div>
+    );
   return (
     <div className={`projects-page ${className}`} {...rest}>
       <aside className="lib-nav">{nav}</aside>

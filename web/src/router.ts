@@ -3,18 +3,14 @@ export type ProjectPage = 'designer' | 'operator' | 'social' | 'data' | 'media';
 
 export type Route =
   | { page: 'projects' }
-  | { page: 'users' }
   | { page: 'media' }
   | { page: 'outputs' }
   | { page: 'inputs' }
-  | { page: 'hardware' }
-  | { page: 'performance' }
-  | { page: 'health' }
-  | { page: 'asrun' }
   | { page: 'data' }
-  | { page: 'settings' }
-  | { page: 'api' }
-  | { page: 'mos' }
+  /** Administration and supervision, one page: `section` (empty: the first one this user has). */
+  | { page: 'system'; section: SystemSection | '' }
+  /** Your keyboard shortcuts. */
+  | { page: 'shortcuts' }
   | {
       page: 'project';
       projectId: string;
@@ -31,6 +27,18 @@ export type Route =
 
 const SUBS: ProjectPage[] = ['designer', 'operator', 'social', 'data', 'media'];
 
+/** The sections of the System page. */
+export const SYSTEM_SECTIONS = ['performance', 'health', 'asrun', 'users', 'stations', 'keys', 'security', 'hardware', 'network', 'time', 'mos', 'api', 'general', 'updates', 'maintenance'] as const;
+export type SystemSection = (typeof SYSTEM_SECTIONS)[number];
+
+const system = (section: string): Route => ({ page: 'system', section: (SYSTEM_SECTIONS as readonly string[]).includes(section) ? (section as SystemSection) : '' });
+
+/** Settings' sections before the System page (`/settings#network`…). */
+const OLD_SETTINGS: Record<string, SystemSection> = { general: 'general', network: 'network', time: 'time', sync: 'time', security: 'security', stations: 'stations', updates: 'updates', system: 'maintenance' };
+
+/** The path of a System section. */
+export const systemPath = (section: SystemSection) => `/system/${section}`;
+
 export function parseRoute(path = location.pathname): Route {
   const [first, second, third, fourth] = path.split('/').filter(Boolean).map(decodeURIComponent);
   switch (first) {
@@ -46,32 +54,35 @@ export function parseRoute(path = location.pathname): Route {
       return { page: 'legacyDesigner', projectId: second ?? null };
     case 'operator':
       return { page: 'legacyOperator', channelId: second ?? null };
-    case 'settings':
-      return { page: 'settings' };
+    case 'system':
+      return system(second ?? '');
+    case 'shortcuts':
+      return { page: 'shortcuts' };
+    // Before the System page.
+    case 'settings': {
+      const h = location.hash.slice(1);
+      return h === 'shortcuts' ? { page: 'shortcuts' } : system(OLD_SETTINGS[h] ?? 'general');
+    }
     case 'users':
-      return { page: 'users' };
+    case 'hardware':
+    case 'performance':
+    case 'health':
+    case 'asrun':
+      return system(first);
+    case 'api-docs':
+      return system('api');
     case 'media':
       return { page: 'media' };
     case 'outputs':
       return { page: 'outputs' };
     case 'inputs':
       return { page: 'inputs' };
-    case 'hardware':
-      return { page: 'hardware' };
-    case 'performance':
-      return { page: 'performance' };
-    case 'health':
-      return { page: 'health' };
-    case 'asrun':
-      return { page: 'asrun' };
     case 'data':
       return { page: 'data' };
     case 'mos':
-      return second === 'plugin' ? { page: 'mosPlugin' } : { page: 'mos' };
+      return second === 'plugin' ? { page: 'mosPlugin' } : system('mos');
     case 'embed':
       return second === 'preview' ? { page: 'embedPreview' } : { page: 'projects' };
-    case 'api-docs':
-      return { page: 'api' };
     case 'output':
       return {
         page: 'output',

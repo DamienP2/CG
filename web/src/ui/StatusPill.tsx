@@ -100,8 +100,8 @@ export function StatusPill({ newTab }: { newTab?: boolean }) {
       aria-live="polite"
       title={title}
       onClick={(e) => {
-        if (newTab || e.metaKey || e.ctrlKey) window.open('/performance', '_blank', 'noopener');
-        else navigate('/performance');
+        if (newTab || e.metaKey || e.ctrlKey) window.open('/system/performance', '_blank', 'noopener');
+        else navigate('/system/performance');
       }}
     >
       {label}

@@ -1,4 +1,4 @@
-import { ArrowRightToLine, Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, HeartPulse, Library as LibraryIcon, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, TriangleAlert, Users as UsersIcon } from 'lucide-react';
+import { ArrowRightToLine, MessagesSquare, Database, FolderOpen, Library as LibraryIcon, MonitorPlay, PenTool, Radio, Server, TriangleAlert } from 'lucide-react';
 import { needsLook, useHealth, useHealthStore } from './perf/health';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
@@ -19,19 +19,13 @@ import { loadDisplayPrefs, useDisplayPrefs } from './displayPrefs';
 // The heavy pages load when opened: the project list and the outputs do not carry the Designer.
 const Designer = lazy(() => import('./designer/Designer').then((m) => ({ default: m.Designer })));
 const Operator = lazy(() => import('./operator/Operator').then((m) => ({ default: m.Operator })));
-const ApiPage = lazy(() => import('./pages/ApiPage').then((m) => ({ default: m.ApiPage })));
-const MosPage = lazy(() => import('./mos/MosPage').then((m) => ({ default: m.MosPage })));
 const MosPlugin = lazy(() => import('./mos/Plugin').then((m) => ({ default: m.MosPlugin })));
 const EmbedPreview = lazy(() => import('./embed/Preview').then((m) => ({ default: m.EmbedPreview })));
 const MediaLibrary = lazy(() => import('./pages/Media').then((m) => ({ default: m.MediaLibrary })));
 const Outputs = lazy(() => import('./outputs/Outputs').then((m) => ({ default: m.Outputs })));
-const Performance = lazy(() => import('./perf/Performance').then((m) => ({ default: m.Performance })));
-const Health = lazy(() => import('./perf/Health').then((m) => ({ default: m.Health })));
-const AsRun = lazy(() => import('./pages/AsRun').then((m) => ({ default: m.AsRun })));
-const Hardware = lazy(() => import('./hardware/Hardware').then((m) => ({ default: m.Hardware })));
-const Users = lazy(() => import('./pages/Users').then((m) => ({ default: m.Users })));
 const DataPage = lazy(() => import('./data/DataPage').then((m) => ({ default: m.DataPage })));
-const Settings = lazy(() => import('./settings/Settings').then((m) => ({ default: m.Settings })));
+const ShortcutsScreen = lazy(() => import('./settings/Settings').then((m) => ({ default: m.ShortcutsScreen })));
+const SystemPage = lazy(() => import('./pages/SystemPage').then((m) => ({ default: m.SystemPage })));
 const Social = lazy(() => import('./social/Social').then((m) => ({ default: m.Social })));
 
 const LAST_PROJECT = 'pulse.lastProject';
@@ -102,7 +96,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'users' || route.page === 'outputs' || route.page === 'inputs' || route.page === 'hardware' || route.page === 'performance' || route.page === 'health' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'outputs' || route.page === 'inputs') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -146,7 +140,7 @@ function Toasts({ quiet }: { quiet: boolean }) {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'hardware' | 'performance' | 'health' | 'asrun' | 'mos' | 'users' | 'api' | 'settings' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'system' | 'shortcuts' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata Graphics';
@@ -159,14 +153,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
   const entry = (id: Route['page'], path: string, icon: React.ReactNode, label: string): NavEntry => ({ id, path, icon, label });
   const admin = can.admin(user);
   const health = useHealthStore((x) => x.health);
-  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Output streams')), entry('inputs', '/inputs', <ArrowRightToLine size={14} />, t('Video inputs')), entry('mos', '/mos', <Newspaper size={14} />, 'MOS')] : [];
-  const system = [
-    ...(admin ? [entry('hardware', '/hardware', <CircuitBoard size={14} />, t('Hardware')), entry('performance', '/performance', <Gauge size={14} />, t('Performance')), entry('health', '/health', <HeartPulse size={14} />, t('Health'))] : []),
-    entry('asrun', '/asrun', <ClipboardList size={14} />, tc('tab', 'As-run')),
-    ...(admin ? [entry('users', '/users', <UsersIcon size={14} />, t('Users'))] : []),
-    entry('api', '/api-docs', <Braces size={14} />, 'API'),
-    entry('settings', '/settings', <SettingsIcon size={14} />, t('Settings')),
-  ];
+  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Output streams')), entry('inputs', '/inputs', <ArrowRightToLine size={14} />, t('Video inputs'))] : [];
   return (
     <>
       <nav className="topbar">
@@ -176,7 +163,10 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {tab('media', '/media', <LibraryIcon size={14} />, t('Library'))}
           {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
           <NavGroup icon={<Radio size={14} />} label={tc('menu', 'Broadcast')} entries={broadcast} current={route.page} />
-          <NavGroup icon={<Server size={14} />} label={t('System')} entries={system} current={route.page} dot={admin && needsLook(health)} />
+          <button className={route.page === 'system' ? 'on' : ''} aria-current={route.page === 'system' ? 'page' : undefined} onClick={() => navigate('/system')}>
+            <Server size={14} /> <span className="tab-label">{t('System')}</span>
+            {admin && needsLook(health) && <span className="nav-dot warn" />}
+          </button>
         </div>
         <div className="spacer" />
         <StatusPill />
@@ -188,14 +178,8 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {route.page === 'media' && <MediaLibrary />}
           {route.page === 'data' && <DataPage />}
           {(route.page === 'outputs' || route.page === 'inputs') && <Outputs mode={route.page} />}
-          {route.page === 'hardware' && <Hardware />}
-          {route.page === 'performance' && <Performance />}
-          {route.page === 'health' && <Health />}
-          {route.page === 'asrun' && <AsRun />}
-          {route.page === 'settings' && <Settings />}
-          {route.page === 'mos' && <MosPage />}
-          {route.page === 'users' && <Users />}
-          {route.page === 'api' && <ApiPage />}
+          {route.page === 'system' && <SystemPage section={route.section} />}
+          {route.page === 'shortcuts' && <ShortcutsScreen />}
         </Suspense>
       </div>
     </>
@@ -305,7 +289,7 @@ function CrashBanner() {
     <div className="crash-banner" role="alert">
       <TriangleAlert size={15} />
       <span>{t('Strata stopped unexpectedly on {when} and started again.', { when: new Date(health.lastCrash).toLocaleString(useLang.getState().lang, { dateStyle: 'short', timeStyle: 'short' }) })}</span>
-      <button className="btn small" onClick={() => (void seen(), navigate('/health'))}>
+      <button className="btn small" onClick={() => (void seen(), navigate('/system/health'))}>
         {t('See')}
       </button>
       <button className="btn small ghost" onClick={() => void seen()}>

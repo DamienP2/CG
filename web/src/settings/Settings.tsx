@@ -1,8 +1,8 @@
-import { Clock, CloudDownload, Cpu, Keyboard, Lock, Monitor, Network, RotateCcw, Server, SlidersHorizontal, Timer } from 'lucide-react';
+import { Cpu, RotateCcw, Server } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
-import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
-import { api, can, useApp } from '../store';
+import { PageHead, SidePage } from '../pages/SidePage';
+import { api, useApp } from '../store';
 import type { HardwareInfo } from '../outputs/types';
 import { Card, Field, SaveBar } from './ui';
 import { useServerConfig } from './serverConfig';
@@ -13,7 +13,6 @@ import { Updates } from './Updates';
 import { LibraryUpdates } from './LibraryUpdates';
 import { ShortcutsPage } from './Shortcuts';
 import { SecurityPage } from './Security';
-import { StationsPage } from './Stations';
 
 const TIMEZONES: string[] = (() => {
   try {
@@ -30,45 +29,31 @@ function uptime(s: number) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
 }
 
-type Section = 'shortcuts' | 'general' | 'network' | 'time' | 'sync' | 'security' | 'stations' | 'updates' | 'system';
-const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'time', 'sync', 'security', 'stations', 'updates', 'system'];
-const sectionOf = (hash: string): Section => SECTIONS.find((s) => `#${s}` === hash) ?? 'general';
+export type ServerSection = 'general' | 'network' | 'time' | 'security' | 'updates' | 'maintenance';
 
-/** Your own settings; an admin's also the server's. */
-export function Settings() {
-  const user = useApp((s) => s.auth?.user);
-  if (can.admin(user)) return <ServerSettings />;
-  const nav = (
-    <>
-      <NavSection>{t('You')}</NavSection>
-      <NavItem on icon={<Keyboard size={15} />} label={t('Shortcuts')} />
-    </>
-  );
+/** Your keyboard shortcuts (a page of their own). */
+export function ShortcutsScreen() {
   return (
-    <SidePage nav={nav}>
-      <ShortcutsPage />
-    </SidePage>
+    <main className="library">
+      <div className="library-inner">
+        <ShortcutsPage />
+      </div>
+    </main>
   );
 }
 
 /** The server: name, clocks, network, updates and what it runs on. */
-function ServerSettings() {
+export function ServerSettings({ section }: { section: ServerSection }) {
   const toast = useApp((s) => s.toast);
   const { info, cfg, edit, dirty, saving, save, discard, reload } = useServerConfig('settings');
-  const [section, setSection] = useState<Section>(() => sectionOf(location.hash));
   const [det, setDet] = useState<HardwareInfo | null>(null);
-  useEffect(() => {
-    const follow = () => setSection(sectionOf(location.hash));
-    window.addEventListener('hashchange', follow);
-    return () => window.removeEventListener('hashchange', follow);
-  }, []);
-  // Network cards and clock status (Networks, Time, Video sync).
+  // Network cards and clock status (Networks, Time and sync).
   const detect = () =>
     api<HardwareInfo>('GET', '/api/hardware')
       .then(setDet)
       .catch(() => {});
   useEffect(() => {
-    if (section === 'network' || section === 'time' || section === 'sync') void detect();
+    if (section === 'network' || section === 'time') void detect();
   }, [section]);
   if (!info || !cfg) return <div className="loading">{t('Loading settings…')}</div>;
 
@@ -78,41 +63,17 @@ function ServerSettings() {
     setTimeout(() => reload().catch(() => {}), 1500);
   };
 
-  const go = (s: Section) => {
-    setSection(s);
-    history.replaceState(null, '', `#${s}`);
-  };
-  const item = (s: Section, icon: React.ReactNode, label: string) => <NavItem on={section === s} icon={icon} label={label} onClick={() => go(s)} />;
-  const nav = (
-    <>
-      <NavSection>{t('You')}</NavSection>
-      {item('shortcuts', <Keyboard size={15} />, t('Shortcuts'))}
-      <NavSection>{t('Server')}</NavSection>
-      {item('general', <SlidersHorizontal size={15} />, t('General'))}
-      {item('network', <Network size={15} />, t('Networks'))}
-      {item('time', <Clock size={15} />, t('Time'))}
-      {item('sync', <Timer size={15} />, t('Video sync'))}
-      {item('security', <Lock size={15} />, t('Security'))}
-      {item('stations', <Monitor size={15} />, t('Stations'))}
-      {item('updates', <CloudDownload size={15} />, t('Updates'))}
-      {item('system', <Cpu size={15} />, t('System'))}
-      <div className="lib-nav-foot">
-        <span className="nav-dot ok" /> {t('Up {time}', { time: uptime(info.uptimeSecs) })}
-        <span className="muted">
-          Strata {info.version} · {info.os}/{info.arch}
-        </span>
-      </div>
-    </>
-  );
-  if (section === 'shortcuts') return <SidePage nav={nav}><ShortcutsPage /></SidePage>;
-
   return (
-    <SidePage nav={nav}>
-      <PageHead title={info.config.name} sub={`Strata ${info.version} · ${info.hostname} · ${info.os}/${info.arch} · ${t('up {time}', { time: uptime(info.uptimeSecs) })}`}>
-        <button className="btn" onClick={restart} title={t('Restart the playout engine and outputs')}>
-          <RotateCcw size={14} /> {t('Restart engine')}
-        </button>
-      </PageHead>
+    <SidePage nav={null}>
+      {section === 'maintenance' ? (
+        <PageHead title={t('Maintenance')} sub={`Strata ${info.version} · ${info.hostname} · ${info.os}/${info.arch} · ${t('up {time}', { time: uptime(info.uptimeSecs) })}`}>
+          <button className="btn" onClick={restart} title={t('Restart the playout engine and outputs')}>
+            <RotateCcw size={14} /> {t('Restart engine')}
+          </button>
+        </PageHead>
+      ) : (
+        <PageHead title={{ general: t('General'), network: t('Networks'), time: t('Time and sync'), security: t('Security'), updates: t('Updates') }[section]} />
+      )}
 
       {section === 'general' && (
         <Card icon={<Server size={16} />} title={t('General')}>
@@ -132,13 +93,14 @@ function ServerSettings() {
 
       {section === 'network' && <Networks info={info} cfg={cfg} edit={edit} det={det} />}
 
-      {section === 'time' && <TimePage cfg={cfg} edit={edit} det={det} zone={info.timezone} timezones={TIMEZONES} onRefresh={() => void detect()} />}
-
-      {section === 'sync' && <VideoSync cfg={cfg} edit={edit} det={det} onRefresh={() => void detect()} />}
+      {section === 'time' && (
+        <>
+          <TimePage cfg={cfg} edit={edit} det={det} zone={info.timezone} timezones={TIMEZONES} onRefresh={() => void detect()} />
+          <VideoSync cfg={cfg} edit={edit} det={det} onRefresh={() => void detect()} />
+        </>
+      )}
 
       {section === 'security' && <SecurityPage cfg={cfg} edit={edit} />}
-
-      {section === 'stations' && <StationsPage />}
 
       {section === 'updates' && (
         <>
@@ -147,7 +109,7 @@ function ServerSettings() {
         </>
       )}
 
-      {section === 'system' && (
+      {section === 'maintenance' && (
         <Card icon={<Cpu size={16} />} title={t('System')}>
           <dl className="sys-list">
             <dt>{t('Version')}</dt>
