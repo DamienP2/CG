@@ -233,11 +233,13 @@ function autoStep(project: Project, p: PlayoutItem & { advanced?: boolean }, liv
   const steps: AutoStep[] = [];
   const out = t.markers.find((m) => m.kind === 'out');
   if (out?.resume?.type === 'after') steps.push(step('out', out.resume.seconds));
-  // Credits set to go out by themselves: out when they have gone all the way.
+  // Credits set to go out by themselves: out when they have gone all the way, with the take's
+  // settings (a duration changed in the Operator), as the server (playout.rs) and the picture.
   const nowMs = liveAt + useApp.getState().serverOffset;
-  for (const l of t.layers) {
+  const shown = p.vals ? { ...p.data, ...p.vals } : p.data;
+  for (const l of withSettings(t, shown).layers) {
     if (l.type !== 'credits') continue;
-    const c = creditsLeft(l, p.widgets?.[l.id], p.data, nowMs, (p.age ?? 0) / fps);
+    const c = creditsLeft(l, p.widgets?.[l.id], shown, nowMs, (p.age ?? 0) / fps);
     if (c) steps.push({ kind: 'out', secs: c.total, at: liveAt + c.left * 1000 });
   }
   const r = p.rundownId ? project.rundown.find((x) => x.id === p.rundownId) : undefined;
