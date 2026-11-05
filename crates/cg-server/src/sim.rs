@@ -13,6 +13,9 @@ use tokio::sync::RwLock;
 
 pub const PREFIX: &str = "sim~";
 
+/// The channel part of a simulation without output: the project's own format.
+pub const NO_OUTPUT: &str = "-";
+
 /// Dropped after this long without a command or the Operator asking for it.
 const IDLE_MS: i64 = 2 * 3600 * 1000;
 
@@ -64,16 +67,40 @@ impl Sims {
 
 impl AppState {
     /// The simulation of `channel_id` for `user`, running `project_id`
-    /// (made, or switched to that project with nothing on air).
+    /// (made, or switched to that project with nothing on air). Without a
+    /// channel: in the project's own format.
     pub async fn simulate(
         self: &Shared,
         user: &str,
-        channel_id: &str,
+        channel_id: Option<&str>,
         project_id: &str,
     ) -> Result<String, String> {
-        let real = self.channel(channel_id).ok_or("no such channel")?;
         let project = self.project(project_id).await.ok_or("no such project")?;
-        let sid = id(user, channel_id);
+        let (sid, mut config) = match channel_id {
+            Some(c) => (
+                id(user, c),
+                self.channel(c).ok_or("no such channel")?.config.clone(),
+            ),
+            None => (
+                id(user, NO_OUTPUT),
+                serde_json::from_value::<crate::config::ChannelConfig>(serde_json::json!({
+                    "id": "",
+                    "name": project.name,
+                    "width": project.width,
+                    "height": project.height,
+                    "frameRate": project.frame_rate,
+                }))
+                .map_err(|e| e.to_string())?,
+            ),
+        };
+        config.id = sid.clone();
+        // Another format (a project of another size, without output): made again.
+        if self.sims.get(&sid).is_some_and(|ch| {
+            (ch.config.width, ch.config.height, ch.config.frame_rate)
+                != (config.width, config.height, config.frame_rate)
+        }) {
+            self.sims.map().remove(&sid);
+        }
         if let Some(ch) = self.sims.get(&sid) {
             self.sims.touch(&sid);
             let same = ch.project_id.read().await.as_deref() == Some(project_id);
@@ -85,8 +112,6 @@ impl AppState {
             }
             return Ok(sid);
         }
-        let mut config = real.config.clone();
-        config.id = sid.clone();
         let ch = Arc::new(ChannelRt {
             config,
             project_id: RwLock::new(Some(project_id.to_string())),
@@ -145,5 +170,6 @@ mod tests {
         assert_eq!(real(&s), "studio-a");
         assert_eq!(real("studio-a"), "studio-a");
         assert!(!is_sim("studio-a"));
+        assert_eq!(real(&id("u1", NO_OUTPUT)), NO_OUTPUT);
     }
 }

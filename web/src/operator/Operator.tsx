@@ -273,8 +273,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [simId, setSimId] = useState<string | null>(null);
   useEffect(() => {
     setSimId(null);
-    if (!simulation || !channelId || !project) return;
+    if (!simulation || !project) return;
     let gone = false;
+    // Without an output of the project: in the project's own format.
     api<{ channelId: string }>('POST', '/api/simulate', { channelId, projectId: project.id })
       .then((r) => !gone && setSimId(r.channelId))
       .catch((e) => toast((e as Error).message, 'error'));
@@ -880,7 +881,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <>
             <section className="opx-pane" style={mon.air ? { height: layout.preview, flex: 'none' } : { flex: 'none' }}>
               <header className="opx-head opx-mon-head">
-                <span className={`opx-title ${busy.length || (simulation && channelId) ? 'live' : ''}`}>● {simulation && channelId ? t('SIMULATION') : t('On air')}</span>
+                <span className={`opx-title ${busy.length || simulation ? 'live' : ''}`}>● {simulation ? t('SIMULATION') : t('On air')}</span>
                 {pictures.length > 1 && (
                   <div className="opx-pics">
                     {pictures.map((p) => {
@@ -899,7 +900,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               </header>
               {mon.air && (
               <div className="opx-programs">
-                {channelId ? (
+                {driven ? (
                   programs.map((p) => (
                     <div key={p.id} className={`opx-monitor ${simulation ? 'sim' : ''}`} style={{ flex: `${p.width / p.height} 1 0` }}>
                       <Screen width={p.width} height={p.height}>

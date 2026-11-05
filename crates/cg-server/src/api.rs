@@ -2186,7 +2186,9 @@ async fn sees_loaded(s: &Shared, me: &User, channel: &str) -> ApiResult<()> {
 
 fn visible_channel(me: &User, id: &str) -> ApiResult<()> {
     let sees = match crate::sim::parse(id) {
-        Some((user, channel)) => user == me.id && me.sees_channel(channel),
+        Some((user, channel)) => {
+            user == me.id && (channel == crate::sim::NO_OUTPUT || me.sees_channel(channel))
+        }
         None => me.sees_channel(id),
     };
     if sees {
@@ -2207,6 +2209,14 @@ async fn channel_state(
 }
 
 // ---------- production stations, simulations ----------
+
+/// May `me` drive this channel, or simulation (one without output: an operator's role).
+pub(crate) fn may_drive(me: &User, id: &str) -> bool {
+    match crate::sim::real(id) {
+        crate::sim::NO_OUTPUT => matches!(me.role, Role::Admin | Role::Designer | Role::Operator),
+        c => me.can_operate(c),
+    }
+}
 
 /// A person changes a real channel only from a production station (an API
 /// key, the MOS… are not concerned; a simulation is theirs).
@@ -2328,7 +2338,8 @@ async fn remove_station(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SimulateRequest {
-    channel_id: String,
+    /// None: the project has no output (its own format).
+    channel_id: Option<String>,
     project_id: String,
 }
 
@@ -2337,7 +2348,7 @@ struct SimulateRequest {
 struct SimulateReply {
     /// The channel the Operator drives: the real one on a production
     /// station, else this person's simulation of it.
-    channel_id: String,
+    channel_id: Option<String>,
     simulation: bool,
 }
 
@@ -2348,8 +2359,11 @@ async fn simulate(
     OnStation(st): OnStation,
     Json(r): Json<SimulateRequest>,
 ) -> ApiResult<Json<SimulateReply>> {
-    visible_channel(&me, &r.channel_id)?;
-    require(me.can_operate(&r.channel_id) && me.sees_project(&r.project_id))?;
+    if let Some(c) = &r.channel_id {
+        visible_channel(&me, c)?;
+        require(me.can_operate(c))?;
+    }
+    require(me.can_edit_rundown(&r.project_id))?;
     if st.is_some() {
         return Ok(Json(SimulateReply {
             channel_id: r.channel_id,
@@ -2357,11 +2371,11 @@ async fn simulate(
         }));
     }
     let id = s
-        .simulate(&me.id, &r.channel_id, &r.project_id)
+        .simulate(&me.id, r.channel_id.as_deref(), &r.project_id)
         .await
         .map_err(bad)?;
     Ok(Json(SimulateReply {
-        channel_id: id,
+        channel_id: Some(id),
         simulation: true,
     }))
 }
@@ -2397,7 +2411,7 @@ async fn channel_command(
     Json(cmd): Json<cg_core::playout::Routed>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
-    require(me.can_operate(crate::sim::real(&id)))?;
+    require(may_drive(&me, &id))?;
     on_air_here(&actor, &station, &id)?;
     sees_loaded(&s, &me, &id).await?;
     s.command_on(&id, cmd.command, cmd.buses, &actor)
@@ -2434,7 +2448,7 @@ async fn channel_undo(
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
-    require(me.can_operate(crate::sim::real(&id)))?;
+    require(may_drive(&me, &id))?;
     on_air_here(&actor, &station, &id)?;
     sees_loaded(&s, &me, &id).await?;
     s.undo(&id, &actor).await.map(Json).map_err(bad)
@@ -3797,10 +3811,9 @@ impl Viewer {
         // A simulation: only its person.
         if let Some((user, channel)) = crate::sim::parse(id) {
             return self.channel.is_none()
-                && self
-                    .user
-                    .as_ref()
-                    .is_some_and(|u| u.id == user && u.sees_channel(channel));
+                && self.user.as_ref().is_some_and(|u| {
+                    u.id == user && (channel == crate::sim::NO_OUTPUT || u.sees_channel(channel))
+                });
         }
         match (&self.user, &self.channel) {
             (_, Some(c)) => c == id,
@@ -4073,7 +4086,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                             }
                             let here = crate::sim::is_sim(&channel_id) || viewer.station.as_deref().is_some_and(|k| s.stations.of_secret(k).is_some());
                             match &now {
-                                Some(u) if !u.can_operate(crate::sim::real(&channel_id)) || !viewer.sees_channel(&channel_id) => Some("you do not have the rights to operate this channel".into()),
+                                Some(u) if !may_drive(u, &channel_id) || !viewer.sees_channel(&channel_id) => Some("you do not have the rights to operate this channel".into()),
                                 Some(_) if !here => Some("this computer is not a production station".into()),
                                 Some(u) => s.command_on(&channel_id, command, buses, &crate::antenna::Actor::user(u)).await.err(),
                                 None => Some("you do not have the rights to operate this channel".into()),

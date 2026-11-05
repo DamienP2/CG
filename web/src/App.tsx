@@ -261,7 +261,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
   else {
     // Without an output of this project, the operator still prepares and previews.
-    // Off a production station: a simulation of the project's output (none: preview only).
+    // Off a production station: a simulation of the project's output (none: in the project's format).
     const driven = station === null ? (own[0]?.id ?? null) : operated && operated.projectId === projectId ? operated.id : null;
     page = <Operator key={driven ?? 'none'} channelId={driven} />;
   }
