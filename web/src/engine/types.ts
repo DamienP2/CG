@@ -544,6 +544,32 @@ export interface FrameRate {
   den: number;
 }
 
+/** What the Designer changed in a project's settings and that waits for Publish. */
+export interface Pending {
+  zones?: Zone[];
+  formats?: Format[];
+  logic?: Logic;
+  language?: string;
+  /** The main format: width, height, frame rate. */
+  size?: [number, number, FrameRate];
+  /** Templates deleted (still in the Operator until Publish). */
+  removed?: string[];
+}
+
+/** The project as the Designer works on it: its settings waiting for Publish over the published ones. */
+export function designView(p: Project): Project {
+  const d = p.pending;
+  if (!d) return p;
+  return {
+    ...p,
+    zones: d.zones ?? p.zones,
+    formats: d.formats ?? p.formats,
+    logic: d.logic ?? p.logic,
+    language: d.language ?? p.language,
+    ...(d.size ? { width: d.size[0], height: d.size[1], frameRate: d.size[2] } : {}),
+  };
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -568,6 +594,8 @@ export interface Project {
   formats: Format[];
   /** Designer drafts not yet published (the operator uses `templates`). */
   drafts?: Template[];
+  /** Project settings changed in the Designer, waiting for Publish (the Operator uses the fields above). */
+  pending?: Pending;
   /** The empty template a new project starts with: the server removes it at a publish while it has no layer. */
   starter?: string;
   /** Designer aids (mirror of model::Guides). */

@@ -142,11 +142,21 @@ fn a_designer_drafts_publishes_and_goes_back_to_a_version() {
                 "frameRate": { "num": 25, "den": 1 } }),
     )
     .expect(204, "project settings");
+    // The name at once; the format waits for Publish (the Operator keeps 1920).
     let p = project(d, &pid);
     assert_eq!(
-        (p["name"].clone(), p["width"].clone()),
-        (json!("Renamed"), json!(1280))
+        (
+            p["name"].clone(),
+            p["width"].clone(),
+            p["pending"]["size"][0].clone()
+        ),
+        (json!("Renamed"), json!(1920), json!(1280))
     );
+    d.post_empty(&format!("/api/projects/{pid}/publish"))
+        .expect(200, "publish the new format");
+    let p = project(d, &pid);
+    assert_eq!(p["width"], 1280);
+    assert!(p["pending"].is_null(), "nothing waits");
     d.put(
         &format!("/api/projects/{pid}"),
         json!({ "name": "Bad", "width": 0, "height": 720, "frameRate": { "num": 25, "den": 1 } }),
@@ -154,11 +164,19 @@ fn a_designer_drafts_publishes_and_goes_back_to_a_version() {
     .expect(400, "an impossible format");
     d.post_empty(&format!("/api/projects/{pid}/versions/{vid}/restore"))
         .expect(204, "restore");
+    // Back as changes waiting for Publish: the Operator keeps 1280 until then.
     let p = project(d, &pid);
     assert_eq!(
-        (p["name"].clone(), p["width"].clone()),
-        (json!("Sports night"), json!(1920))
+        (
+            p["name"].clone(),
+            p["width"].clone(),
+            p["pending"]["size"][0].clone()
+        ),
+        (json!("Sports night"), json!(1280), json!(1920))
     );
+    d.delete(&format!("/api/projects/{pid}/publish"))
+        .expect(204, "discard every unpublished change");
+    assert!(project(d, &pid)["pending"].is_null());
     let versions = d.get_json(&format!("/api/projects/{pid}/versions"));
     assert!(
         versions.to_string().contains("Before restoring"),
@@ -172,6 +190,18 @@ fn a_designer_drafts_publishes_and_goes_back_to_a_version() {
         .expect(204, "delete a template");
     d.delete(&format!("/api/projects/{pid}/templates/{tid}"))
         .expect(409, "the last template");
+    // Deleted in the Designer: still in the Operator until Publish, and it can come back.
+    let p = project(d, &pid);
+    assert_eq!(p["templates"].as_array().unwrap().len(), 2);
+    assert_eq!(p["pending"]["removed"], json!(["strap"]));
+    d.delete(&format!("/api/projects/{pid}/templates/strap/removal"))
+        .expect(204, "brought back");
+    assert!(project(d, &pid)["pending"].is_null());
+    d.delete(&format!("/api/projects/{pid}/templates/strap"))
+        .expect(204, "deleted again");
+    d.post_empty(&format!("/api/projects/{pid}/publish"))
+        .expect(200, "publish the deletion");
+    assert_eq!(project(d, &pid)["templates"].as_array().unwrap().len(), 1);
 
     // Duplicated, then the copy deleted.
     let r = d.post(

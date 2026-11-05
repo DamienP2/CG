@@ -1092,6 +1092,7 @@ fn demo_project_layers() -> Project {
     data.insert("name".to_string(), "Marie Curie".to_string());
     data.insert("title".to_string(), "Physicist & chemist".to_string());
     Project {
+        pending: None,
         guides: Default::default(),
         design_order: Vec::new(),
         language: "fr".into(),

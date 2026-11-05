@@ -1,11 +1,11 @@
 import { Check, Lock, RotateCcw, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { draftOf, publishState } from '../engine/drafts';
-import type { ChannelState, Project } from '../engine/types';
+import { designView, type ChannelState, type Project } from '../engine/types';
 import { api, clientId, lockEvents, useApp, type EditLock } from '../store';
 import { useDesigner } from './designerStore';
 import { confirmDialog } from '../ui/dialogs';
-import { t, tn } from '../i18n';
+import { t } from '../i18n';
 
 /*
  * One designer at a time per template (edit lock, renewed while the template
@@ -147,24 +147,49 @@ async function onAir(project: Project, ids: string[]): Promise<string[]> {
   return out;
 }
 
-/** Asks before publishing what is on air (it changes on screen at once); the rest is published directly. */
-async function confirmPublish(project: Project, ids: string[]): Promise<boolean> {
-  const live = await onAir(project, ids);
-  if (!live.length) return true;
-  const names = ids.map((id) => project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id);
+/** What waits for Publish in a project: templates (changed, new, deleted) and settings. */
+export function unpublished(project: Project) {
+  const drafts = project.drafts ?? [];
+  const isNew = (id: string) => !project.templates.some((t) => t.id === id);
+  const removed = (project.pending?.removed ?? []).map((id) => project.templates.find((t) => t.id === id)?.name ?? id);
+  const d = project.pending;
+  const settings = [d?.zones && t('Zones'), d?.formats && t('Formats'), d?.logic && t('Project logic'), d?.language && t('Language of the texts'), d?.size && t('Main format')].filter(Boolean) as string[];
+  const templates = [...drafts.map((x) => ({ name: x.name, state: isNew(x.id) ? t('new') : t('changed') })), ...removed.map((name) => ({ name, state: t('deleted') }))];
+  return { drafts, templates, settings, count: templates.length + settings.length };
+}
+
+/** Asks before publishing: everything that goes to the Operator, and what changes on screen at once. */
+async function confirmPublish(project: Project): Promise<boolean> {
+  const u = unpublished(project);
+  const live = await onAir(project, [...u.drafts.map((d) => d.id), ...(project.pending?.removed ?? [])]);
   return confirmDialog({
-    title: ids.length > 1 ? t('Publish {n} templates?', { n: ids.length }) : t('Publish “{name}”?', { name: names[0] }),
+    title: t('Publish to the Operator?'),
     message: (
       <div className="publish-confirm">
         <p>{t('The Operator uses the new version immediately.')}</p>
-        {ids.length > 1 && (
-          <ul className="publish-list">
-            {names.map((n) => (
-              <li key={n}>{n}</li>
-            ))}
-          </ul>
+        {u.templates.length > 0 && (
+          <>
+            <span className="set-label">{t('Templates · {n}', { n: u.templates.length })}</span>
+            <ul className="publish-list">
+              {u.templates.map((x) => (
+                <li key={x.name + x.state} className={x.state === t('deleted') ? 'gone' : ''}>
+                  {x.name} <span className="badge">{x.state}</span>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
-        {live.length ? (
+        {u.settings.length > 0 && (
+          <>
+            <span className="set-label">{t('Project · {n}', { n: u.settings.length })}</span>
+            <ul className="publish-list">
+              {u.settings.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {live.length > 0 && (
           <div className="publish-onair">
             <b>{live.length > 1 ? t('On air now: they change on screen at once') : t('On air now: it changes on screen at once')}</b>
             <ul>
@@ -175,8 +200,6 @@ async function confirmPublish(project: Project, ids: string[]): Promise<boolean>
               ))}
             </ul>
           </div>
-        ) : (
-          <p className="muted">{ids.length > 1 ? t('None of them is on air.') : t('It is not on air.')}</p>
         )}
       </div>
     ),
@@ -204,21 +227,32 @@ export function TopPublish({ project, saving, readOnly }: { project: Project; sa
   const saveTemplate = useApp((s) => s.saveTemplate);
   const toast = useApp((s) => s.toast);
   const [busy, setBusy] = useState(false);
-  const changed = project.drafts ?? [];
-  const isNew = (id: string) => !project.templates.some((t) => t.id === id);
+  const u = unpublished(project);
+  const url = `/api/projects/${encodeURIComponent(project.id)}/publish`;
   const publish = async () => {
     setBusy(true);
     try {
-      if (!(await confirmPublish(project, changed.map((t) => t.id)))) return;
       const st = useDesigner.getState();
       if (st.base && !(await saveTemplate(st.base))) return;
-      const r = await api<{ name: string; revision: number }[]>('POST', `/api/projects/${encodeURIComponent(project.id)}/publish`);
-      if (r.length === 1) toast(t('Published · {name}', { name: r[0].name }), 'info');
-      else toast(tn(r.length, 'Published · {n} template', 'Published · {n} templates'), 'info');
+      if (!(await confirmPublish(useApp.getState().full[project.id] ?? project))) return;
+      await api('POST', url);
+      toast(t('Published to the Operator'), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
       setBusy(false);
+    }
+  };
+  // Every change not published yet goes: back to what the Operator uses.
+  const discard = async () => {
+    if (!(await confirmDialog({ title: t('Discard every unpublished change?'), message: t('The project goes back to what the Operator uses.'), confirm: t('Discard'), danger: true }))) return;
+    try {
+      await api('DELETE', url);
+      const st = useDesigner.getState();
+      const p = await api<Project>('GET', `/api/projects/${encodeURIComponent(project.id)}`);
+      if (st.base) st.load(draftOf(designView(p), st.base.id) ?? null);
+    } catch (e) {
+      toast((e as Error).message, 'error');
     }
   };
   let state: React.ReactNode;
@@ -232,8 +266,13 @@ export function TopPublish({ project, saving, readOnly }: { project: Project; sa
   return (
     <>
       {state}
+      {u.count > 0 && !readOnly && (
+        <button className="icon-btn ghost" title={t('Discard every unpublished change')} disabled={busy} onClick={() => void discard()}>
+          <RotateCcw size={14} />
+        </button>
+      )}
       {/* Changes waiting: Publish pulses lightly. */}
-      <button className={`btn small primary ux2-publish ${changed.length && !readOnly && !busy ? 'pending' : ''}`} disabled={busy || readOnly || !changed.length} title={changed.length ? t('Not yet in the Operator: {list}', { list: changed.map((d) => (isNew(d.id) ? t('{name} (new)', { name: d.name }) : d.name)).join(', ') }) : t('Publish to the Operator')} onClick={publish}>
+      <button className={`btn small primary ux2-publish ${u.count && !readOnly && !busy ? 'pending' : ''}`} disabled={busy || readOnly || !u.count} title={u.count ? t('Not yet in the Operator: {list}', { list: [...u.templates.map((x) => `${x.name} (${x.state})`), ...u.settings].join(', ') }) : t('Publish to the Operator')} onClick={publish}>
         <Upload size={13} /> {busy ? t('Publishing…') : t('Publish')}
       </button>
     </>

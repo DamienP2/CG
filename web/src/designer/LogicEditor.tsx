@@ -242,8 +242,10 @@ function fits(n: LogicNode, want: { type: PortType; side: 'in' | 'out' }): Port 
 }
 
 /** The Logic: what the graphic draws (values, conditions) and what happens on air (events, triggers, actions, variables), one graph. */
-export function LogicEditor({ onClose }: { onClose: () => void }) {
-  const id = useDesigner((s) => s.template?.id);
+export function LogicEditor({ onClose, ofProject }: { onClose: () => void; ofProject?: boolean }) {
+  const open = useDesigner((s) => s.template?.id);
+  // The project's Logic when asked for, or with no graphic open.
+  const id = ofProject ? undefined : open;
   const project = useApp((s) => s.project);
   const projectTpl = useProjectLogic((s) => s.template);
   // No graphic selected: the project's Logic.

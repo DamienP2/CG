@@ -272,7 +272,7 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
       const p = await api<Project>('GET', url).catch(() => null);
       d.load((p && draftOf(p, d.base.id)) ?? null);
     }
-    toast(t('Version restored'), 'info');
+    toast(t('Version restored: publish to send it to the Operator'), 'info');
     void loadVersions();
   };
 

@@ -96,7 +96,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/guides", put(put_guides))
         .route("/api/projects/{id}/logic", put(put_logic))
         .route("/api/projects/{id}/design-order", put(put_design_order))
-        .route("/api/projects/{id}/publish", post(publish_project))
+        .route(
+            "/api/projects/{id}/publish",
+            post(publish_project).delete(discard_project),
+        )
         .route(
             "/api/projects/{id}/versions",
             get(list_versions).post(create_version),
@@ -116,6 +119,10 @@ pub fn router() -> Router<Shared> {
         .route(
             "/api/projects/{id}/templates/{tid}/draft",
             axum::routing::delete(discard_draft),
+        )
+        .route(
+            "/api/projects/{id}/templates/{tid}/removal",
+            axum::routing::delete(keep_template),
         )
         .route(
             "/api/projects/{id}/templates/{tid}/lock",
@@ -748,6 +755,7 @@ async fn create_project(
             p
         }
         None => Project {
+            pending: None,
             guides: Default::default(),
             design_order: Vec::new(),
             language: "fr".into(),
@@ -1121,6 +1129,7 @@ async fn import_create(
         "this import has expired: open the file again".to_string(),
     ))?;
     let mut p = Project {
+        pending: None,
         guides: Default::default(),
         design_order: Vec::new(),
         language: "fr".into(),
@@ -1339,12 +1348,17 @@ async fn put_project_meta(
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     p.name = m.name.trim().to_string();
     p.description = m.description;
-    p.width = m.width;
-    p.height = m.height;
-    p.frame_rate = m.frame_rate;
-    if let Some(l) = m.language.filter(|l| !l.trim().is_empty()) {
-        p.language = l.trim().to_string();
-    }
+    // What changes the picture waits for Publish.
+    let language = m
+        .language
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.trim().to_string());
+    p.edit_pending(|d| {
+        d.size = Some((m.width, m.height, m.frame_rate));
+        if language.is_some() {
+            d.language = language;
+        }
+    });
     if let Some(secs) = m.template_secs.filter(|s| s.is_finite() && *s > 0.0) {
         p.template_secs = Some(secs.clamp(0.1, 600.0));
     }
@@ -1553,6 +1567,20 @@ async fn publish_project(
     let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    if !p.has_unpublished() {
+        return Ok(Json(Vec::new()));
+    }
+    // The settings first (the templates removed are not published).
+    let zones_before = p.zones.clone();
+    let settings = p.pending.as_ref().is_some_and(|d| {
+        d.zones.is_some()
+            || d.formats.is_some()
+            || d.logic.is_some()
+            || d.language.is_some()
+            || d.size.is_some()
+    });
+    let removed = p.publish_pending();
+    let moves = zone_moves(&zones_before, &p.zones);
     let ids: Vec<String> = p.drafts.iter().map(|t| t.id.clone()).collect();
     let mut out = Vec::new();
     for tid in ids {
@@ -1565,20 +1593,30 @@ async fn publish_project(
             });
         }
     }
-    if out.is_empty() {
-        return Ok(Json(out));
-    }
     if let Some(gone) = p.drop_empty_starter() {
         out.retain(|x| x.id != gone);
     }
     let p = s.save_project(p).await.map_err(internal)?;
-    let names: Vec<&str> = out.iter().map(|x| x.name.as_str()).collect();
-    let note = format!(
-        "Published {} template{}: {}",
-        out.len(),
-        if out.len() > 1 { "s" } else { "" },
-        names.join(", ")
-    );
+    if !moves.is_empty() {
+        s.move_layers(&id, &moves).await;
+    }
+    let mut parts = Vec::new();
+    if !out.is_empty() {
+        let names: Vec<&str> = out.iter().map(|x| x.name.as_str()).collect();
+        parts.push(format!(
+            "Published {} template{}: {}",
+            out.len(),
+            if out.len() > 1 { "s" } else { "" },
+            names.join(", ")
+        ));
+    }
+    if !removed.is_empty() {
+        parts.push(format!("Deleted: {}", removed.join(", ")));
+    }
+    if settings {
+        parts.push("Project settings".into());
+    }
+    let note = parts.join(" · ");
     if let Err(e) = s.library.read().await.save_version(&p, who(&me), &note) {
         tracing::warn!("cannot keep a version: {e}");
     }
@@ -1671,8 +1709,34 @@ async fn restore_version(
         .await
         .save_version(&current, who(&me), "Before restoring an older version")
         .map_err(internal)?;
+    // Back as drafts and settings waiting for Publish: nothing changes on air.
     old.id = id;
-    s.save_project(old).await.map_err(internal)?;
+    let mut p = (*current).clone();
+    p.drafts.clear();
+    p.pending = None;
+    for t in old.templates.iter().chain(old.drafts.iter()) {
+        p.save_draft(t.clone());
+    }
+    let gone: Vec<String> = p
+        .templates
+        .iter()
+        .filter(|t| old.template(&t.id).is_none() && !old.drafts.iter().any(|d| d.id == t.id))
+        .map(|t| t.id.clone())
+        .collect();
+    p.edit_pending(|d| {
+        d.zones = Some(old.zones.clone());
+        d.formats = Some(old.formats.clone());
+        d.logic = Some(old.logic.clone());
+        d.language = Some(old.language.clone());
+        d.size = Some((old.width, old.height, old.frame_rate));
+        d.removed = gone;
+    });
+    p.name = old.name;
+    p.description = old.description;
+    p.guides = old.guides;
+    p.design_order = old.design_order;
+    p.colors = old.colors;
+    s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1793,19 +1857,64 @@ async fn delete_template(
         ));
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    if p.design_templates().all(|t| t.id == tid) {
+    let removed = p
+        .pending
+        .as_ref()
+        .map(|d| d.removed.clone())
+        .unwrap_or_default();
+    if p.design_templates()
+        .filter(|t| !removed.contains(&t.id))
+        .all(|t| t.id == tid)
+    {
         return Err((
             StatusCode::CONFLICT,
             "a project keeps at least one template".into(),
         ));
     }
-    let before = p.templates.len() + p.drafts.len();
-    p.templates.retain(|t| t.id != tid);
-    p.drafts.retain(|t| t.id != tid);
-    if p.templates.len() + p.drafts.len() == before {
-        return Err(not_found("template"));
+    if p.template(&tid).is_some() {
+        // In the Operator: it goes at Publish (until then it can come back).
+        p.edit_pending(|d| d.removed.push(tid.clone()));
+    } else {
+        // Never published: no one else has it.
+        let before = p.drafts.len();
+        p.drafts.retain(|t| t.id != tid);
+        if p.drafts.len() == before {
+            return Err(not_found("template"));
+        }
+        p.rundown.retain(|r| r.template_id != tid);
     }
-    p.rundown.retain(|r| r.template_id != tid);
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Brings back a template deleted in the Designer, before Publish.
+async fn keep_template(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, tid)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    p.edit_pending(|d| d.removed.retain(|x| x != &tid));
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Drops every change waiting for Publish (templates and settings): the
+/// Designer is back to what the Operator uses.
+async fn discard_project(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    // Templates never published stay (as drafts): they are no one's change.
+    p.drafts
+        .retain(|d| p.templates.iter().all(|t| t.id != d.id));
+    p.pending = None;
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1877,7 +1986,8 @@ async fn put_zones(
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     // Only zones removed now count: a draft already pointing to an unknown
     // zone (it plays in the default one) does not block every zone change.
-    let kept = |z: &str| zones.iter().any(|x| x.id == z) || !p.zones.iter().any(|x| x.id == z);
+    let kept =
+        |z: &str| zones.iter().any(|x| x.id == z) || !p.design_zones().iter().any(|x| x.id == z);
     if let Some(t) = p.templates.iter().chain(&p.drafts).find(|t| !kept(&t.zone)) {
         return Err(bad(format!(
             "template “{}” still plays in a removed zone; move it first",
@@ -1894,22 +2004,21 @@ async fn put_zones(
             r.name
         )));
     }
-    let moves: Vec<(u32, u32)> = p
-        .zones
-        .iter()
-        .filter_map(|old| {
-            zones
-                .iter()
-                .find(|n| n.id == old.id && n.layer != old.layer)
-                .map(|n| (old.layer, n.layer))
-        })
-        .collect();
-    p.zones = zones;
+    // On air at Publish.
+    p.edit_pending(|d| d.zones = Some(zones));
     s.save_project(p).await.map_err(internal)?;
-    if !moves.is_empty() {
-        s.move_layers(&id, &moves).await;
-    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The layers of the zones whose layer changed (old → new).
+fn zone_moves(old: &[cg_core::Zone], new: &[cg_core::Zone]) -> Vec<(u32, u32)> {
+    old.iter()
+        .filter_map(|o| {
+            new.iter()
+                .find(|n| n.id == o.id && n.layer != o.layer)
+                .map(|n| (o.layer, n.layer))
+        })
+        .collect()
 }
 
 /// Replaces the playlists (rundown sections). Items of a removed playlist
@@ -2029,7 +2138,8 @@ async fn put_logic(
         return Err(bad("too many nodes"));
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    p.logic = logic;
+    // On air at Publish.
+    p.edit_pending(|d| d.logic = Some(logic));
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2070,12 +2180,14 @@ async fn put_formats(
         check_format(f.width, f.height, FrameRate::new(1, 1))?;
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    for t in p.templates.iter_mut().chain(p.drafts.iter_mut()) {
+    // The drafts lose the settings of a removed format; the published
+    // templates at Publish (with the formats).
+    for t in p.drafts.iter_mut() {
         for l in &mut t.layers {
             l.overrides.retain(|k, _| ids.contains(k));
         }
     }
-    p.formats = formats;
+    p.edit_pending(|d| d.formats = Some(formats));
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }

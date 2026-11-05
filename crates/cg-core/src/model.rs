@@ -2268,6 +2268,32 @@ pub struct Project {
     /// while the project is loaded on a channel (nothing needs to be on air).
     #[serde(default, skip_serializing_if = "crate::logic::Logic::is_empty")]
     pub logic: crate::logic::Logic,
+    /// Project settings changed in the Designer, not published yet: the
+    /// Operator and the outputs use the fields above until Publish.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending: Option<Box<Pending>>,
+}
+
+/// The project settings the Designer changed and that wait for Publish
+/// (each one set only when it differs from the published one), and the
+/// templates deleted in the Designer (still in the Operator until then).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pending {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zones: Option<Vec<Zone>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formats: Option<Vec<Format>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logic: Option<crate::logic::Logic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// The main format: (width, height, frame rate).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<(u32, u32, FrameRate)>,
+    /// Templates deleted, by id.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<String>,
 }
 
 /// A flow of logic kept in the Library (Library › Logic): nodes, their
@@ -2318,6 +2344,7 @@ impl Project {
             playlists: Vec::new(),
             drafts: Vec::new(),
             logic_flows: Vec::new(),
+            pending: None,
             ..self.clone()
         }
     }
@@ -2561,6 +2588,95 @@ impl Project {
             Some(d) => *d = t,
             None => self.drafts.push(t),
         }
+    }
+
+    /// The zones as the Designer sees them (waiting for Publish, else on air).
+    pub fn design_zones(&self) -> &[Zone] {
+        self.pending
+            .as_ref()
+            .and_then(|p| p.zones.as_deref())
+            .unwrap_or(&self.zones)
+    }
+
+    /// The other formats as the Designer sees them.
+    pub fn design_formats(&self) -> &[Format] {
+        self.pending
+            .as_ref()
+            .and_then(|p| p.formats.as_deref())
+            .unwrap_or(&self.formats)
+    }
+
+    /// Changes the settings waiting for Publish; a value set back to the
+    /// published one is no longer waiting.
+    pub fn edit_pending(&mut self, f: impl FnOnce(&mut Pending)) {
+        let mut p = self.pending.take().map(|b| *b).unwrap_or_default();
+        f(&mut p);
+        if p.zones.as_ref() == Some(&self.zones) {
+            p.zones = None;
+        }
+        if p.formats.as_ref() == Some(&self.formats) {
+            p.formats = None;
+        }
+        if p.logic.as_ref() == Some(&self.logic) {
+            p.logic = None;
+        }
+        if p.language.as_ref() == Some(&self.language) {
+            p.language = None;
+        }
+        if p.size == Some((self.width, self.height, self.frame_rate)) {
+            p.size = None;
+        }
+        p.removed.retain(|id| self.template(id).is_some());
+        p.removed.dedup();
+        self.pending = (p != Pending::default()).then(|| Box::new(p));
+    }
+
+    /// Something waits for Publish (a template, a setting, a deletion).
+    pub fn has_unpublished(&self) -> bool {
+        !self.drafts.is_empty() || self.pending.is_some()
+    }
+
+    /// Applies the settings waiting for Publish (the templates' drafts are
+    /// published one by one with [`Project::publish`]). Returns the names
+    /// of the templates deleted.
+    pub fn publish_pending(&mut self) -> Vec<String> {
+        let Some(p) = self.pending.take().map(|b| *b) else {
+            return Vec::new();
+        };
+        if let Some(z) = p.zones {
+            self.zones = z;
+        }
+        if let Some(f) = p.formats {
+            self.formats = f;
+        }
+        if let Some(l) = p.logic {
+            self.logic = l;
+        }
+        if let Some(l) = p.language {
+            self.language = l;
+        }
+        if let Some((w, h, r)) = p.size {
+            (self.width, self.height, self.frame_rate) = (w, h, r);
+        }
+        let names: Vec<String> = p
+            .removed
+            .iter()
+            .filter_map(|id| self.template(id).map(|t| t.name.clone()))
+            .collect();
+        for id in &p.removed {
+            self.templates.retain(|t| &t.id != id);
+            self.drafts.retain(|t| &t.id != id);
+            self.rundown.retain(|r| &r.template_id != id);
+        }
+        // What other formats a template keeps: the project's.
+        let formats: Vec<String> = self.formats.iter().map(|f| f.id.clone()).collect();
+        for t in self.templates.iter_mut().chain(self.drafts.iter_mut()) {
+            for l in &mut t.layers {
+                l.overrides
+                    .retain(|k, _| k == MAIN_FORMAT || formats.contains(k));
+            }
+        }
+        names
     }
 
     /// Publishes a template's draft: the operator and the outputs use it

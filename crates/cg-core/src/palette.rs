@@ -74,33 +74,46 @@ pub fn changes(old: &[NamedColor], new: &[NamedColor]) -> Vec<(Color, Color)> {
 }
 
 impl Project {
-    /// Replaces the colours in the templates, drafts and rundown (the
-    /// palette changed them). True when something changed.
+    /// Replaces the colours as the palette changed them, in what the
+    /// Designer works on: the drafts (a published template that uses them
+    /// gets a draft: on air at Publish) and the rundown's values. True when
+    /// something changed.
     pub fn replace_colors(&mut self, changes: &[(Color, Color)]) -> bool {
         if changes.is_empty() {
             return false;
         }
-        let Ok(mut v) = serde_json::to_value(&*self) else {
-            return false;
+        let swap = |x: &mut serde_json::Value| {
+            changes
+                .iter()
+                .map(|(from, to)| replace(x, *from, *to))
+                .sum::<usize>()
         };
         let mut n = 0;
-        for (from, to) in changes {
-            for part in ["templates", "drafts", "rundown"] {
-                if let Some(x) = v.get_mut(part) {
-                    n += replace(x, *from, *to);
+        let mut drafts = Vec::new();
+        // Each template as the Designer sees it (its draft, else the published one).
+        for t in self.design_templates() {
+            let Ok(mut v) = serde_json::to_value(t) else {
+                continue;
+            };
+            if swap(&mut v) > 0 {
+                if let Ok(t) = serde_json::from_value::<crate::Template>(v) {
+                    drafts.push(t);
                 }
             }
         }
-        if n == 0 {
-            return false;
+        for t in drafts {
+            n += 1;
+            self.save_draft(t);
         }
-        match serde_json::from_value(v) {
-            Ok(p) => {
-                *self = p;
-                true
+        if let Ok(mut v) = serde_json::to_value(&self.rundown) {
+            if swap(&mut v) > 0 {
+                if let Ok(r) = serde_json::from_value(v) {
+                    self.rundown = r;
+                    n += 1;
+                }
             }
-            Err(_) => false,
         }
+        n > 0
     }
 }
 

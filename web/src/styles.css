@@ -21120,3 +21120,18 @@ textarea.tx-grow {
   padding: 5px 10px;
   font-size: var(--fs-12);
 }
+
+/* Designer: a template deleted, still in the Operator until Publish. */
+.template-item.removed img,
+.template-item.removed .tpl-text {
+  opacity: 0.45;
+}
+.template-item.removed .tpl-name {
+  text-decoration: line-through;
+}
+.template-item.removed .item-actions {
+  opacity: 1;
+}
+.publish-list li.gone {
+  text-decoration: line-through;
+}

@@ -197,6 +197,11 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   const summary = projects.find((p) => p.id === projectId);
   const known = !!summary || !connected || !projects.length;
 
+  // The Designer sees the project's settings waiting for Publish, the Operator the published ones.
+  useEffect(() => {
+    useApp.getState().setDesigning(sub === 'designer');
+    return () => useApp.getState().setDesigning(false);
+  }, [sub]);
   useEffect(() => {
     remember(LAST_PROJECT, projectId);
     if (useApp.getState().projectId !== projectId) openProject(projectId);

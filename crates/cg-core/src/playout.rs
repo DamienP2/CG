@@ -3121,6 +3121,7 @@ mod tests {
 
     fn project() -> Project {
         Project {
+            pending: None,
             guides: Default::default(),
             design_order: Vec::new(),
             language: "fr".into(),

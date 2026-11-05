@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
 import { setDefaultTz } from './engine/expr';
-import type { ChannelInfo, ChannelState, Command, DataStatus, Project, ProjectSummary, RundownItem, Template, User, Zone } from './engine/types';
+import { designView, type ChannelInfo, type ChannelState, type Command, type DataStatus, type Project, type ProjectSummary, type RundownItem, type Template, type User, type Zone } from './engine/types';
 
 type ServerEvent =
   | { type: 'hello'; user: User | null; serverName: string; serverTime: number; timezone: string; channels: ChannelInfo[]; projects: ProjectSummary[] }
@@ -77,6 +77,9 @@ interface AppStore {
   station?: { id: string; name: string } | null;
   /** Connections to the server so far (a new one: the engine may have restarted). */
   connections?: number;
+  /** The Designer is open: `project` is as it designs it (settings waiting for Publish). */
+  designing?: boolean;
+  setDesigning: (on: boolean) => void;
   connected: boolean;
   /** Server clock − client clock, ms. */
   serverOffset: number;
@@ -234,12 +237,21 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export const useApp = create<AppStore>((set, get) => {
   /** Keeps `project` in sync with the cache and the selection. */
-  const select = (projectId: string | null, full = get().full) => ({ projectId, project: (projectId && full[projectId]) || null });
+  // The Designer works on the settings waiting for Publish; the Operator on the published ones.
+  const select = (projectId: string | null, full = get().full) => {
+    const p = (projectId && full[projectId]) || null;
+    return { projectId, project: p && get().designing ? designView(p) : p };
+  };
 
   return {
     auth: null,
     elsewhere: false,
     connected: false,
+    setDesigning(on) {
+      if (!!get().designing === on) return;
+      set({ designing: on });
+      set(select(get().projectId));
+    },
     serverOffset: 0,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     channels: [],
@@ -454,7 +466,7 @@ export const useApp = create<AppStore>((set, get) => {
       const p = get().project;
       if (!p) return;
       const before = p.rundown;
-      const full = { ...get().full, [p.id]: { ...p, rundown: r } };
+      const full = { ...get().full, [p.id]: { ...(get().full[p.id] ?? p), rundown: r } };
       set({ full, ...select(p.id, full) });
       try {
         // Only this change: another operator's edits made meanwhile are kept.

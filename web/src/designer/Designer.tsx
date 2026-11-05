@@ -1,4 +1,4 @@
-import { BookmarkPlus, Copy, GripVertical, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
+import { BookmarkPlus, Copy, GripVertical, Link2, Plus, Redo2, RotateCcw, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown } from '../ui/Dropdown';
@@ -197,7 +197,7 @@ function duplicateSelection() {
 /** The files a template can be made from. */
 const TEMPLATE_FILES = '.psd,.psb,.svg,.mogrt,.aep,.json,.zip,.lottie';
 
-function TemplateList({ project }: { project: Project }) {
+function TemplateList({ project, onProjectLogic }: { project: Project; onProjectLogic: () => void }) {
   // Not the playhead: the list is not drawn again on each frame of the playback.
   const { template, load, format } = useDesigner(useShallow((s) => ({ template: s.template, load: s.load, format: s.format })));
   const saveTemplate = useApp((s) => s.saveTemplate);
@@ -281,6 +281,10 @@ function TemplateList({ project }: { project: Project }) {
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
         <div className="header-actions">
+          {/* The project's Logic, whatever template is open. */}
+          <button className={`btn small ${project.logic?.nodes.length ? 'has' : ''}`} onClick={onProjectLogic} title={t('Rules between graphics and playlists')}>
+            <Link2 size={13} /> {t('Logic · project')}
+          </button>
           <button className="opx-add" title={t('New template')} disabled={importing} onClick={openNew}>
             <Plus size={15} />
           </button>
@@ -379,10 +383,13 @@ function TemplateList({ project }: { project: Project }) {
       {designTemplates(project).map((tpl) => {
         const { published, draft } = publishState(project, tpl.id);
         const unpublished = draft || !published;
+        // Deleted, still in the Operator until Publish.
+        const removed = !!project.pending?.removed?.includes(tpl.id);
+        const kept = designTemplates(project).filter((x) => !project.pending?.removed?.includes(x.id)).length;
         return (
           <div
             key={tpl.id}
-            className={`template-item ${template?.id === tpl.id ? 'selected' : ''} ${dragging === tpl.id ? 'dragging' : ''} ${dropAt?.id === tpl.id && dragging !== tpl.id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
+            className={`template-item ${removed ? 'removed' : ''} ${template?.id === tpl.id ? 'selected' : ''} ${dragging === tpl.id ? 'dragging' : ''} ${dropAt?.id === tpl.id && dragging !== tpl.id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.effectAllowed = 'move';
@@ -420,7 +427,21 @@ function TemplateList({ project }: { project: Project }) {
                 ) : null;
               })()}
             </span>
-            {unpublished && <span className="tpl-draft" title={published ? t('Changes not in the Operator yet: click Publish at the top') : t('New, not in the Operator yet: click Publish at the top')} />}
+            {unpublished && !removed && <span className="tpl-draft" title={published ? t('Changes not in the Operator yet: click Publish at the top') : t('New, not in the Operator yet: click Publish at the top')} />}
+            {removed ? (
+              <div className="item-actions">
+                <button
+                  className="icon-btn ghost"
+                  title={t('Restore')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void api('DELETE', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(tpl.id)}/removal`).catch((err) => toast(friendlyError((err as Error).message), 'error'));
+                  }}
+                >
+                  <RotateCcw size={12} />
+                </button>
+              </div>
+            ) : (
             <div className="item-actions">
               <button className="icon-btn ghost" title={t('Save in the library…')} onClick={(e) => (e.stopPropagation(), setToLibrary(tpl))}>
                 <BookmarkPlus size={12} />
@@ -430,8 +451,8 @@ function TemplateList({ project }: { project: Project }) {
               </button>
               <button
                 className="icon-btn ghost"
-                title={designTemplates(project).length < 2 ? t('A project keeps at least one template') : t('Delete')}
-                disabled={designTemplates(project).length < 2}
+                title={kept < 2 ? t('A project keeps at least one template') : t('Delete')}
+                disabled={kept < 2}
                 onClick={async (e) => {
                   e.stopPropagation();
                   if (!(await confirmDialog({ title: t('Delete the template “{name}”?', { name: tpl.name }), message: t('Rundown items using it are removed too.'), confirm: t('Delete'), danger: true }))) return;
@@ -442,6 +463,7 @@ function TemplateList({ project }: { project: Project }) {
                 <Trash2 size={12} />
               </button>
             </div>
+            )}
           </div>
         );
       })}
@@ -465,10 +487,11 @@ export const Designer = memo(function Designer() {
   const [topSlot, setTopSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setTopSlot(document.getElementById('topbar-slot')), []);
   const [showZones, setShowZones] = useDisplayPref('designer.zones', true);
-  const [logicOpen, setLogicOpen] = useState(false);
+  // The Logic open: the graphic's, or the project's.
+  const [logicOpen, setLogicOpen] = useState<'template' | 'project' | null>(null);
   // A marker set to « Logique » opens it.
   useEffect(() => {
-    const open = () => setLogicOpen(true);
+    const open = () => setLogicOpen('template');
     window.addEventListener('strata:open-triggers', open);
     return () => window.removeEventListener('strata:open-triggers', open);
   }, []);
@@ -592,7 +615,7 @@ export const Designer = memo(function Designer() {
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={320} onChange={(v) => setLayout('left', v)} />
         <ProjectPanel project={project} readOnly={lock.state.status === 'held'} />
-        <TemplateList project={project} />
+        <TemplateList project={project} onProjectLogic={() => setLogicOpen('project')} />
       </aside>
       <main className="center">
         <div className="toolbar">
@@ -612,13 +635,9 @@ export const Designer = memo(function Designer() {
             )}
           <FormatBar project={project} />
           <div className="spacer" />
-          {template ? (
-            <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Events, triggers, actions, variables')}>
+          {template && (
+            <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen('template')} title={t('Events, triggers, actions, variables')}>
               <Link2 size={13} /> {t('Logic')}
-            </button>
-          ) : (
-            <button className={`btn small ${project.logic?.nodes.length ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Rules between graphics and playlists')}>
-              <Link2 size={13} /> {t('Logic · project')}
             </button>
           )}
           <DisplayMenu
@@ -651,7 +670,7 @@ export const Designer = memo(function Designer() {
         <Timeline fps={fps} leftW={layersW} onAdd={add} />
       </div>
       {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}
-      {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
+      {logicOpen && <LogicEditor ofProject={logicOpen === 'project'} onClose={() => setLogicOpen(null)} />}
       <TableEditor />
       <PasteDialog />
       <AnimationsDialog />
