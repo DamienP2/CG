@@ -1,4 +1,4 @@
-import { ArrowRightToLine, MessagesSquare, Database, FolderOpen, Library as LibraryIcon, MonitorPlay, PenTool, Radio, Server, TriangleAlert } from 'lucide-react';
+import { ArrowRightToLine, Crosshair, MessagesSquare, Database, FolderOpen, Library as LibraryIcon, MonitorPlay, PenTool, Radio, Server, TriangleAlert } from 'lucide-react';
 import { needsLook, useHealth, useHealthStore } from './perf/health';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
@@ -96,7 +96,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'outputs' || route.page === 'inputs') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'outputs' || route.page === 'inputs' || route.page === 'tracking') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -140,7 +140,7 @@ function Toasts({ quiet }: { quiet: boolean }) {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'system' | 'shortcuts' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'tracking' | 'system' | 'shortcuts' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata Graphics';
@@ -153,7 +153,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
   const entry = (id: Route['page'], path: string, icon: React.ReactNode, label: string): NavEntry => ({ id, path, icon, label });
   const admin = can.admin(user);
   const health = useHealthStore((x) => x.health);
-  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Output streams')), entry('inputs', '/inputs', <ArrowRightToLine size={14} />, t('Video inputs'))] : [];
+  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Output streams')), entry('inputs', '/inputs', <ArrowRightToLine size={14} />, t('Video inputs')), entry('tracking', '/tracking', <Crosshair size={14} />, tc('page', 'Camera tracking'))] : [];
   return (
     <>
       <nav className="topbar">
@@ -177,7 +177,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {route.page === 'projects' && <Projects />}
           {route.page === 'media' && <MediaLibrary />}
           {route.page === 'data' && <DataPage />}
-          {(route.page === 'outputs' || route.page === 'inputs') && <Outputs mode={route.page} />}
+          {(route.page === 'outputs' || route.page === 'inputs' || route.page === 'tracking') && <Outputs mode={route.page} />}
           {route.page === 'system' && <SystemPage section={route.section} />}
           {route.page === 'shortcuts' && <ShortcutsScreen />}
         </Suspense>

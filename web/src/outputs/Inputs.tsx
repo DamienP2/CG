@@ -1,4 +1,4 @@
-import { Cpu, Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
+import { Cpu, Crosshair, Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
@@ -35,7 +35,6 @@ const KINDS: { value: InputKind; label: string; badge: string }[] = [
   { value: 'ndi', label: 'NDI', badge: 'NDI' },
   { value: 'sdi', label: 'SDI', badge: 'SDI' },
   { value: 'st2110', label: 'ST 2110', badge: 'ST 2110' },
-  { value: 'tracking', label: 'Camera tracking', badge: 'TRACKING' },
 ];
 const badgeOf = (k: InputKind) => KINDS.find((x) => x.value === k)?.badge ?? k.toUpperCase();
 const SCHEMES: Partial<Record<InputKind, RegExp>> = { srt: /^srt:/i, udp: /^udp:/i, rtmp: /^rtmps?:/i, hls: /^https?:/i, rtsp: /^rtsps?:/i };
@@ -103,8 +102,8 @@ const WAITING = /^(Starting…|Waiting for the sender…|Waiting for the camera�
 
 type Tone = 'ok' | 'warn' | 'idle';
 
-export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: ServerConfig; edit: (fn: (c: ServerConfig) => void) => void }) {
-  const inputs = cfg.inputs ?? [];
+export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: ServerConfig; saved: ServerConfig; edit: (fn: (c: ServerConfig) => void) => void; /** The tracked cameras (Diffusion › Camera tracking), else the video inputs. */ tracking?: boolean }) {
+  const inputs = (cfg.inputs ?? []).filter((i) => (i.kind === 'tracking') === tracking);
   const [sel, setSel] = useState<string | null>(null);
   const [status, setStatus] = useState<InputInfo[]>([]);
   const metrics = useMetrics();
@@ -148,10 +147,17 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
   const hwChoices = (k: InputKind) => (k === 'sdi' ? hw.sdi.inputs.map((d) => ({ id: d.id, name: d.name })) : k === 'st2110' ? inFlows.map((f) => ({ id: f.id, name: f.name })) : []);
 
   const add = () => {
-    const ids = new Set(inputs.map((i) => i.id));
+    const ids = new Set((cfg.inputs ?? []).map((i) => i.id));
     let n = 1;
     while (ids.has(`input-${n}`)) n++;
     const id = `input-${n}`;
+    if (tracking) {
+      // OpenTrackIO: the multicast group of source 1, on its port.
+      const cams = inputs.length + 1;
+      edit((c) => void (c.inputs ??= []).push({ id, name: t('Camera {n}', { n: cams }), kind: 'tracking', url: '', port: 55555, multicast: true, source: 1, delay: 0, listen: false, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25, buffer: 2, hwDecode: false }));
+      setSel(id);
+      return;
+    }
     // An SRT listener on a port nothing else uses.
     const urls = [...inputs.map((i) => i.url), ...cfg.channels.flatMap((ch) => [ch.outputs, ...(ch.renditions ?? []).map((r) => r.outputs)].flatMap((o) => (o.streams ?? []).map((s) => s.url)))];
     let port = 10000;
@@ -181,14 +187,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
         i.port = portOf(i);
         i.url = '';
       }
-      // Camera tracking: OpenTrackIO's multicast group of source 1, on its port.
-      if (k === 'tracking') {
-        i.url = '';
-        i.port = 55555;
-        i.multicast = true;
-        i.source = 1;
-        i.delay = 0;
-      }
       // SDI and ST 2110: the first input Hardware declares.
       if (needsHardware(k)) {
         i.hardware = hwChoices(k)[0]?.id ?? '';
@@ -204,8 +202,8 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
     <div className="outputs-page">
       <aside className="lib-nav">
         <div className="lib-nav-section">
-          <span className="grow">{t('Inputs')}</span>
-          <button className="icon-btn ghost" title={t('Add an input')} onClick={add}>
+          <span className="grow">{tracking ? t('Cameras') : t('Inputs')}</span>
+          <button className="icon-btn ghost" title={tracking ? t('Add a camera') : t('Add an input')} onClick={add}>
             <Plus size={14} />
           </button>
         </div>
@@ -220,9 +218,11 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                 <small title={st.text}>{st.text}</small>
               </span>
               <Rate m={rates(i.id)} />
-              <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
-                {badgeText(i)}
-              </span>
+              {!tracking && (
+                <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
+                  {badgeText(i)}
+                </span>
+              )}
             </div>
           );
         })}
@@ -231,15 +231,15 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
       <main className="oc-main">
         <header className="oc-head">
           <div>
-            <h1>{t('Inputs')}</h1>
+            <h1>{tracking ? tc('page', 'Camera tracking') : t('Inputs')}</h1>
             <span className="muted small">
-              {tn(inputs.length, '{n} input', '{n} inputs')} · {t('{n} receiving', { n: liveCount })}
+              {tracking ? tn(inputs.length, '{n} camera', '{n} cameras') : tn(inputs.length, '{n} input', '{n} inputs')} · {t('{n} receiving', { n: liveCount })}
             </span>
           </div>
           <div className="spacer" />
           <div className="oc-tools">
             <button className="oc-tool" onClick={add}>
-              <Video size={15} color={COLOR} /> {t('Add an input')}
+              {tracking ? <Crosshair size={15} color={COLOR} /> : <Video size={15} color={COLOR} />} {tracking ? t('Add a camera') : t('Add an input')}
             </button>
           </div>
         </header>
@@ -248,8 +248,8 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
           <div className="vs-grid-wrap">
             {inputs.length === 0 ? (
               <div className="vs-empty">
-                <VideoOff size={28} />
-                <p>{t('No input')}</p>
+                {tracking ? <Crosshair size={28} /> : <VideoOff size={28} />}
+                <p>{tracking ? t('No camera') : t('No input')}</p>
               </div>
             ) : (
               <div className="vs-grid">
@@ -261,9 +261,11 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                       <span className="vs-tile-head">
                         <OnSwitch on={i.enabled !== false} mini onChange={(v) => setOn(i.id, v)} />
                         <strong>{i.name || i.id}</strong>
-                        <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
-                          {badgeText(i)}
-                        </span>
+                        {!tracking && (
+                          <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
+                            {badgeText(i)}
+                          </span>
+                        )}
                       </span>
                       <span className="vs-tile-status" title={st.text}>
                         <span className={`oc-dot ${st.tone}`} />
@@ -326,7 +328,7 @@ function Inspector({
       <div className="oc-ins-head" style={{ ['--k' as string]: COLOR }}>
         <span className="oc-swatch" />
         <div className="grow">
-          <small>{t('Input')}</small>
+          <small>{i.kind === 'tracking' ? t('Camera') : t('Input')}</small>
           <strong>{i.name || i.id}</strong>
         </div>
         <OnSwitch on={i.enabled !== false} onChange={setOn} label={i.enabled !== false ? tc('output', 'On') : tc('output', 'Off')} />
@@ -369,6 +371,7 @@ function Inspector({
       <Field label={t('Name')}>
         <input value={i.name} onChange={(e) => editInput((x) => void (x.name = e.target.value))} />
       </Field>
+      {i.kind !== 'tracking' && (
       <Field label={t('Type')}>
         <Dropdown
           value={i.kind}
@@ -380,6 +383,7 @@ function Inspector({
           onChange={setKind}
         />
       </Field>
+      )}
 
       {isStream(i.kind) && (
         <>
@@ -533,7 +537,7 @@ function Inspector({
       )}
 
       <button className="btn small danger" onClick={remove}>
-        <Trash2 size={13} /> {t('Remove the input')}
+        <Trash2 size={13} /> {i.kind === 'tracking' ? t('Remove the camera') : t('Remove the input')}
       </button>
     </>
   );

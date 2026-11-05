@@ -6,6 +6,7 @@ export type Route =
   | { page: 'media' }
   | { page: 'outputs' }
   | { page: 'inputs' }
+  | { page: 'tracking' }
   | { page: 'data' }
   /** Administration and supervision, one page: `section` (empty: the first one this user has). */
   | { page: 'system'; section: SystemSection | '' }
@@ -77,6 +78,8 @@ export function parseRoute(path = location.pathname): Route {
       return { page: 'outputs' };
     case 'inputs':
       return { page: 'inputs' };
+    case 'tracking':
+      return { page: 'tracking' };
     case 'data':
       return { page: 'data' };
     case 'mos':

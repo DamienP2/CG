@@ -265,7 +265,7 @@ const unique = (base: string, taken: Set<string>) => {
 /** Node positions, per browser (moving a node does not restart the outputs). */
 const LAYOUT_KEY = 'pulse.outputsLayout';
 type Layout = Record<string, Record<string, { x: number; y: number }>>;
-export type Mode = 'outputs' | 'inputs';
+export type Mode = 'outputs' | 'inputs' | 'tracking';
 
 /** The config without its inputs (what restarts the outputs). */
 const withoutInputs = (c: ServerConfig) => JSON.stringify({ ...c, inputs: undefined });
@@ -1032,8 +1032,8 @@ export function Outputs({ mode }: { mode: Mode }) {
   const note = (text: string) => void notes.push(text);
   return (
     <div className="vs-page">
-      {mode === 'inputs' ? (
-        <InputsMode cfg={cfg} saved={info.config} edit={edit} />
+      {mode !== 'outputs' ? (
+        <InputsMode key={mode} cfg={cfg} saved={info.config} edit={edit} tracking={mode === 'tracking'} />
       ) : (
         <div className="outputs-page">
           <aside className="lib-nav">

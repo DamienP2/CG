@@ -123,4 +123,11 @@ export const ux3: Record<string, string> = {
   'Full frame': 'Plein format',
   'Received · {value}': 'Reçu · {value}',
   'Name it after its first field': 'Titre d’après le premier champ',
+  'Camera {n}': 'Caméra {n}',
+  'Add a camera': 'Ajouter une caméra',
+  '{n} camera': '{n} caméra',
+  '{n} cameras': '{n} caméras',
+  'No camera': 'Aucune caméra',
+  'Remove the camera': 'Retirer la caméra',
+  'page|Camera tracking': 'Tracking caméras',
 };
