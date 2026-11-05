@@ -202,6 +202,20 @@ struct Running {
     started: i64,
     /// Last sign of life.
     beat: i64,
+    /// Its process (0: written before it was kept).
+    #[serde(default)]
+    pid: u32,
+}
+
+/// Another process `pid` runs.
+fn alive(pid: u32) -> bool {
+    if pid == 0 || pid == std::process::id() {
+        return false;
+    }
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+    sys.process(pid).is_some()
 }
 
 fn marker() -> Option<PathBuf> {
@@ -213,6 +227,7 @@ fn beat() {
         let r = Running {
             started: *started,
             beat: now_ms(),
+            pid: std::process::id(),
         };
         if let Ok(s) = serde_json::to_string(&r) {
             let _ = fs::write(m, s);
@@ -258,11 +273,23 @@ pub fn start(data_dir: &std::path::Path) {
     }
     let started = now_ms();
     let _ = STARTED.set(started);
-    // The last run did not stop by itself, and no panic says why.
-    if let Some(prev) = marker()
-        .and_then(|m| fs::read_to_string(m).ok())
-        .and_then(|s| serde_json::from_str::<Running>(&s).ok())
-    {
+    // The last run did not stop by itself, and no panic says why. One still
+    // stopping (a restart, an update) is waited for: it removes its marker.
+    let read = || {
+        marker()
+            .and_then(|m| fs::read_to_string(m).ok())
+            .and_then(|s| serde_json::from_str::<Running>(&s).ok())
+    };
+    let mut last = read();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while let Some(prev) = &last {
+        if !alive(prev.pid) || std::time::Instant::now() > until {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        last = read();
+    }
+    if let Some(prev) = last.filter(|p| !alive(p.pid)) {
         if !crashes().iter().any(|c| c.at >= prev.started) {
             save_crash(&Crash {
                 at: prev.beat,
@@ -709,6 +736,23 @@ mod tests {
         stopped();
         assert!(!dir.join("health/running.json").exists());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_server_still_stopping_is_not_a_crash() {
+        // Our parent process runs: a server still stopping.
+        let parent = sysinfo::get_current_pid()
+            .ok()
+            .and_then(|me| {
+                let mut sys = sysinfo::System::new();
+                sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[me]), true);
+                sys.process(me).and_then(|p| p.parent())
+            })
+            .map(|p| p.as_u32())
+            .unwrap();
+        assert!(alive(parent));
+        assert!(!alive(std::process::id()));
+        assert!(!alive(0));
     }
 
     #[test]
