@@ -92,6 +92,9 @@ impl Server {
                 .arg("--bind")
                 .arg(format!("127.0.0.1:{port}"))
                 .env("RUST_LOG", "warn")
+                // Never the internet: the picture libraries' update check
+                // finds a closed local port (an answer at once, every run).
+                .env("STRATA_NPM_REGISTRY", "http://127.0.0.1:9")
                 .env_remove("CG_BIND")
                 .env_remove("CG_DATA_DIR")
                 .env_remove("CG_WEB_DIR")
