@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { api } from '../store';
 import { t, tc } from '../i18n';
 import { Dropdown } from '../ui/Dropdown';
-import { Segmented } from '../ui/fields';
+import { NumberField, Segmented } from '../ui/fields';
 import { anchorFrom, useCameras } from '../engine/tracking';
 import type { CameraSample, Layer, Template } from '../engine/types';
 import type { InputInfo } from '../outputs/types';
@@ -98,9 +98,11 @@ export function LayerAnchor({ layer, template }: { layer: Layer; template: Templ
   const edit = (fn: (l: Layer) => void) => update((tt) => fn(findLayer(tt, layer.id)!));
   const anchor = layer.anchor;
   const none = cam ? undefined : t('Nothing received from the camera');
+  // Anchoring takes where the camera is focused as the distance, when it says.
+  const focus = cam?.focus && cam.focus > 0 ? cam.focus : 0;
   return (
     <SpecSection id="layer-tracking" title={tc('camera', 'Tracking')}>
-      <Toggle label={t('Anchored to the scene')} value={!!anchor} disabled={anchor ? undefined : none} onChange={(on) => edit((l) => void (on && cam ? (l.anchor = anchorFrom(cam)) : delete l.anchor))} />
+      <Toggle label={t('Anchored to the scene')} value={!!anchor} disabled={anchor ? undefined : none} onChange={(on) => edit((l) => void (on && cam ? (l.anchor = anchorFrom(cam, true, focus)) : delete l.anchor))} />
       {anchor && (
         <>
           <KitRow label={t('Anchor')}>
@@ -108,9 +110,27 @@ export function LayerAnchor({ layer, template }: { layer: Layer; template: Templ
               <span className="grow">
                 {deg(anchor.pan)} · {deg(anchor.tilt)}
               </span>
-              <button className="btn small" disabled={!cam} title={none} onClick={() => cam && edit((l) => void (l.anchor = anchorFrom(cam, l.anchor?.zoom)))}>
+              <button className="btn small" disabled={!cam} title={none} onClick={() => cam && edit((l) => void (l.anchor = anchorFrom(cam, l.anchor?.zoom, focus || l.anchor?.distance)))}>
                 {t('Anchor here')}
               </button>
+            </span>
+          </KitRow>
+          <KitRow label={t('Distance')}>
+            <span className="tpl-anchor">
+              <Segmented
+                className="grow"
+                value={anchor.distance ? 'fixed' : 'far'}
+                onChange={(v) => edit((l) => void (l.anchor && (v === 'far' ? delete l.anchor.distance : (l.anchor.distance = focus || 5))))}
+                options={[
+                  { value: 'far', label: t('Far away') },
+                  { value: 'fixed', label: tc('distance', 'Fixed') },
+                ]}
+              />
+              {!!anchor.distance && (
+                <span className="tpl-distance">
+                  <NumberField value={anchor.distance} min={0.3} max={500} step={0.1} precision={1} suffix="m" onChange={(v) => edit((l) => void (l.anchor && (l.anchor.distance = Math.max(0.3, v))))} />
+                </span>
+              )}
             </span>
           </KitRow>
           <Toggle label={t('Follows the zoom')} value={!!anchor.zoom} onChange={(v) => edit((l) => void (l.anchor && (l.anchor.zoom = v)))} />

@@ -378,6 +378,25 @@ export interface CameraSample {
   x?: number;
   y?: number;
   z?: number;
+  /** The lens distortion, when the camera sends it. */
+  distortion?: Distortion;
+  /** How far ahead of the pan and tilt axes the optical centre is, m. */
+  pupil?: number;
+  /** The camera sent the optical centre (else the input's setting). */
+  pupilSent?: boolean;
+  /** The camera sent its sensor's width. */
+  sensorSent?: boolean;
+}
+
+/** A lens distortion (Brown-Conrady), on picture coordinates divided by the focal length (mirror of cg_core::tracking::Distortion). */
+export interface Distortion {
+  k1?: number;
+  k2?: number;
+  k3?: number;
+  p1?: number;
+  p2?: number;
+  /** The coefficients take the distorted picture to the undistorted one (OpenTrackIO's "D-U"). */
+  toUndistorted?: boolean;
 }
 
 /** A layer anchored to the scene: the camera as it was when anchored (mirror of cg_core::tracking::Track). */
@@ -389,6 +408,10 @@ export interface Track {
   sensor?: number;
   /** Its size follows the zoom. */
   zoom?: boolean;
+  /** How far it is from the camera, m (0 or none: far away, its direction only). */
+  distance?: number;
+  /** The lens distortion when it was anchored. */
+  distortion?: Distortion;
 }
 
 export type TextMetric = 'width' | 'height' | 'lines' | 'chars';

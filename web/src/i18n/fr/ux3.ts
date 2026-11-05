@@ -113,4 +113,13 @@ export const ux3: Record<string, string> = {
   Cameras: 'Caméras',
   'Channels · all': 'Canaux · tous',
   'Edit the label': 'Modifier le libellé',
+  'Far away': 'Au loin',
+  'distance|Fixed': 'Fixée',
+  Distortion: 'Distorsion',
+  'distortion|Received': 'Reçue',
+  'Optical centre': 'Centre optique',
+  Sensor: 'Capteur',
+  'Received from the camera': 'Reçu de la caméra',
+  'Full frame': 'Plein format',
+  'Received · {value}': 'Reçu · {value}',
 };

@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
-use cg_core::tracking::{mix, CameraSample};
+use cg_core::tracking::{mix, CameraSample, Distortion};
 use serde_json::Value as Json;
 
 use crate::inputs::{InputConfig, InputKind, InputStatus};
@@ -409,6 +409,15 @@ fn receive(
                 if s.sensor == 0.0 {
                     s.sensor = *lock(&cam.sensor);
                 }
+                s.sensor_sent = s.sensor > 0.0;
+                // The input's settings: a sensor mode the camera does not
+                // say, the optical centre when it does not send it.
+                if c.sensor > 0.0 {
+                    s.sensor = c.sensor;
+                }
+                if !s.pupil_sent {
+                    s.pupil = c.pupil;
+                }
                 if let Some(r) = rate_of(&v) {
                     *lock(&cam.rate) = Some(r);
                 }
@@ -666,6 +675,7 @@ fn sample_of(v: &Json) -> Option<CameraSample> {
     let p = |k: &str| f(t, &["translation", k]).unwrap_or(0.0);
     let lens = |k: &str| f(v, &["lens", k]).unwrap_or(0.0);
     t.get("rotation")?;
+    let pupil = f(v, &["lens", "entrancePupilOffset"]);
     Some(CameraSample {
         pan: r("pan"),
         tilt: r("tilt"),
@@ -677,7 +687,42 @@ fn sample_of(v: &Json) -> Option<CameraSample> {
         x: p("x"),
         y: p("y"),
         z: p("z"),
+        distortion: distortion_of(v),
+        pupil: pupil.unwrap_or(0.0),
+        pupil_sent: pupil.is_some(),
+        sensor_sent: false,
     })
+}
+
+/// The lens distortion of a sample (OpenTrackIO's `lens.distortion`: one
+/// Brown-Conrady model, or a list of them, the first kept). Its model says
+/// which way it goes ("D-U" when it says none).
+fn distortion_of(v: &Json) -> Option<Distortion> {
+    let d = v.get("lens")?.get("distortion")?;
+    let d = d.as_array().map_or(Some(d), |l| l.first())?;
+    let at = |key: &str, i: usize| {
+        d.get(key)
+            .and_then(Json::as_array)
+            .and_then(|a| a.get(i))
+            .and_then(Json::as_f64)
+            .unwrap_or(0.0)
+    };
+    let out = Distortion {
+        k1: at("radial", 0),
+        k2: at("radial", 1),
+        k3: at("radial", 2),
+        p1: at("tangential", 0),
+        p2: at("tangential", 1),
+        to_undistorted: !d
+            .get("model")
+            .and_then(Json::as_str)
+            .is_some_and(|m| m.to_ascii_uppercase().contains("U-D")),
+    };
+    (out != Distortion {
+        to_undistorted: out.to_undistorted,
+        ..Default::default()
+    })
+    .then_some(out)
 }
 
 /// The width of the sensor's active area (mm), when the sample has its static block.
@@ -780,6 +825,34 @@ mod tests {
         assert_eq!((s.pan, s.tilt, s.focal, s.sensor), (12.5, -3.0, 24.5, 35.6));
         assert_eq!((s.focus, s.iris, s.z), (4.2, 2.8, 1.5));
         assert_eq!(rate_of(&v), Some(50.0));
+        // No lens model sent.
+        assert!(s.distortion.is_none() && !s.pupil_sent);
+    }
+
+    #[test]
+    fn the_lens_model_is_read() {
+        let v = serde_json::json!({
+            "transforms": [{"id": "Camera", "rotation": {"pan": 0, "tilt": 0, "roll": 0}}],
+            "lens": {"entrancePupilOffset": 0.118,
+                     "distortion": [{"model": "Brown-Conrady U-D", "radial": [-0.05, 0.01], "tangential": [0.001, 0.0]}]}
+        });
+        let s = sample_of(&v).unwrap();
+        assert!(s.pupil_sent && (s.pupil - 0.118).abs() < 1e-12);
+        let d = s.distortion.unwrap();
+        assert_eq!((d.k1, d.k2, d.k3, d.p1), (-0.05, 0.01, 0.0, 0.001));
+        assert!(!d.to_undistorted);
+        // One model, no direction said: distorted to undistorted.
+        let v = serde_json::json!({
+            "transforms": [{"rotation": {"pan": 0}}],
+            "lens": {"distortion": {"radial": [0.02]}}
+        });
+        assert!(sample_of(&v).unwrap().distortion.unwrap().to_undistorted);
+        // All zero: none.
+        let v = serde_json::json!({
+            "transforms": [{"rotation": {"pan": 0}}],
+            "lens": {"distortion": [{"radial": [0, 0, 0]}]}
+        });
+        assert!(sample_of(&v).unwrap().distortion.is_none());
     }
 
     #[test]

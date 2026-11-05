@@ -100,6 +100,13 @@ pub struct InputConfig {
     /// Tracking: frames the samples are held, to meet the video.
     #[serde(default)]
     pub delay: u32,
+    /// Tracking: the sensor's width, mm (0: as the camera sends it, else full frame).
+    #[serde(default)]
+    pub sensor: f64,
+    /// Tracking: how far ahead of the pan and tilt axes the optical centre
+    /// is, m, when the camera does not send it.
+    #[serde(default)]
+    pub pupil: f64,
 }
 
 fn default_source() -> u8 {
@@ -1231,6 +1238,8 @@ mod tests {
             multicast: true,
             source: 1,
             delay: 0,
+            sensor: 0.0,
+            pupil: 0.0,
         }
     }
 

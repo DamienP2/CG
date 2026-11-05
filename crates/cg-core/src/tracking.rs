@@ -6,7 +6,11 @@
 //! tilt and roll in degrees, intrinsic about Z, X then Y. A layer anchored
 //! with [`Track`] (`Layer::anchor`) keeps the direction its anchor point was seen in when it
 //! was anchored: as the camera turns and zooms, the point goes where that
-//! direction is now seen.
+//! direction is now seen. A layer anchored at a distance (an object near
+//! the camera) is a point of the scene instead: the optical centre, ahead
+//! of the pan and tilt axes, moves as the camera turns, and the point is
+//! seen from there (parallax). The lens distortion the camera sends is
+//! taken out of the anchored picture and put back into the new one.
 
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +47,84 @@ pub struct CameraSample {
     pub y: f64,
     #[serde(default)]
     pub z: f64,
+    /// The lens distortion, when the camera sends it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distortion: Option<Distortion>,
+    /// How far ahead of the pan and tilt axes the optical centre is, m.
+    #[serde(default)]
+    pub pupil: f64,
+    /// The camera sent the optical centre (else the input's setting).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pupil_sent: bool,
+    /// The camera sent its sensor's width.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub sensor_sent: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// A lens distortion (Brown-Conrady): radial k1..k3 and tangential p1, p2,
+/// on picture coordinates divided by the focal length (in pixels).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Distortion {
+    #[serde(default)]
+    pub k1: f64,
+    #[serde(default)]
+    pub k2: f64,
+    #[serde(default)]
+    pub k3: f64,
+    #[serde(default)]
+    pub p1: f64,
+    #[serde(default)]
+    pub p2: f64,
+    /// The coefficients take the distorted picture to the undistorted one
+    /// (OpenTrackIO's "D-U"); else the reverse ("U-D").
+    #[serde(default)]
+    pub to_undistorted: bool,
+}
+
+impl Distortion {
+    /// The polynomial.
+    fn apply(&self, x: f64, y: f64) -> (f64, f64) {
+        let r2 = x * x + y * y;
+        let k = 1.0 + r2 * (self.k1 + r2 * (self.k2 + r2 * self.k3));
+        (
+            x * k + 2.0 * self.p1 * x * y + self.p2 * (r2 + 2.0 * x * x),
+            y * k + self.p1 * (r2 + 2.0 * y * y) + 2.0 * self.p2 * x * y,
+        )
+    }
+
+    /// The point the polynomial takes to (`x`, `y`).
+    fn solve(&self, x: f64, y: f64) -> (f64, f64) {
+        let (mut u, mut v) = (x, y);
+        for _ in 0..20 {
+            let (a, b) = self.apply(u, v);
+            u += x - a;
+            v += y - b;
+        }
+        (u, v)
+    }
+
+    /// Where a point of the distorted picture is without distortion.
+    pub fn undistort(&self, x: f64, y: f64) -> (f64, f64) {
+        if self.to_undistorted {
+            self.apply(x, y)
+        } else {
+            self.solve(x, y)
+        }
+    }
+
+    /// Where a point without distortion is in the distorted picture.
+    pub fn distort(&self, x: f64, y: f64) -> (f64, f64) {
+        if self.to_undistorted {
+            self.solve(x, y)
+        } else {
+            self.apply(x, y)
+        }
+    }
 }
 
 /// A layer anchored to the scene: the camera as it was when it was anchored.
@@ -60,6 +142,12 @@ pub struct Track {
     /// Its size follows the zoom.
     #[serde(default)]
     pub zoom: bool,
+    /// How far it is from the camera, m (0: far away, its direction only).
+    #[serde(default)]
+    pub distance: f64,
+    /// The lens distortion when it was anchored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distortion: Option<Distortion>,
 }
 
 /// The camera `k` of the way from `a` to `b` (beyond 1: on past `b` at the
@@ -78,6 +166,7 @@ pub fn mix(a: &CameraSample, b: &CameraSample, k: f64) -> CameraSample {
         x: lin(a.x, b.x),
         y: lin(a.y, b.y),
         z: lin(a.z, b.z),
+        ..*b
     }
 }
 
@@ -111,6 +200,15 @@ fn focal_px(focal: f64, sensor: f64, width: f64) -> f64 {
     f / s * width
 }
 
+fn apply3(m: &M3, v: [f64; 3]) -> [f64; 3] {
+    [0, 1, 2].map(|i| (0..3).map(|k| m[i][k] * v[k]).sum())
+}
+
+/// The transpose of `m` times `v` (back into the camera's axes).
+fn back3(m: &M3, v: [f64; 3]) -> [f64; 3] {
+    [0, 1, 2].map(|i| (0..3).map(|k| m[k][i] * v[k]).sum())
+}
+
 /// Where the point (`px`, `py`) of a `w` × `h` picture, anchored with
 /// `track`, is seen by the camera now: how far it moved, and how much
 /// bigger it looks (1 unless the layer follows the zoom). None when the
@@ -130,23 +228,40 @@ pub fn follow(
         track.sensor
     };
     let fc = focal_px(cam.focal, sensor, w);
-    // The anchor's direction on the stage.
-    let local = [px - w / 2.0, fa, -(py - h / 2.0)];
+    // The anchor's direction on the stage, the lens distortion of then taken out.
+    let (mut x, mut y) = ((px - w / 2.0) / fa, (py - h / 2.0) / fa);
+    if let Some(d) = &track.distortion {
+        (x, y) = d.undistort(x, y);
+    }
+    let local = [x, 1.0, -y];
     let ra = rotation(track.pan, track.tilt, track.roll);
-    let world: Vec<f64> = (0..3)
-        .map(|i| (0..3).map(|k| ra[i][k] * local[k]).sum())
-        .collect();
-    // The same direction seen by the camera now (the transpose turns back).
     let rc = rotation(cam.pan, cam.tilt, cam.roll);
-    let d: Vec<f64> = (0..3)
-        .map(|i| (0..3).map(|k| rc[k][i] * world[k]).sum())
-        .collect();
+    let world = apply3(&ra, local);
+    // Near: a point of the scene, seen from where the optical centre is now.
+    let near = track.distance > 0.0;
+    let depth = track.distance / local.iter().map(|v| v * v).sum::<f64>().sqrt();
+    let d = if near {
+        let then = apply3(&ra, [0.0, cam.pupil, 0.0]);
+        let now = apply3(&rc, [0.0, cam.pupil, 0.0]);
+        back3(&rc, [0, 1, 2].map(|i| then[i] + world[i] * depth - now[i]))
+    } else {
+        back3(&rc, world)
+    };
     if d[1] <= 1e-6 {
         return None;
     }
-    let u = fc * d[0] / d[1] + w / 2.0;
-    let v = -fc * d[2] / d[1] + h / 2.0;
-    let scale = if track.zoom { fc / fa } else { 1.0 };
+    let (mut x, mut y) = (d[0] / d[1], -d[2] / d[1]);
+    if let Some(dist) = &cam.distortion {
+        (x, y) = dist.distort(x, y);
+    }
+    let u = fc * x + w / 2.0;
+    let v = fc * y + h / 2.0;
+    let scale = match (track.zoom, near) {
+        (false, _) => 1.0,
+        (true, false) => fc / fa,
+        // Nearer or farther too.
+        (true, true) => fc / fa * depth / d[1],
+    };
     Some((u - px, v - py, scale))
 }
 
@@ -172,6 +287,8 @@ mod tests {
             focal: 35.0,
             sensor: SENSOR_MM,
             zoom,
+            distance: 0.0,
+            distortion: None,
         }
     }
 
@@ -243,6 +360,129 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s, 1.0);
+    }
+
+    /// Where the camera at `pan` sees the point (x, z) on the floor plane of
+    /// its axis (metres; z forward at rest), its optical centre `pupil` ahead.
+    fn seen(pan: f64, pupil: f64, x: f64, z: f64, w: f64) -> f64 {
+        let (s, c) = pan.to_radians().sin_cos();
+        // OpenTrackIO: a positive pan turns to the left.
+        let (ox, oz) = (-pupil * s, pupil * c);
+        let (dx, dz) = (x - ox, z - oz);
+        let right = dx * c + dz * s;
+        let ahead = -dx * s + dz * c;
+        w / 2.0 + 35.0 / SENSOR_MM * w * right / ahead
+    }
+
+    #[test]
+    fn a_near_point_stays_on_its_object() {
+        let (w, h) = (1920.0, 1080.0);
+        let (x, z) = (0.6, 4.0);
+        let pupil = 0.12;
+        let px = seen(0.0, pupil, x, z, w);
+        let cam = |pan: f64| CameraSample {
+            pan,
+            focal: 35.0,
+            sensor: SENSOR_MM,
+            pupil,
+            ..Default::default()
+        };
+        let distance = ((x - 0.0f64).powi(2) + (z - pupil).powi(2)).sqrt();
+        let near = Track {
+            distance,
+            ..track(false)
+        };
+        for pan in [-12.0, 5.0, 15.0] {
+            let want = seen(pan, pupil, x, z, w) - px;
+            let (dx, _, _) = follow(&near, &cam(pan), w, h, px, h / 2.0).unwrap();
+            assert!((dx - want).abs() < 1e-6, "{pan}°: {dx} for {want}");
+            // Far away, it slides off it.
+            let (far, _, _) = follow(&track(false), &cam(pan), w, h, px, h / 2.0).unwrap();
+            assert!((far - want).abs() > 2.0, "{pan}°: {far} is {want}");
+        }
+    }
+
+    #[test]
+    fn the_distortion_is_taken_out_and_put_back() {
+        let d = Distortion {
+            k1: -0.08,
+            k2: 0.01,
+            p1: 0.001,
+            ..Default::default()
+        };
+        let (x, y) = d.undistort(0.4, -0.25);
+        let (a, b) = d.distort(x, y);
+        assert!((a - 0.4).abs() < 1e-9 && (b + 0.25).abs() < 1e-9);
+        let inv = Distortion {
+            to_undistorted: true,
+            ..d
+        };
+        let (x, y) = inv.distort(0.4, -0.25);
+        let (a, b) = inv.undistort(x, y);
+        assert!((a - 0.4).abs() < 1e-9 && (b + 0.25).abs() < 1e-9);
+        // The same camera: nothing moves, distortion or not.
+        let t = Track {
+            distortion: Some(d),
+            ..track(true)
+        };
+        let c = CameraSample {
+            distortion: Some(d),
+            ..cam(0.0, 0.0, 35.0)
+        };
+        let (dx, dy, s) = follow(&t, &c, 1920.0, 1080.0, 1700.0, 100.0).unwrap();
+        assert!(dx.abs() < 1e-6 && dy.abs() < 1e-6 && (s - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_html5_renderer_finds_the_same() {
+        // web/src/engine/tracking.ts gives these (followed in a browser).
+        let d = Distortion {
+            k1: -0.08,
+            k2: 0.01,
+            p1: 0.001,
+            ..Default::default()
+        };
+        let t = Track {
+            distance: 3.9,
+            distortion: Some(d),
+            ..track(true)
+        };
+        let html5 = [
+            (
+                -12.0,
+                -365.3989799627243,
+                4.940493190421023,
+                1.3719997429512445,
+            ),
+            (
+                5.0,
+                490.4947145792082,
+                -14.1206180221223,
+                1.4655008936775533,
+            ),
+            (
+                15.0,
+                1057.52520887039,
+                -40.013852846882116,
+                1.5977865293770563,
+            ),
+        ];
+        for (pan, x, y, s) in html5 {
+            let c = CameraSample {
+                pan,
+                tilt: 2.0,
+                focal: 50.0,
+                sensor: SENSOR_MM,
+                pupil: 0.12,
+                distortion: Some(d),
+                ..Default::default()
+            };
+            let (dx, dy, k) = follow(&t, &c, 1920.0, 1080.0, 1500.0, 300.0).unwrap();
+            assert!(
+                (dx - x).abs() < 1e-6 && (dy - y).abs() < 1e-6 && (k - s).abs() < 1e-9,
+                "{pan}°"
+            );
+        }
     }
 
     #[test]

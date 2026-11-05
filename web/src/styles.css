@@ -9635,6 +9635,9 @@ body.cv-moving * {
   width: 100%;
   font-variant-numeric: tabular-nums;
 }
+.tpl-distance {
+  flex: 0 0 72px;
+}
 .tpl-label {
   display: flex;
   align-items: center;

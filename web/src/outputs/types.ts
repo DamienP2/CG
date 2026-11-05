@@ -117,6 +117,10 @@ export interface InputConfig {
   source?: number;
   /** Tracking: frames the samples are held, to meet the video. */
   delay?: number;
+  /** Tracking: the sensor's width, mm (0: as the camera sends it, else full frame). */
+  sensor?: number;
+  /** Tracking: how far ahead of the pan and tilt axes the optical centre is, m, when the camera does not send it. */
+  pupil?: number;
 }
 
 /** `GET /api/inputs`. */

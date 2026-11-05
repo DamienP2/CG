@@ -501,6 +501,7 @@ function Inspector({
               onChange={(v) => editInput((x) => void (x.delay = Number(v)))}
             />
           </Field>
+          <LensSettings input={i} editInput={editInput} />
         </>
       )}
 
@@ -561,6 +562,36 @@ function TrackView({ id }: { id: string }) {
   );
 }
 
+/** Sensor widths a camera can film with (mm). */
+const FULL_FRAME = 35.6;
+const SUPER_35 = 24.9;
+
+/** What the tracking uses when the camera does not say it: its sensor mode, its optical centre. */
+function LensSettings({ input: i, editInput }: { input: InputConfig; editInput: (fn: (x: InputConfig) => void) => void }) {
+  const s = useCameras((x) => x.samples[i.id]);
+  const sensor = i.sensor ?? 0;
+  const sensorOptions = [
+    ...(s?.sensorSent ? [{ value: '0', label: t('Received from the camera') }] : []),
+    { value: s?.sensorSent ? String(FULL_FRAME) : '0', label: `${t('Full frame')} · ${num(FULL_FRAME, 1)} mm` },
+    { value: String(SUPER_35), label: `Super 35 · ${num(SUPER_35, 1)} mm` },
+  ];
+  const shown = sensor === SUPER_35 ? String(SUPER_35) : s?.sensorSent && sensor === FULL_FRAME ? String(FULL_FRAME) : '0';
+  return (
+    <>
+      <Field label={t('Sensor')}>
+        <Dropdown value={shown} title={t('Sensor')} options={sensorOptions} onChange={(v) => editInput((x) => void (Number(v) ? (x.sensor = Number(v)) : delete x.sensor))} />
+      </Field>
+      <Group label={t('Optical centre')}>
+        {s?.pupilSent ? (
+          <input className="input" value={t('Received · {value}', { value: `${num(s.pupil ?? 0, 2)} m` })} disabled />
+        ) : (
+          <NumberField value={i.pupil ?? 0} min={0} max={1} step={0.01} precision={2} suffix="m" onChange={(v) => editInput((x) => void (v > 0 ? (x.pupil = Math.min(1, v)) : delete x.pupil))} />
+        )}
+      </Group>
+    </>
+  );
+}
+
 /** A camera's values in the inspector. */
 function TrackValues({ id }: { id: string }) {
   const s = useCameras((x) => x.samples[id]);
@@ -581,6 +612,11 @@ function TrackValues({ id }: { id: string }) {
         {cell(t('Focal length'), s?.focal ? `${num(s.focal, 1)} mm` : '—')}
         {cell(t('Focus'), s?.focus ? `${num(s.focus, 2)} m` : '—')}
         {cell(t('Iris'), s?.iris ? `f/${num(s.iris, 1)}` : '—')}
+      </div>
+      <div className="vs-perf">
+        {cell(t('Distortion'), s?.distortion ? tc('distortion', 'Received') : '—')}
+        {cell(t('Optical centre'), s?.pupilSent ? `${num(s.pupil ?? 0, 2)} m` : '—')}
+        {cell(t('Sensor'), s?.sensorSent ? `${num(s.sensor, 1)} mm` : '—')}
       </div>
     </>
   );
