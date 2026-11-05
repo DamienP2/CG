@@ -33,10 +33,12 @@ mod render;
 mod rt;
 mod schedule;
 mod service;
+mod sim;
 mod social;
 mod sound;
 mod sso;
 mod state;
+mod stations;
 mod sync;
 mod thumbs;
 mod timecode;
@@ -442,6 +444,7 @@ pub async fn serve(
     update::spawn_auto_check(data_dir.clone());
     // Sessions survive engine restarts.
     let auth = Arc::new(auth::Auth::load(&data_dir));
+    let stations = Arc::new(stations::Stations::load(&data_dir));
     let mos_store = Arc::new(mos::Store::load(&data_dir));
     let data_hub = Arc::new(datasources::Hub::load(&data_dir));
     let social_hub = Arc::new(social::Hub::load(&data_dir));
@@ -566,6 +569,8 @@ pub async fn serve(
             thumbs: Default::default(),
             saving: Default::default(),
             auth: auth.clone(),
+            stations: stations.clone(),
+            sims: Default::default(),
             mos: mos_store.clone(),
             data: data_hub.clone(),
             social: social_hub.clone(),

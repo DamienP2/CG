@@ -631,12 +631,14 @@ pub struct NewEntry {
 /// `POST /api/channels/{id}/schedule`: programs a take or an out.
 pub async fn create(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    crate::auth::Acting(me, actor): crate::auth::Acting,
+    station: crate::stations::OnStation,
     UrlPath(id): UrlPath<String>,
     Json(input): Json<NewEntry>,
 ) -> ApiResult<(StatusCode, Json<Scheduled>)> {
     visible(&me, &id)?;
     require(me.can_operate(&id))?;
+    crate::api::on_air_here(&actor, &station, &id)?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let pid = match input.project_id {
         Some(p) => p,
@@ -707,11 +709,13 @@ pub async fn create(
 /// `DELETE /api/channels/{id}/schedule/{sid}`.
 pub async fn delete(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    crate::auth::Acting(me, actor): crate::auth::Acting,
+    station: crate::stations::OnStation,
     UrlPath((id, sid)): UrlPath<(String, String)>,
 ) -> ApiResult<StatusCode> {
     visible(&me, &id)?;
     require(me.can_operate(&id))?;
+    crate::api::on_air_here(&actor, &station, &id)?;
     let gone = s.schedule.edit(|items| {
         let before = items.len();
         items.retain(|e| !(e.id == sid && e.channel_id == id));
@@ -733,12 +737,14 @@ pub struct Patch {
 /// on or off (on again: from its next time to come).
 pub async fn patch(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    crate::auth::Acting(me, actor): crate::auth::Acting,
+    station: crate::stations::OnStation,
     UrlPath((id, sid)): UrlPath<(String, String)>,
     Json(p): Json<Patch>,
 ) -> ApiResult<Json<Scheduled>> {
     visible(&me, &id)?;
     require(me.can_operate(&id))?;
+    crate::api::on_air_here(&actor, &station, &id)?;
     let (tz, rate, now) = (s.tz(), s.rate_of(&id), now_ms());
     let entry = s.schedule.edit(|items| {
         let e = items

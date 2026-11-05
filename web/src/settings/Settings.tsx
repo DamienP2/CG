@@ -1,4 +1,4 @@
-import { Clock, CloudDownload, Cpu, Keyboard, Lock, Network, RotateCcw, Server, SlidersHorizontal, Timer } from 'lucide-react';
+import { Clock, CloudDownload, Cpu, Keyboard, Lock, Monitor, Network, RotateCcw, Server, SlidersHorizontal, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
@@ -13,6 +13,7 @@ import { Updates } from './Updates';
 import { LibraryUpdates } from './LibraryUpdates';
 import { ShortcutsPage } from './Shortcuts';
 import { SecurityPage } from './Security';
+import { StationsPage } from './Stations';
 
 const TIMEZONES: string[] = (() => {
   try {
@@ -29,8 +30,8 @@ function uptime(s: number) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
 }
 
-type Section = 'shortcuts' | 'general' | 'network' | 'time' | 'sync' | 'security' | 'updates' | 'system';
-const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'time', 'sync', 'security', 'updates', 'system'];
+type Section = 'shortcuts' | 'general' | 'network' | 'time' | 'sync' | 'security' | 'stations' | 'updates' | 'system';
+const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'time', 'sync', 'security', 'stations', 'updates', 'system'];
 const sectionOf = (hash: string): Section => SECTIONS.find((s) => `#${s}` === hash) ?? 'general';
 
 /** Your own settings; an admin's also the server's. */
@@ -92,6 +93,7 @@ function ServerSettings() {
       {item('time', <Clock size={15} />, t('Time'))}
       {item('sync', <Timer size={15} />, t('Video sync'))}
       {item('security', <Lock size={15} />, t('Security'))}
+      {item('stations', <Monitor size={15} />, t('Stations'))}
       {item('updates', <CloudDownload size={15} />, t('Updates'))}
       {item('system', <Cpu size={15} />, t('System'))}
       <div className="lib-nav-foot">
@@ -135,6 +137,8 @@ function ServerSettings() {
       {section === 'sync' && <VideoSync cfg={cfg} edit={edit} det={det} onRefresh={() => void detect()} />}
 
       {section === 'security' && <SecurityPage cfg={cfg} edit={edit} />}
+
+      {section === 'stations' && <StationsPage />}
 
       {section === 'updates' && (
         <>

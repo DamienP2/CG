@@ -993,7 +993,7 @@ fn log_auto(
 }
 
 /// One tick of the channel: timelines, automatic steps, clients told.
-async fn advance(
+pub(crate) async fn advance(
     state: &Shared,
     ch: &ChannelRt,
     saved_at: &mut Instant,
@@ -1008,7 +1008,10 @@ async fn advance(
         .as_ref()
         .map(|p| p.frame_rate.as_f64() / channel_fps)
         .unwrap_or(1.0);
-    crate::sound::loaded_on(state, &ch.config.id, project.as_ref());
+    let sim = crate::sim::is_sim(&ch.config.id);
+    if !sim {
+        crate::sound::loaded_on(state, &ch.config.id, project.as_ref());
+    }
     let (changed, snapshot) = {
         let mut st = ch.state.write().await;
         let mut changed = st.tick(step);
@@ -1110,7 +1113,9 @@ async fn advance(
             };
             // Sounds the Logics asked for.
             let sounds = std::mem::take(&mut st.sounds.0);
-            crate::sound::run(state, &ch.config.id, p, sounds);
+            if !sim {
+                crate::sound::run(state, &ch.config.id, p, sounds);
+            }
             // Graphics a Logic took: their data read as for a take (data sets, sources;
             // the rows read « on take » read now).
             if !fired.is_empty() {
@@ -1156,7 +1161,10 @@ async fn advance(
         state.publish_channel(ch, snapshot.clone());
     }
     // What is on air, on disk at most once a second (a restart puts it back).
-    if saved_at.elapsed() >= Duration::from_secs(1) && ch.dirty.swap(false, Ordering::Relaxed) {
+    if !sim
+        && saved_at.elapsed() >= Duration::from_secs(1)
+        && ch.dirty.swap(false, Ordering::Relaxed)
+    {
         *saved_at = Instant::now();
         let (dir, id, snap) = (
             state.data_dir.clone(),

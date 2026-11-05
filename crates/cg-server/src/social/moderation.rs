@@ -1830,6 +1830,8 @@ mod tests {
             thumbs: Default::default(),
             saving: Default::default(),
             auth: Arc::new(crate::auth::Auth::load(dir)),
+            stations: Arc::new(crate::stations::Stations::load(dir)),
+            sims: Default::default(),
             mos: Arc::new(crate::mos::Store::load(dir)),
             data: Arc::new(crate::datasources::Hub::load(dir)),
             social: Arc::new(crate::social::Hub::load(dir)),

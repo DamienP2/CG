@@ -231,6 +231,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   // Operator: the channel playing this project (the last one used first).
   const own = channels.filter((c) => c.projectId === projectId);
   const operated = sub === 'operator' ? (channels.find((c) => c.id === route.channelId) ?? null) : null;
+  const station = useApp((s) => s.station);
   useEffect(() => {
     if (sub !== 'operator' || route.channelId || !own.length) return;
     const last = recall(LAST_CHANNEL);
@@ -260,7 +261,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
   else {
     // Without an output of this project, the operator still prepares and previews.
-    const own = operated && operated.projectId === projectId ? operated.id : null;
+    // Off a production station, any output: what it plays is a simulation.
+    const own = operated && (operated.projectId === projectId || station === null) ? operated.id : null;
     page = <Operator key={own ?? 'none'} channelId={own} />;
   }
 

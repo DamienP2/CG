@@ -268,17 +268,31 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const { project, command: send, saveRundown, auth, channels, toast } = useApp(useShallow((s) => ({ project: s.project, command: s.command, saveRundown: s.saveRundown, auth: s.auth, channels: s.channels, toast: s.toast })));
   const allSources = useSources();
   const sourceName = (id: string) => allSources.find((s) => s.id === id)?.name ?? id;
-  const liveState = useApp((s) => (channelId ? s.live[channelId] : undefined));
+  // Off a production station: this person's simulation of the output (nothing goes on air).
+  const simulation = useApp((s) => s.station === null);
+  const [simId, setSimId] = useState<string | null>(null);
+  useEffect(() => {
+    setSimId(null);
+    if (!simulation || !channelId || !project) return;
+    let gone = false;
+    api<{ channelId: string }>('POST', '/api/simulate', { channelId, projectId: project.id })
+      .then((r) => !gone && setSimId(r.channelId))
+      .catch((e) => toast((e as Error).message, 'error'));
+    return () => void (gone = true);
+  }, [simulation, channelId, project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** The channel the commands go to and the on-air picture comes from. */
+  const driven = simulation ? simId : channelId;
+  const liveState = useApp((s) => (driven ? s.live[driven] : undefined));
   const allLayers = liveState?.state.layers ?? {};
   // Editing the rundown needs the rights; going on air also needs an output.
   const canEdit = can.operate(auth?.user);
-  const operate = canEdit && !!channelId;
+  const operate = canEdit && !!driven;
   const command: typeof send = (cmd0) => {
     if (!operate) return;
     // On the output the controls show (a take: where its playlist says, on the server; clearing all: everywhere).
     const everything = cmd0.action === 'clear' && !cmd0.zone && cmd0.layer == null;
     const cmd = cmd0.buses || cmd0.action === 'take' || cmd0.action === 'trigger' || everything ? cmd0 : { ...cmd0, buses: [monitor] };
-    const go = () => send(cmd, channelId!);
+    const go = () => send(cmd, driven!);
     // A new name on its way: saved first, so the action (and the as-run) has it.
     if (pending.current?.name !== undefined) void flush().then(go);
     else go();
@@ -323,7 +337,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const channelInfo = channels.find((c) => c.id === channelId);
   // Zones held by other operators: their graphics are locked here.
-  const zoneLocks = useZoneLocks(channelId, project);
+  const zoneLocks = useZoneLocks(simulation ? null : channelId, project);
 
   const rundown = project?.rundown ?? [];
   const playlists = project?.playlists ?? [];
@@ -561,15 +575,15 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const setRun = (f: (r: PreviewRun) => PreviewRun) => setPv((r) => f(r.active ? r : { ...r, active: true, since: Date.now() }));
 
   // A graphic of a zone another operator holds: no take, out or update here.
-  const lockOf = (r: RundownItem | null | undefined) => (r && channelId ? zoneLocks.other(zoneOf(r)?.id) : undefined);
+  const lockOf = (r: RundownItem | null | undefined) => (r && channelId && !simulation ? zoneLocks.other(zoneOf(r)?.id) : undefined);
   const operateItem = operate && !lockOf(item);
 
   return (
     <div className="opl-page">
-    {channelId && <ZonesButton project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
-    <OperatorTop channelId={channelId} operate={operate} />
-    <TopControls channelId={channelId} channelInfo={channelInfo} />
-    <ScheduleTop channelId={channelId} project={project} />
+    {channelId && !simulation && <ZonesButton project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
+    <OperatorTop channelId={driven} operate={operate} />
+    <TopControls channelId={channelId} simulation={simulation} />
+    {!simulation && <ScheduleTop channelId={channelId} project={project} />}
     <TakenNotice />
     <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
       {/* Left: playlists and graphics. */}
@@ -641,7 +655,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 lockedBy={lockOf(r)}
                 takeOver={lockOf(r) && channelId ? <TakeOver channelId={channelId} lock={lockOf(r)!} operate={operate} /> : undefined}
                 schedule={(editAt, onClose) => <ScheduleCell channelId={channelId} project={project} item={r} editAt={editAt} onClose={onClose} />}
-                canSchedule={!!channelId && operate && !lockOf(r)}
+                canSchedule={!!channelId && operate && !simulation && !lockOf(r)}
                 editable={canEdit}
                 onSelect={() => setCued(r.id)}
                 onTake={() => takeItem(r)}
@@ -867,6 +881,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
             <section className="opx-pane" style={mon.air ? { height: layout.preview, flex: 'none' } : { flex: 'none' }}>
               <header className="opx-head opx-mon-head">
                 <span className={`opx-title ${busy.length ? 'live' : ''}`}>● {t('On air')}</span>
+                {simulation && channelId && <span className="opx-sim">{t('SIMULATION')}</span>}
                 {pictures.length > 1 && (
                   <div className="opx-pics">
                     {pictures.map((p) => {
@@ -887,11 +902,16 @@ export function Operator({ channelId }: { channelId: string | null }) {
               <div className="opx-programs">
                 {channelId ? (
                   programs.map((p) => (
-                    <div key={p.id} className="opx-monitor" style={{ flex: `${p.width / p.height} 1 0` }}>
+                    <div key={p.id} className={`opx-monitor ${simulation ? 'sim' : ''}`} style={{ flex: `${p.width / p.height} 1 0` }}>
                       <Screen width={p.width} height={p.height}>
                         {/* A monitor: 30 frames a second are enough (the HTML5 output runs at the display rate). */}
                         <Program project={project} live={liveState} width={p.width} height={p.height} maxFps={MONITOR_FPS} bus={p.bus ?? 0} />
                       </Screen>
+                      {simulation && (
+                        <div className="opx-sim-mark" aria-hidden>
+                          <span>{t('SIMULATION')}</span>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -973,7 +993,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         ?
       </button>
     </footer>
-    <UndoShortcut channelId={channelId} operate={operate} />
+    <UndoShortcut channelId={driven} operate={operate} />
     </div>
   );
 }
@@ -2376,31 +2396,28 @@ function MonitorToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) 
 }
 
 /** In the project's top bar: the output and its web page. */
-function TopControls({ channelId, channelInfo }: { channelId: string | null; channelInfo?: ChannelInfo }) {
+function TopControls({ channelId, simulation }: { channelId: string | null; simulation: boolean }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setSlot(document.getElementById('topbar-slot')), []);
   if (!slot) return null;
   return createPortal(
     <div className="opx-top">
-      <OutputSelect channelId={channelId} />
-      {channelInfo && (
-        <a className="opx-btn small opx-html5" href={`/output/${(channelInfo.html5?.find((h) => h.picture === 'main')?.path ?? channelInfo.id).split('/').map(encodeURIComponent).join('/')}`} target="_blank" rel="noreferrer">
-          HTML5 ↗
-        </a>
-      )}
+      <OutputSelect channelId={channelId} simulation={simulation} />
     </div>,
     slot,
   );
 }
 
 /** The output the operator takes to; another project's output is taken over after a confirmation. */
-const OutputSelect = memo(function OutputSelect({ channelId }: { channelId: string | null }) {
+const OutputSelect = memo(function OutputSelect({ channelId, simulation }: { channelId: string | null; simulation: boolean }) {
   const { channels, projects, project, loadOnChannel } = useApp(useShallow((s) => ({ channels: s.channels, projects: s.projects, project: s.project, loadOnChannel: s.loadOnChannel })));
   // Read when asked, not followed: this list is not drawn again on each frame.
   const live = () => useApp.getState().live;
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name ?? t('another project');
   const pick = async (id: string) => {
     if (!project) return;
+    // A simulation: the output itself is left as it is.
+    if (simulation) return navigate(projectPath(project.id, 'operator', id || 'none'));
     if (!id) {
       // No output: the channel it had is unloaded (it shows its picture without project).
       const cur = channels.find((x) => x.id === channelId && x.projectId === project.id);

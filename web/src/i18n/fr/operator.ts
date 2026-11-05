@@ -37,6 +37,7 @@ export const operator: Record<string, string> = {
   'Drag to resize · double-click: half and half': 'Glisser pour redimensionner · double-clic : moitié-moitié',
   'Select a graphic in the playlist.': 'Sélectionnez un graphique dans la playlist.',
   'On air': 'À l’antenne',
+  'SIMULATION': 'SIMULATION',
   'Layers together': 'Calques ensemble',
   'Monitors': 'Écrans',
   'Both': 'Les deux',

@@ -73,6 +73,8 @@ interface AppStore {
   auth: AuthState | null;
   /** Signed out by a sign-in of the same user on another computer. */
   elsewhere: boolean;
+  /** The production station this computer is: none, the Operator drives a simulation (unknown: undefined). */
+  station?: { id: string; name: string } | null;
   connected: boolean;
   /** Server clock − client clock, ms. */
   serverOffset: number;
@@ -316,6 +318,7 @@ export const useApp = create<AppStore>((set, get) => {
               if (!outputChannel) {
                 set({ projects: msg.projects });
                 api<Folders>('GET', '/api/folders').then((folders) => set({ folders }), () => {});
+                api<{ station: { id: string; name: string } | null }>('GET', '/api/station').then((r) => set({ station: r.station }), () => {});
               }
               // Refresh projects edited while we were away (not on the first
               // connection: the page has just opened the project itself).

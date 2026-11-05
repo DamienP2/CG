@@ -21,6 +21,7 @@ use crate::auth::{self, CurrentUser, MaybeUser, PublicUser, Role, User, UserInpu
 use crate::config::ServerConfig;
 use crate::library::{valid_id, ProjectSummary};
 use crate::state::{now_ms, ChannelInfo, ClientMessage, Event, Shared};
+use crate::stations::OnStation;
 
 pub fn router() -> Router<Shared> {
     Router::new()
@@ -130,6 +131,13 @@ pub fn router() -> Router<Shared> {
                 .layer(axum::extract::DefaultBodyLimit::max(256 * 1024 * 1024)),
         )
         .route("/api/render", post(render_video))
+        .route("/api/station", get(this_station))
+        .route("/api/stations", get(list_stations).post(declare_station))
+        .route(
+            "/api/stations/{id}",
+            put(rename_station).delete(remove_station),
+        )
+        .route("/api/simulate", post(simulate))
         .route("/api/channels", get(list_channels))
         .route("/api/channels/{id}/state", get(channel_state))
         .route("/api/channels/{id}/project", put(load_project))
@@ -2177,7 +2185,11 @@ async fn sees_loaded(s: &Shared, me: &User, channel: &str) -> ApiResult<()> {
 }
 
 fn visible_channel(me: &User, id: &str) -> ApiResult<()> {
-    if me.sees_channel(id) {
+    let sees = match crate::sim::parse(id) {
+        Some((user, channel)) => user == me.id && me.sees_channel(channel),
+        None => me.sees_channel(id),
+    };
+    if sees {
         Ok(())
     } else {
         Err(not_found("channel"))
@@ -2194,6 +2206,166 @@ async fn channel_state(
     Ok(Json(ch.state.read().await.clone()))
 }
 
+// ---------- production stations, simulations ----------
+
+/// A person changes a real channel only from a production station (an API
+/// key, the MOS… are not concerned; a simulation is theirs).
+pub(crate) fn on_air_here(
+    actor: &crate::antenna::Actor,
+    station: &OnStation,
+    channel: &str,
+) -> ApiResult<()> {
+    if crate::sim::is_sim(channel)
+        || actor.kind != crate::antenna::ActorKind::User
+        || station.0.is_some()
+    {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            "this computer is not a production station".into(),
+        ))
+    }
+}
+
+fn https_request(https: &Option<axum::Extension<crate::tls::Https>>, headers: &HeaderMap) -> bool {
+    https.is_some()
+        || headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.eq_ignore_ascii_case("https"))
+}
+
+#[derive(Serialize)]
+struct ThisStation {
+    station: Option<crate::stations::View>,
+}
+
+/// The production station this computer is, if it is one.
+async fn this_station(
+    CurrentUser(_me): CurrentUser,
+    OnStation(st): OnStation,
+) -> Json<ThisStation> {
+    Json(ThisStation { station: st })
+}
+
+async fn list_stations(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<Vec<crate::stations::View>>> {
+    require(me.is_admin())?;
+    Ok(Json(s.stations.list()))
+}
+
+#[derive(Deserialize)]
+struct StationName {
+    name: String,
+}
+
+fn station_name(n: &StationName) -> ApiResult<&str> {
+    let name = n.name.trim();
+    if name.is_empty() || name.chars().count() > 60 {
+        return Err(bad("a name of 1 to 60 characters"));
+    }
+    Ok(name)
+}
+
+/// Makes this computer a production station (its browser keeps the secret).
+async fn declare_station(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    OnStation(st): OnStation,
+    https: Option<axum::Extension<crate::tls::Https>>,
+    headers: HeaderMap,
+    Json(n): Json<StationName>,
+) -> ApiResult<Response> {
+    require(me.is_admin())?;
+    if st.is_some() {
+        return Err(bad("this computer is already a production station"));
+    }
+    let (view, secret) = s.stations.create(station_name(&n)?).map_err(bad)?;
+    let cookie = crate::stations::cookie(
+        &secret,
+        10 * 365 * 24 * 3600,
+        https_request(&https, &headers),
+    );
+    Ok(([(header::SET_COOKIE, cookie)], Json(view)).into_response())
+}
+
+async fn rename_station(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(n): Json<StationName>,
+) -> ApiResult<StatusCode> {
+    require(me.is_admin())?;
+    if !s.stations.rename(&id, station_name(&n)?).map_err(bad)? {
+        return Err(not_found("station"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn remove_station(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    OnStation(st): OnStation,
+    https: Option<axum::Extension<crate::tls::Https>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    require(me.is_admin())?;
+    if !s.stations.remove(&id).map_err(bad)? {
+        return Err(not_found("station"));
+    }
+    // This computer: its browser forgets the secret too.
+    if st.is_some_and(|v| v.id == id) {
+        let cookie = crate::stations::cookie("", 0, https_request(&https, &headers));
+        return Ok(([(header::SET_COOKIE, cookie)], StatusCode::NO_CONTENT).into_response());
+    }
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SimulateRequest {
+    channel_id: String,
+    project_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SimulateReply {
+    /// The channel the Operator drives: the real one on a production
+    /// station, else this person's simulation of it.
+    channel_id: String,
+    simulation: bool,
+}
+
+/// What the Operator of `project` on `channel` drives from this computer.
+async fn simulate(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    OnStation(st): OnStation,
+    Json(r): Json<SimulateRequest>,
+) -> ApiResult<Json<SimulateReply>> {
+    visible_channel(&me, &r.channel_id)?;
+    require(me.can_operate(&r.channel_id) && me.sees_project(&r.project_id))?;
+    if st.is_some() {
+        return Ok(Json(SimulateReply {
+            channel_id: r.channel_id,
+            simulation: false,
+        }));
+    }
+    let id = s
+        .simulate(&me.id, &r.channel_id, &r.project_id)
+        .await
+        .map_err(bad)?;
+    Ok(Json(SimulateReply {
+        channel_id: id,
+        simulation: true,
+    }))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadProject {
@@ -2202,12 +2374,14 @@ struct LoadProject {
 
 async fn load_project(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    auth::Acting(me, actor): auth::Acting,
+    station: OnStation,
     Path(id): Path<String>,
     Json(l): Json<LoadProject>,
 ) -> ApiResult<StatusCode> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
+    on_air_here(&actor, &station, &id)?;
     if let Some(pid) = &l.project_id {
         require(me.sees_project(pid))?;
     }
@@ -2218,11 +2392,13 @@ async fn load_project(
 async fn channel_command(
     State(s): State<Shared>,
     auth::Acting(me, actor): auth::Acting,
+    station: OnStation,
     Path(id): Path<String>,
     Json(cmd): Json<cg_core::playout::Routed>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
-    require(me.can_operate(&id))?;
+    require(me.can_operate(crate::sim::real(&id)))?;
+    on_air_here(&actor, &station, &id)?;
     sees_loaded(&s, &me, &id).await?;
     s.command_on(&id, cmd.command, cmd.buses, &actor)
         .await
@@ -2246,7 +2422,7 @@ async fn channel_undo_list(
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<crate::antenna::UndoStep>>> {
     visible_channel(&me, &id)?;
-    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    let ch = s.channel_or_sim(&id).ok_or_else(|| not_found("channel"))?;
     Ok(Json(ch.ops.undo_list()))
 }
 
@@ -2254,10 +2430,12 @@ async fn channel_undo_list(
 async fn channel_undo(
     State(s): State<Shared>,
     auth::Acting(me, actor): auth::Acting,
+    station: OnStation,
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
-    require(me.can_operate(&id))?;
+    require(me.can_operate(crate::sim::real(&id)))?;
+    on_air_here(&actor, &station, &id)?;
     sees_loaded(&s, &me, &id).await?;
     s.undo(&id, &actor).await.map(Json).map_err(bad)
 }
@@ -2269,18 +2447,20 @@ async fn zone_locks(
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<crate::antenna::ZoneLock>>> {
     visible_channel(&me, &id)?;
-    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    let ch = s.channel_or_sim(&id).ok_or_else(|| not_found("channel"))?;
     Ok(Json(ch.ops.locks()))
 }
 
 /// Takes a zone of a channel (from whoever held it, who is told).
 async fn take_zone(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    auth::Acting(me, actor): auth::Acting,
+    station: OnStation,
     Path((id, zone)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
+    on_air_here(&actor, &station, &id)?;
     s.set_zone_lock(&id, &zone, Some(&me)).map_err(bad)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2288,11 +2468,13 @@ async fn take_zone(
 /// Frees a zone of a channel (its holder, or an admin).
 async fn free_zone(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    auth::Acting(me, actor): auth::Acting,
+    station: OnStation,
     Path((id, zone)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
+    on_air_here(&actor, &station, &id)?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let holder = ch.ops.locks().into_iter().find(|l| l.zone == zone);
     require(holder.is_none_or(|l| l.user_id == me.id || me.role == Role::Admin))?;
@@ -2315,11 +2497,13 @@ struct ItemBody {
 async fn item_command(
     State(s): State<Shared>,
     auth::Acting(me, actor): auth::Acting,
+    station: OnStation,
     Path((id, item, action)): Path<(String, String, String)>,
     body: Option<Json<ItemBody>>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
+    on_air_here(&actor, &station, &id)?;
     sees_loaded(&s, &me, &id).await?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let pid = ch
@@ -3604,10 +3788,20 @@ struct Viewer {
     token: Option<String>,
     /// Output pages follow one channel.
     channel: Option<String>,
+    /// The production station secret of its computer, looked at again before each command.
+    station: Option<String>,
 }
 
 impl Viewer {
     fn sees_channel(&self, id: &str) -> bool {
+        // A simulation: only its person.
+        if let Some((user, channel)) = crate::sim::parse(id) {
+            return self.channel.is_none()
+                && self
+                    .user
+                    .as_ref()
+                    .is_some_and(|u| u.id == user && u.sees_channel(channel));
+        }
         match (&self.user, &self.channel) {
             (_, Some(c)) => c == id,
             (Some(u), None) => u.sees_channel(id),
@@ -3636,11 +3830,14 @@ async fn ws_upgrade(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let token = {
+    let (token, station) = {
         let (mut parts, _) = axum::http::Request::new(()).into_parts();
         parts.uri = uri;
         parts.headers = headers;
-        auth::token_from(&parts)
+        (
+            auth::token_from(&parts),
+            crate::stations::secret_from(&parts),
+        )
     };
     if user.is_none() && !(s.config.public_outputs && q.channel.is_some()) {
         return (StatusCode::UNAUTHORIZED, "login required").into_response();
@@ -3657,6 +3854,7 @@ async fn ws_upgrade(
         user,
         token,
         channel,
+        station,
     };
     ws.on_upgrade(move |socket| ws_session(s, socket, viewer))
 }
@@ -3751,6 +3949,22 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
             if send(&mut tx, &ev).await.is_err() {
                 return;
             }
+        }
+    }
+    // Its own simulations (`crate::sim`), after a reconnection.
+    for ch in s
+        .sims
+        .all()
+        .into_iter()
+        .filter(|ch| viewer.sees_channel(&ch.config.id))
+    {
+        let ev = Event::Channel {
+            channel_id: ch.config.id.clone(),
+            state: ch.state.read().await.clone(),
+            server_time: now_ms(),
+        };
+        if send(&mut tx, &ev).await.is_err() {
+            return;
         }
     }
 
@@ -3857,9 +4071,12 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                                 let _ = send(&mut tx, &Event::Error { message: "login required".into() }).await;
                                 break;
                             }
+                            let here = crate::sim::is_sim(&channel_id) || viewer.station.as_deref().is_some_and(|k| s.stations.of_secret(k).is_some());
                             match &now {
-                                Some(u) if u.can_operate(&channel_id) => s.command_on(&channel_id, command, buses, &crate::antenna::Actor::user(u)).await.err(),
-                                _ => Some("you do not have the rights to operate this channel".into()),
+                                Some(u) if !u.can_operate(crate::sim::real(&channel_id)) || !viewer.sees_channel(&channel_id) => Some("you do not have the rights to operate this channel".into()),
+                                Some(_) if !here => Some("this computer is not a production station".into()),
+                                Some(u) => s.command_on(&channel_id, command, buses, &crate::antenna::Actor::user(u)).await.err(),
+                                None => Some("you do not have the rights to operate this channel".into()),
                             }
                         }
                         Ok(ClientMessage::Presence { channel_id }) => {

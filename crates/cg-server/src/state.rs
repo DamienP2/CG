@@ -387,6 +387,10 @@ pub struct AppState {
     pub saving: tokio::sync::Mutex<()>,
     /// Users and sessions outlive engine restarts.
     pub auth: Arc<Auth>,
+    /// The computers that go on air (`crate::stations`).
+    pub stations: Arc<crate::stations::Stations>,
+    /// What the Operator drives elsewhere (`crate::sim`).
+    pub sims: crate::sim::Sims,
     /// Running orders received from the newsroom system (MOS).
     pub mos: Arc<crate::mos::Store>,
     /// Data connectors and their latest values.
@@ -501,6 +505,14 @@ impl AppState {
         self.channels.get(id)
     }
 
+    /// A channel, or a simulation of one (`crate::sim`).
+    pub fn channel_or_sim(&self, id: &str) -> Option<Arc<ChannelRt>> {
+        match self.channels.get(id) {
+            Some(c) => Some(c.clone()),
+            None => self.sims.get(id),
+        }
+    }
+
     /// The channel an output page `/output/<at>` plays: the one of the HTML5
     /// output at that address, else the channel of that id (older links).
     pub fn output_channel(&self, at: &str) -> Option<String> {
@@ -542,7 +554,7 @@ impl AppState {
         let (dir, file) = (self.library.read().await.dir().to_path_buf(), p.clone());
         tokio::task::spawn_blocking(move || Library::write_file(&dir, &file)).await??;
         let old = self.library.write().await.insert(p.clone());
-        for ch in self.channels.values() {
+        for ch in self.channels.values().cloned().chain(self.sims.all()) {
             let pid = ch.project_id.read().await;
             if pid.as_deref() == Some(p.id.as_str()) {
                 ch.loaded.set(Some(p.clone()));
@@ -567,7 +579,7 @@ impl AppState {
         };
         if deleted {
             // Unload it from every channel showing it.
-            for ch in self.channels.values() {
+            for ch in self.channels.values().cloned().chain(self.sims.all()) {
                 let mut pid = ch.project_id.write().await;
                 if pid.as_deref() == Some(id) {
                     *pid = None;
@@ -695,7 +707,8 @@ impl AppState {
         buses: Vec<u32>,
         actor: &crate::antenna::Actor,
     ) -> Result<ChannelState, String> {
-        let ch = self.channel(channel_id).ok_or("no such channel")?;
+        let ch = self.channel_or_sim(channel_id).ok_or("no such channel")?;
+        self.sims.touch(channel_id);
         let pid = ch
             .project_id
             .read()
@@ -882,7 +895,7 @@ impl AppState {
         channel_id: &str,
         actor: &crate::antenna::Actor,
     ) -> Result<ChannelState, String> {
-        let ch = self.channel(channel_id).ok_or("no such channel")?;
+        let ch = self.channel_or_sim(channel_id).ok_or("no such channel")?;
         let step = {
             let mut undo = ch.ops.undo.lock().map_err(|_| "busy".to_string())?;
             let last = undo.back().ok_or("nothing to undo")?;

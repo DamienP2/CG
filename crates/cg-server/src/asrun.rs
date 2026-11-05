@@ -56,6 +56,10 @@ pub struct Entry {
 
 /// Keeps an entry (written in the background) and tells the clients.
 pub fn record(s: &AppState, e: Entry) {
+    // A simulation is not on air.
+    if crate::sim::is_sim(&e.channel_id) {
+        return;
+    }
     tracing::debug!(
         channel = e.channel_id,
         action = e.action,
