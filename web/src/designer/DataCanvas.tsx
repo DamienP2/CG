@@ -159,7 +159,7 @@ function exposuresOf(t: Template, flow: DataFlow): Map<string, Exposure> {
 }
 /** A field exposed to the Operator goes once nothing uses it any more (as the Inspector's (•) does). */
 function dropField(t: Template, key: string) {
-  if (fieldUsed(t, key) || t.logic?.nodes.some((n) => n.type === 'field' && n.key === key) || t.dataflow?.edges.some((e) => e.to === `field:${key}`)) return;
+  if (fieldUsed(t, key)) return;
   t.fields = t.fields.filter((f) => f.key !== key);
 }
 
@@ -531,7 +531,6 @@ export function useDataLayer(o: DataLayerOpts) {
     !!f.binding?.source ||
     flow.edges.some((e) => e.to === `field:${f.key}`) ||
     fieldUsed(template, f.key) ||
-    (template.logic?.nodes ?? []).some((n) => n.type === 'field' && n.key === f.key) ||
     !!layout.pos[`f:${f.key}`];
   const shownFields = template.fields.filter((f) => !exposed.has(f.key) && !folded.has(f.key) && inUse(f));
   /** Variables of the template not on the canvas (nothing uses them): in the palette, to place. */

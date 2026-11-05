@@ -8,16 +8,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { useDesigner } from '../designer/designerStore';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { imageTags, imgTag, imgValue, plain, type ImgHeight } from '../engine/rich';
-import { newFieldKey } from '../engine/settings';
-import type { Template } from '../engine/types';
+import { fieldUsed, newFieldKey } from '../engine/settings';
 import { Segmented, TextInput } from '../ui/fields';
 import type { Tokens } from '../ui/RichText';
 import { t } from '../i18n';
 
 const single = (s: string) => /^\{\{\s*(\w+)\s*\}\}$/.exec(s.trim())?.[1];
 const fileName = (src: string) => decodeURIComponent(src.split('?')[0].split('/').pop() || src).replace(/\.[a-z0-9]+$/i, '');
-/** Other layers still showing {{key}}. */
-const usedElsewhere = (tpl: Template, layerId: string, key: string) => tpl.layers.some((l) => l.id !== layerId && JSON.stringify(l).includes(`{{${key}}}`));
 
 /** The chips of a Text's Content box and the settings of the selected one. */
 export function useTextTokens(layerId: string | undefined, markup: string, setMarkup: (v: string) => void): { tokens?: Tokens; panel: ReactNode } {
@@ -73,7 +70,7 @@ export function useTextTokens(layerId: string | undefined, markup: string, setMa
     update((tpl) => {
       const l = tpl.layers.find((x) => x.id === layerId) as { varStyles?: Record<string, unknown> } | undefined;
       if (l?.varStyles) delete l.varStyles[key];
-      if (!usedElsewhere(tpl, layerId, key)) tpl.fields = tpl.fields.filter((x) => x.key !== key);
+      if (!fieldUsed(tpl, key, layerId)) tpl.fields = tpl.fields.filter((x) => x.key !== key);
     }, coalesce);
     if (selected === `{{${key}}}`) select(null);
   };
@@ -113,7 +110,7 @@ export function useTextTokens(layerId: string | undefined, markup: string, setMa
     const toggleOp = () => {
       if (f) {
         put(f.default, height);
-        if (!usedElsewhere(template, layerId, f.key)) update((tpl) => void (tpl.fields = tpl.fields.filter((y) => y.key !== f.key)), coalesce);
+        if (!fieldUsed(template, f.key, layerId)) update((tpl) => void (tpl.fields = tpl.fields.filter((y) => y.key !== f.key)), coalesce);
         return;
       }
       const k = newFieldKey(template, `picture ${imgs.length}`);
@@ -128,7 +125,7 @@ export function useTextTokens(layerId: string | undefined, markup: string, setMa
             className="tv-pop-x"
             onClick={() => {
               setMarkup(markup.slice(0, tag.start) + markup.slice(tag.end));
-              if (f && !usedElsewhere(template, layerId, f.key)) update((tpl) => void (tpl.fields = tpl.fields.filter((y) => y.key !== f.key)), coalesce);
+              if (f && !fieldUsed(template, f.key, layerId)) update((tpl) => void (tpl.fields = tpl.fields.filter((y) => y.key !== f.key)), coalesce);
               select(null);
             }}
           >

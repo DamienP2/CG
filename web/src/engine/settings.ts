@@ -99,8 +99,17 @@ export function syncSettingDefaults(t: Template) {
 }
 
 /** Whether a field is still used by a layer (property, setting or a {{key}} in a text). */
-export function fieldUsed(t: Template, key: string): boolean {
-  return t.layers.some((l) => Object.values(l.bindings ?? {}).includes(key) || Object.values(l.settingBindings ?? {}).includes(key) || JSON.stringify(l).includes(`{{${key}}}`));
+/**
+ * A field still used: bound to a property or a setting, shown in a text
+ * ({{key}}), read or set by the Logic, or fed in the Data canvas.
+ * `exceptText`: a layer whose text is being changed (its {{key}} not counted).
+ */
+export function fieldUsed(t: Template, key: string, exceptText?: string): boolean {
+  return (
+    t.layers.some((l) => Object.values(l.bindings ?? {}).includes(key) || Object.values(l.settingBindings ?? {}).includes(key) || (l.id !== exceptText && JSON.stringify(l).includes(`{{${key}}}`))) ||
+    (t.logic?.nodes ?? []).some((n) => (n.type === 'field' || n.type === 'setField') && n.key === key) ||
+    (t.dataflow?.edges ?? []).some((e) => e.to === `field:${key}`)
+  );
 }
 
 /** A field key not taken yet, from a label ("Name · Mask" → nameMask). */

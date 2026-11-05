@@ -526,8 +526,7 @@ export function useExposable(path: string | undefined, value: string | undefined
       if (exposed) {
         // Back to a plain content: the value set so far.
         setPath(l, path!, field!.default);
-        const still = t.layers.some((x) => x.id !== l.id && JSON.stringify(x).includes(`{{${field!.key}}}`));
-        if (!still) t.fields = t.fields.filter((f) => f.key !== field!.key);
+        if (!fieldUsed(t, field!.key)) t.fields = t.fields.filter((f) => f.key !== field!.key);
         return;
       }
       const taken = new Set(t.fields.map((f) => f.key));
@@ -596,7 +595,7 @@ export function Content(p: {
         const own = (l as { varStyles?: Record<string, unknown> }).varStyles;
         for (const k of keys) {
           if (own) delete own[k];
-          if (!t.layers.some((x) => x.id !== l.id && JSON.stringify(x).includes(`{{${k}}}`))) t.fields = t.fields.filter((f) => f.key !== k);
+          if (!fieldUsed(t, k, l.id)) t.fields = t.fields.filter((f) => f.key !== k);
         }
       },
     });
