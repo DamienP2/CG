@@ -138,6 +138,9 @@ struct Cam {
     id: String,
     /// Frames late (at the camera's rate).
     delay: u32,
+    /// Late on top of that, µs: the camera delayed at the mixer while its
+    /// people are found (`crate::people`).
+    extra: AtomicU64,
     source: u8,
     stop: AtomicBool,
     samples: Mutex<VecDeque<(Instant, CameraSample)>>,
@@ -168,6 +171,7 @@ impl Cam {
     /// The delay, as a duration.
     fn late(&self) -> Duration {
         Duration::from_secs_f64(self.delay as f64 * self.period())
+            + Duration::from_micros(self.extra.load(Ordering::Relaxed))
     }
 
     /// Where the camera looked `delay` frames before `t`: between the two
@@ -235,6 +239,7 @@ impl Tracking {
             let cam = Arc::new(Cam {
                 id: c.id.clone(),
                 delay: c.delay,
+                extra: AtomicU64::new(0),
                 source: c.source,
                 stop: AtomicBool::new(false),
                 samples: Default::default(),
@@ -266,6 +271,15 @@ impl Tracking {
             Arc::make_mut(m).retain(|id, _| ids.contains(id));
             m.len() != before
         });
+    }
+
+    /// Camera `id` is late `late` more (its picture delayed at the mixer).
+    pub fn set_extra(&self, id: &str, late: Duration) {
+        if let Some(r) = lock(&self.running).get(id) {
+            r.cam
+                .extra
+                .store(late.as_micros() as u64, Ordering::Relaxed);
+        }
     }
 
     /// Where camera `id` looks for graphics shown now (late by its delay).
@@ -899,6 +913,7 @@ mod tests {
         Cam {
             id: "c".into(),
             delay,
+            extra: AtomicU64::new(0),
             source: 1,
             stop: AtomicBool::new(false),
             samples: Default::default(),

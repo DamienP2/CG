@@ -215,6 +215,10 @@ pub struct Renderer {
     mask_only: Option<String>,
     /// Sprites off: every layer drawn straight (to compare, to measure).
     sprites_on: bool,
+    /// Where the people the camera sees are not (`Track::behind`), at the
+    /// frame's size, kept for the frame's other layers (by the address of
+    /// those people, the same through a frame).
+    behind: Option<(usize, Mask)>,
 }
 
 /// Where a frame being drawn is, in its steps (see `cache`).
@@ -402,6 +406,8 @@ struct Ctx<'a> {
     /// Where the template's tracked camera looks, and the picture its
     /// layers are laid out in (anchored layers follow it).
     camera: Option<(cg_core::tracking::CameraSample, f64, f64)>,
+    /// The people that camera sees (the layers anchored behind them are cut).
+    people: Option<&'a cg_core::tracking::People>,
 }
 
 impl<'a> Ctx<'a> {
@@ -419,6 +425,7 @@ impl<'a> Ctx<'a> {
             item_index: self.item_index,
             item_key: self.item_key,
             camera: self.camera,
+            people: self.people,
         }
     }
 
@@ -595,6 +602,7 @@ impl Renderer {
             in_sprite: false,
             mask_only: None,
             sprites_on: true,
+            behind: None,
         }
     }
 
@@ -809,6 +817,7 @@ impl Renderer {
         shown_ms: f64,
     ) -> Arc<Frame> {
         self.refresh_fonts();
+        self.behind = None;
         self.scaled.frame();
         self.strips.frame();
         self.sprites.frame();
@@ -921,6 +930,11 @@ impl Renderer {
                         .as_ref()
                         .and_then(|c| state.cameras.get(c))
                         .map(|c| (*c, dw as f64, dh as f64)),
+                    people: t
+                        .camera
+                        .as_ref()
+                        .and_then(|c| state.people.get(c))
+                        .map(|p| &**p),
                 }
             }};
         }
@@ -1272,6 +1286,7 @@ impl Renderer {
         max_width: u32,
     ) -> Frame {
         self.refresh_fonts();
+        self.behind = None;
         self.scaled.frame();
         self.sprites.frame();
         let (dw, dh) = project
@@ -1327,6 +1342,7 @@ impl Renderer {
                 k.finish()
             },
             camera: None,
+            people: None,
         };
         // As on air: only what is inside the template's zone.
         let zone_mask = project
@@ -1496,6 +1512,15 @@ impl Renderer {
                 }
                 Some((true, None)) if !matches!(layer.kind, LayerKind::Group { .. }) => continue,
                 _ => (tf, mask),
+            };
+            // Behind the people the camera sees: cut where they are.
+            let held;
+            let mask = match (&layer.anchor, ctx.people, &layer.parent) {
+                (Some(a), Some(people), None) if a.behind && !planning => {
+                    held = self.behind_people(pm, people, mask);
+                    Some(&held)
+                }
+                _ => mask,
             };
 
             // Crop (reveal mask) in layer space, intersected with the parent mask.
@@ -3329,6 +3354,70 @@ fn folder_mask<'a>(t: &'a Template, id: &str) -> Option<&'a cg_core::model::Grou
             LayerKind::Group { mask: Some(m), .. } if !m.layer.is_empty() => Some(m),
             _ => None,
         })
+}
+
+impl Renderer {
+    /// Where the people are not, over the frame (and inside `parent`).
+    fn behind_people(
+        &mut self,
+        pm: &Pixmap,
+        people: &cg_core::tracking::People,
+        parent: Option<&Mask>,
+    ) -> Mask {
+        let (w, h) = (pm.width(), pm.height());
+        let key = people as *const cg_core::tracking::People as usize;
+        let kept = self
+            .behind
+            .as_ref()
+            .is_some_and(|(k, m)| *k == key && m.width() == w && m.height() == h);
+        if !kept {
+            let mut m = Mask::new(w, h).expect("valid size");
+            not_people(people, w, h, m.data_mut());
+            self.behind = Some((key, m));
+        }
+        let (_, m) = self.behind.as_ref().expect("just set");
+        let mut out = m.clone();
+        if let Some(p) = parent.filter(|p| p.width() == w && p.height() == h) {
+            for (o, p) in out.data_mut().iter_mut().zip(p.data()) {
+                *o = ((*o as u16 * *p as u16 + 127) / 255) as u8;
+            }
+        }
+        out
+    }
+}
+
+/// 255 where there is no person, 0 on them: `people` stretched over a
+/// `w` × `h` picture (between its points).
+fn not_people(people: &cg_core::tracking::People, w: u32, h: u32, out: &mut [u8]) {
+    let (pw, ph) = (people.width as usize, people.height as usize);
+    if pw == 0 || ph == 0 || people.data.len() < pw * ph {
+        out.fill(255);
+        return;
+    }
+    // Each column: the two points it falls between, and how far.
+    let cols: Vec<(usize, usize, u32)> = (0..w)
+        .map(|x| {
+            let fx = ((x as f32 + 0.5) * pw as f32 / w as f32 - 0.5).clamp(0.0, (pw - 1) as f32);
+            let x0 = fx.floor() as usize;
+            (x0, (x0 + 1).min(pw - 1), ((fx - x0 as f32) * 256.0) as u32)
+        })
+        .collect();
+    let mut row = vec![0u32; pw];
+    for y in 0..h as usize {
+        let fy = ((y as f32 + 0.5) * ph as f32 / h as f32 - 0.5).clamp(0.0, (ph - 1) as f32);
+        let y0 = fy.floor() as usize;
+        let y1 = (y0 + 1).min(ph - 1);
+        let ky = ((fy - y0 as f32) * 256.0) as u32;
+        let (a, b) = (&people.data[y0 * pw..][..pw], &people.data[y1 * pw..][..pw]);
+        for (r, (a, b)) in row.iter_mut().zip(a.iter().zip(b)) {
+            *r = *a as u32 * (256 - ky) + *b as u32 * ky;
+        }
+        let line = &mut out[y * w as usize..][..w as usize];
+        for (o, (x0, x1, kx)) in line.iter_mut().zip(&cols) {
+            let v = (row[*x0] * (256 - kx) + row[*x1] * kx) >> 16;
+            *o = 255 - v.min(255) as u8;
+        }
+    }
 }
 
 fn build_mask(pm: &Pixmap, parent: Option<&Mask>, rect: Rect, tf: Transform) -> Mask {

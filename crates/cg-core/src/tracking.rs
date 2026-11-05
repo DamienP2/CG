@@ -148,6 +148,39 @@ pub struct Track {
     /// The lens distortion when it was anchored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub distortion: Option<Distortion>,
+    /// Cut where the camera sees people: it passes behind them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub behind: bool,
+}
+
+/// The people a camera sees, found in its picture: how much of a person
+/// each point is (0 to 255), for the layers that pass behind them
+/// ([`Track::behind`]). It covers the whole picture, whatever its size.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct People {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
+
+impl People {
+    /// How much of a person there is at `(u, v)` of the picture (0 to 1
+    /// across it), between the four points around (0 to 255).
+    pub fn at(&self, u: f64, v: f64) -> f64 {
+        let (w, h) = (self.width as usize, self.height as usize);
+        if w == 0 || h == 0 || self.data.len() < w * h {
+            return 0.0;
+        }
+        let x = (u * w as f64 - 0.5).clamp(0.0, (w - 1) as f64);
+        let y = (v * h as f64 - 0.5).clamp(0.0, (h - 1) as f64);
+        let (x0, y0) = (x.floor() as usize, y.floor() as usize);
+        let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+        let (fx, fy) = (x - x0 as f64, y - y0 as f64);
+        let p = |x: usize, y: usize| self.data[y * w + x] as f64;
+        let top = p(x0, y0) + (p(x1, y0) - p(x0, y0)) * fx;
+        let bottom = p(x0, y1) + (p(x1, y1) - p(x0, y1)) * fx;
+        top + (bottom - top) * fy
+    }
 }
 
 /// The camera `k` of the way from `a` to `b` (beyond 1: on past `b` at the
@@ -289,6 +322,7 @@ mod tests {
             zoom,
             distance: 0.0,
             distortion: None,
+            behind: false,
         }
     }
 

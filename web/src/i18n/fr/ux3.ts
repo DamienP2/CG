@@ -128,6 +128,10 @@ export const ux3: Record<string, string> = {
   '{n} camera': '{n} caméra',
   '{n} cameras': '{n} caméras',
   'No camera': 'Aucune caméra',
+  'Cut out': 'Détourage',
+  'picture|None': 'Aucune',
+  'Delay at the mixer': 'Retard au mélangeur',
+  'Behind the people': 'Derrière les personnes',
   'Remove the camera': 'Retirer la caméra',
   'page|Camera tracking': 'Tracking caméras',
 };

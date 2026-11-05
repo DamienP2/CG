@@ -58,6 +58,7 @@ pub fn router() -> Router<Shared> {
             get(crate::inputs::snapshot),
         )
         .route("/api/inputs/{id}/live.mjpeg", get(crate::inputs::mjpeg))
+        .route("/api/inputs/{id}/people.jpg", get(crate::people::preview))
         .route("/api/users", get(list_users).post(create_user))
         .route("/api/users/{id}", put(update_user).delete(delete_user))
         .route("/api/keys", get(list_keys).post(create_key))
@@ -2775,9 +2776,11 @@ async fn channel_preview(
         None => None,
     };
     let mut state = ch.state.read().await.clone();
-    // Its anchored graphics where the cameras see them.
+    // Its anchored graphics where the cameras see them, cut by the people they see.
     if let Some(p) = &project {
-        state.cameras = s.tracking.for_project(p, std::time::SystemTime::now());
+        let now = std::time::SystemTime::now();
+        state.cameras = s.tracking.for_project(p, now);
+        state.people = s.people.for_project(p, now);
     }
     let wanted = q.rendition.as_deref().unwrap_or("main");
     let slate = ch

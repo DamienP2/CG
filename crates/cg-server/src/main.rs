@@ -26,6 +26,7 @@ mod logs;
 mod media;
 mod mos;
 mod paths;
+mod people;
 mod perf;
 mod prefs;
 mod premiere;
@@ -455,6 +456,7 @@ pub async fn serve(
     // Live inputs keep running across engine restarts.
     let inputs = Arc::new(inputs::Inputs::default());
     let tracking = Arc::new(tracking::Tracking::default());
+    let people = Arc::new(people::People::default());
     let perf = Arc::new(perf::Perf::default());
     perf::spawn_sampler(perf.clone(), inputs.clone());
     if auth.needs_setup() {
@@ -582,6 +584,7 @@ pub async fn serve(
             output_status: output_status.clone(),
             inputs: inputs.clone(),
             tracking: tracking.clone(),
+            people: people.clone(),
             perf: perf.clone(),
             config,
             bind,
@@ -596,6 +599,7 @@ pub async fn serve(
             &shared.config.inputs,
             hardware::interface_ip(&shared.config.hardware.network.tracking),
         );
+        shared.people.apply(&shared.config.inputs, &shared.inputs);
         shared.data.set_cameras(&shared.config.inputs);
         shared
             .renderer

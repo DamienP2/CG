@@ -242,3 +242,74 @@ fn an_anchored_layer_follows_the_camera() {
         panned - still
     );
 }
+
+/// A layer anchored behind the people is cut where the camera sees one:
+/// the same kept or not, and whole again once they are gone.
+#[test]
+fn a_layer_behind_the_people_is_cut_where_they_are() {
+    let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+        "id": "wall", "name": "Wall", "duration": 10.0, "zone": "", "fields": [],
+        "markers": [], "camera": "fr7",
+        "layers": [{
+            "id": "panel", "name": "Panel", "type": "rect",
+            "anchor": {"pan": 0.0, "tilt": 0.0, "focal": 35.0, "sensor": 35.6, "behind": true},
+            "props": {"x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0, "fill": [0.2, 0.4, 0.9, 1.0]}
+        }]
+    }))
+    .unwrap();
+    let mut p = sample::demo_project();
+    p.templates.push(t);
+    let p = Arc::new(p);
+    let mut st = ChannelState::default();
+    take_in(&mut st, &p, "wall", None, Some("full-screen"));
+    for _ in 0..12 {
+        st.tick(1.0);
+    }
+    st.cameras.insert(
+        "fr7".into(),
+        cg_core::tracking::CameraSample {
+            focal: 35.0,
+            sensor: 35.6,
+            ..Default::default()
+        },
+    );
+    // A person on the right half of the picture.
+    let (w, h) = (32u32, 18u32);
+    let data: Vec<u8> = (0..w * h)
+        .map(|i| if i % w >= w / 2 { 255 } else { 0 })
+        .collect();
+    let mut frames = Vec::new();
+    let mut ms = 1_800_000_000_000.0;
+    for i in 0..8 {
+        let mut s = st.clone();
+        if i < 6 {
+            s.people.insert(
+                "fr7".into(),
+                Arc::new(cg_core::tracking::People {
+                    width: w,
+                    height: h,
+                    data: if i == 4 {
+                        vec![0; (w * h) as usize]
+                    } else {
+                        data.clone()
+                    },
+                }),
+            );
+        }
+        frames.push((s, ms));
+        ms += 20.0;
+    }
+    same_everywhere(&p, &frames);
+    let alpha = |st: &ChannelState, x: u32| {
+        let f = Renderer::new(assets()).render_channel_at(&p, st, OUT, "UTC", ms);
+        f.data[((OUT.height / 2 * OUT.width + x) * 4 + 3) as usize]
+    };
+    assert_eq!(alpha(&frames[0].0, 40), 255, "drawn where nobody is");
+    assert_eq!(alpha(&frames[0].0, OUT.width - 40), 0, "cut on the person");
+    assert_eq!(alpha(&frames[4].0, OUT.width - 40), 255, "nobody: whole");
+    assert_eq!(
+        alpha(&frames[7].0, OUT.width - 40),
+        255,
+        "no picture: whole"
+    );
+}

@@ -1841,6 +1841,7 @@ mod tests {
             output_status: Default::default(),
             inputs: Default::default(),
             tracking: Default::default(),
+            people: Default::default(),
             perf: Default::default(),
             config,
             bind: "127.0.0.1:0".parse().unwrap(),

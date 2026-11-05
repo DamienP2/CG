@@ -121,6 +121,8 @@ export interface InputConfig {
   sensor?: number;
   /** Tracking: how far ahead of the pan and tilt axes the optical centre is, m, when the camera does not send it. */
   pupil?: number;
+  /** Tracking: the video input bringing the camera's picture, where the people are found. */
+  image?: string;
 }
 
 /** `GET /api/inputs`. */
@@ -136,6 +138,8 @@ export interface InputInfo {
   frames: number;
   /** Frames a second of the source (streams: as detected). */
   fps?: number;
+  /** A tracked camera with a picture: the people found in it. */
+  people?: { running: boolean; ms?: number; delay: number; message?: string };
 }
 
 /** What a format shows while no project is loaded: a built-in design (drawn by the server) or its still picture. */

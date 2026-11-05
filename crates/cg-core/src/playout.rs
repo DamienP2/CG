@@ -1259,6 +1259,10 @@ pub struct ChannelState {
     /// input (set by the server for the renderer, never sent).
     #[serde(skip)]
     pub cameras: std::collections::BTreeMap<String, crate::tracking::CameraSample>,
+    /// The people those cameras see as the frame is drawn, by tracking
+    /// input (set by the server for the renderer, never sent).
+    #[serde(skip)]
+    pub people: std::collections::BTreeMap<String, std::sync::Arc<crate::tracking::People>>,
 }
 
 /// What a playlist last took: its row, and how many rows so far (a change

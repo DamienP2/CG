@@ -134,6 +134,7 @@ export function LayerAnchor({ layer, template }: { layer: Layer; template: Templ
             </span>
           </KitRow>
           <Toggle label={t('Follows the zoom')} value={!!anchor.zoom} onChange={(v) => edit((l) => void (l.anchor && (l.anchor.zoom = v)))} />
+          <Toggle label={t('Behind the people')} value={!!anchor.behind} onChange={(v) => edit((l) => void (l.anchor && (v ? (l.anchor.behind = true) : delete l.anchor.behind)))} />
         </>
       )}
     </SpecSection>

@@ -63,6 +63,7 @@ resvg = { version = "0.45", default-features = false }
 hayro-svg = "0.8"
 # Camera tracking (src/tracking.rs): several cameras on one port, multicast on a chosen card.
 socket2 = { version = "0.5", features = ["all"] }
+tract-onnx = "0.23"
 
 [target.'cfg(unix)'.dependencies]
 # Thread priorities of the playout (src/rt.rs).

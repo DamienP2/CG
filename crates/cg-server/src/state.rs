@@ -410,6 +410,8 @@ pub struct AppState {
     pub inputs: Arc<crate::inputs::Inputs>,
     /// Camera tracking inputs (kept across engine restarts).
     pub tracking: Arc<crate::tracking::Tracking>,
+    /// The people the tracked cameras see (kept across engine restarts).
+    pub people: Arc<crate::people::People>,
     /// Load of the machine, the channels, outputs and inputs (kept across engine restarts).
     pub perf: Arc<crate::perf::Perf>,
     /// Settings this engine cycle was started with.

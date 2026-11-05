@@ -751,6 +751,10 @@ fn clock(
             p.dispatch(n, at);
         }
         let (project, snapshot) = rt.block_on(advance(state, ch, &mut saved_at));
+        // The cameras whose people are found are delayed at the mixer: their tracking too.
+        for (id, late) in state.people.delays() {
+            state.tracking.set_extra(&id, late);
+        }
         for p in &pictures {
             // Shown `ahead` ticks from now.
             let shown = at + period * p.ahead as u32;
@@ -769,6 +773,11 @@ fn clock(
                 snapshot.bus(p.bus)
             };
             shown_state.cameras = cameras;
+            // The people those cameras see then (graphics behind them).
+            shown_state.people = project
+                .as_ref()
+                .map(|pr| state.people.for_project(pr, shown))
+                .unwrap_or_default();
             p.request((n, project.clone(), shown_state, shown_ms));
         }
     }

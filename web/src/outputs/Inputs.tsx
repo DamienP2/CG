@@ -291,6 +291,7 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
                 hwChoices={hwChoices}
                 setKind={setKind}
                 remove={remove}
+                pictures={(cfg.inputs ?? []).filter((x) => x.kind !== 'tracking').map((x) => ({ id: x.id, name: x.name || x.id }))}
               />
             )}
           </aside>
@@ -309,6 +310,7 @@ function Inspector({
   hwChoices,
   setKind,
   remove,
+  pictures,
 }: {
   input: InputConfig;
   state: { tone: Tone; text: string; live: boolean; info?: InputInfo };
@@ -318,6 +320,8 @@ function Inspector({
   hwChoices: (k: InputKind) => { id: string; name: string }[];
   setKind: (k: InputKind) => void;
   remove: () => void;
+  /** The video inputs a camera's picture can come from. */
+  pictures: { id: string; name: string }[];
 }) {
   const listId = `vs-ndi-${i.id}`;
   const [picking, setPicking] = useState(false);
@@ -343,6 +347,7 @@ function Inspector({
         {!!state.info?.frames && i.kind !== 'tracking' && <span className="vs-res">{tn(state.info.frames, '{n} frame', '{n} frames')}</span>}
       </div>
       {i.kind === 'tracking' && <TrackValues id={i.id} />}
+      {i.kind === 'tracking' && !!i.image && <PeopleView id={i.id} info={state.info} />}
       {state.live && detected(state.info) && (
         <div className="vs-detected">
           <small>{t('Detected')}</small>
@@ -505,6 +510,18 @@ function Inspector({
               onChange={(v) => editInput((x) => void (x.delay = Number(v)))}
             />
           </Field>
+          <Field label={t('Picture')}>
+            <Dropdown
+              value={i.image ?? ''}
+              title={t('Picture')}
+              options={[
+                { value: '', label: tc('picture', 'None') },
+                ...pictures.map((p) => ({ value: p.id, label: p.name })),
+                ...(i.image && !pictures.some((p) => p.id === i.image) ? [{ value: i.image, label: t('(missing: {source})', { source: i.image }) }] : []),
+              ]}
+              onChange={(v) => editInput((x) => void (v ? (x.image = v) : delete x.image))}
+            />
+          </Field>
           <LensSettings input={i} editInput={editInput} />
         </>
       )}
@@ -621,6 +638,54 @@ function TrackValues({ id }: { id: string }) {
         {cell(t('Distortion'), s?.distortion ? tc('distortion', 'Received') : '—')}
         {cell(t('Optical centre'), s?.pupilSent ? `${num(s.pupil ?? 0, 2)} m` : '—')}
         {cell(t('Sensor'), s?.sensorSent ? `${num(s.sensor, 1)} mm` : '—')}
+      </div>
+    </>
+  );
+}
+
+/** The camera's picture with the people found shown, five times a second (looking keeps them found). */
+function PeopleView({ id, info }: { id: string; info?: InputInfo }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const abort = new AbortController();
+    let after: string | null = null;
+    let shown: string | null = null;
+    void (async () => {
+      while (!abort.signal.aborted) {
+        try {
+          const r: Response = await fetch(`/api/inputs/${encodeURIComponent(id)}/people.jpg${after ? `?after=${after}` : ''}`, { credentials: 'same-origin', signal: abort.signal, cache: 'no-store' });
+          if (r.status === 200) {
+            after = r.headers.get('x-frame');
+            const next = URL.createObjectURL(await r.blob());
+            const old = shown;
+            shown = next;
+            setUrl(next);
+            if (old) setTimeout(() => URL.revokeObjectURL(old), 500);
+          }
+        } catch {
+          if (abort.signal.aborted) break;
+        }
+        await new Promise((res) => setTimeout(res, document.hidden ? 1000 : 200));
+      }
+    })();
+    return () => {
+      abort.abort();
+      if (shown) URL.revokeObjectURL(shown);
+    };
+  }, [id]);
+  const p = info?.people;
+  return (
+    <>
+      <span className="vs-people">{url && <img src={url} alt="" draggable={false} />}</span>
+      <div className="vs-perf">
+        <div>
+          <small>{t('Cut out')}</small>
+          <strong>{p?.ms != null ? `${num(p.ms, 0)} ms` : '—'}</strong>
+        </div>
+        <div>
+          <small>{t('Delay at the mixer')}</small>
+          <strong>{p ? tn(p.delay, '{n} frame', '{n} frames') : '—'}</strong>
+        </div>
       </div>
     </>
   );

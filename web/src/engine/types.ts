@@ -412,6 +412,8 @@ export interface Track {
   distance?: number;
   /** The lens distortion when it was anchored. */
   distortion?: Distortion;
+  /** Cut where the camera sees people (server outputs): it passes behind them. */
+  behind?: boolean;
 }
 
 export type TextMetric = 'width' | 'height' | 'lines' | 'chars';

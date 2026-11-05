@@ -107,6 +107,10 @@ pub struct InputConfig {
     /// is, m, when the camera does not send it.
     #[serde(default)]
     pub pupil: f64,
+    /// Tracking: the video input bringing the camera's picture, where the
+    /// people the layers pass behind are found ("" = none, see `crate::people`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub image: String,
 }
 
 fn default_source() -> u8 {
@@ -237,6 +241,9 @@ pub struct InputStatus {
     /// The source is interlaced (its fields come as pictures of their own).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub interlaced: bool,
+    /// A tracked camera with a picture: the people found in it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub people: Option<crate::people::Status>,
 }
 
 /// Pictures waiting for their time, and the one on show.
@@ -469,6 +476,7 @@ impl Inputs {
                     frames: l.received.load(Ordering::Relaxed),
                     fps: *l.rate.lock().unwrap_or_else(|p| p.into_inner()),
                     interlaced: l.interlaced.load(Ordering::Relaxed),
+                    people: None,
                 }
             })
             .collect()
@@ -507,6 +515,19 @@ impl Inputs {
     pub fn received(&self, id: &str) -> Option<u64> {
         let map = self.live.read().unwrap_or_else(|p| p.into_inner());
         map.get(id).map(|l| l.received.load(Ordering::Relaxed))
+    }
+
+    /// The newest picture, its number and when it came.
+    pub fn latest_at(&self, id: &str) -> Option<(u64, Arc<Pixmap>, Instant)> {
+        let map = self.live.read().unwrap_or_else(|p| p.into_inner());
+        let l = map.get(id)?;
+        let pic = l
+            .picture
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()?;
+        let at = (*l.last_at.lock().unwrap_or_else(|p| p.into_inner()))?;
+        Some((l.received.load(Ordering::Relaxed), pic, at))
     }
 
     /// The newest picture and its number (previews: not delayed by the smoothing).
@@ -588,6 +609,9 @@ pub async fn list(
     require(me.is_some() || s.config.public_outputs)?;
     let mut status = s.inputs.status();
     status.extend(s.tracking.status());
+    for st in &mut status {
+        st.people = s.people.status(&st.id);
+    }
     Ok(Json(
         s.config
             .inputs
@@ -1240,6 +1264,7 @@ mod tests {
             delay: 0,
             sensor: 0.0,
             pupil: 0.0,
+            image: String::new(),
         }
     }
 
