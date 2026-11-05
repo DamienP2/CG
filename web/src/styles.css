@@ -20913,18 +20913,6 @@ textarea.tx-grow {
 }
 
 /* ===== Operator off a production station: a simulation, nothing goes on air ===== */
-.opx-sim {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 7px;
-  border-radius: 5px;
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent-2);
-  font: 700 10px/1 var(--mono);
-  letter-spacing: 0.08em;
-}
 .opx-monitor.sim {
   position: relative;
 }

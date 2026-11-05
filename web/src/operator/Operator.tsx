@@ -880,8 +880,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <>
             <section className="opx-pane" style={mon.air ? { height: layout.preview, flex: 'none' } : { flex: 'none' }}>
               <header className="opx-head opx-mon-head">
-                <span className={`opx-title ${busy.length ? 'live' : ''}`}>● {t('On air')}</span>
-                {simulation && channelId && <span className="opx-sim">{t('SIMULATION')}</span>}
+                <span className={`opx-title ${busy.length || simulation ? 'live' : ''}`}>● {simulation ? t('SIMULATION') : t('On air')}</span>
                 {pictures.length > 1 && (
                   <div className="opx-pics">
                     {pictures.map((p) => {
@@ -2402,22 +2401,21 @@ function TopControls({ channelId, simulation }: { channelId: string | null; simu
   if (!slot) return null;
   return createPortal(
     <div className="opx-top">
-      <OutputSelect channelId={channelId} simulation={simulation} />
+      {/* Only a production station chooses the project's output. */}
+      {!simulation && <OutputSelect channelId={channelId} />}
     </div>,
     slot,
   );
 }
 
 /** The output the operator takes to; another project's output is taken over after a confirmation. */
-const OutputSelect = memo(function OutputSelect({ channelId, simulation }: { channelId: string | null; simulation: boolean }) {
+const OutputSelect = memo(function OutputSelect({ channelId }: { channelId: string | null }) {
   const { channels, projects, project, loadOnChannel } = useApp(useShallow((s) => ({ channels: s.channels, projects: s.projects, project: s.project, loadOnChannel: s.loadOnChannel })));
   // Read when asked, not followed: this list is not drawn again on each frame.
   const live = () => useApp.getState().live;
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name ?? t('another project');
   const pick = async (id: string) => {
     if (!project) return;
-    // A simulation: the output itself is left as it is.
-    if (simulation) return navigate(projectPath(project.id, 'operator', id || 'none'));
     if (!id) {
       // No output: the channel it had is unloaded (it shows its picture without project).
       const cur = channels.find((x) => x.id === channelId && x.projectId === project.id);
