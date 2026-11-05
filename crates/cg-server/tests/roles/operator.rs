@@ -417,7 +417,6 @@ fn off_a_production_station_an_operator_drives_their_own_simulation() {
 
 /// The state of one's own simulation, like any channel's.
 #[test]
-#[ignore = "BUG: GET /api/channels/{sim}/state answers 404 for the simulation's owner"]
 fn the_state_of_a_simulation_reads_like_a_channel() {
     let w = World::new();
     let pid = &w.show.project;
@@ -440,11 +439,10 @@ fn the_state_of_a_simulation_reads_like_a_channel() {
         .expect(404, "not another's");
 }
 
-/// QUESTION: the rundown item routes (`items/{item}/{action}`, made for
-/// control surfaces and newsrooms) do not reach a simulation, while
-/// `command` and `undo` do. Current behavior asserted.
+/// The rundown item routes (`items/{item}/{action}`, made for control
+/// surfaces and newsrooms) reach a simulation, as `command` and `undo` do.
 #[test]
-fn rundown_item_routes_do_not_reach_a_simulation() {
+fn rundown_item_routes_reach_a_simulation() {
     let w = World::new();
     let r = w.operator.post(
         "/api/simulate",
@@ -454,7 +452,7 @@ fn rundown_item_routes_do_not_reach_a_simulation() {
     let r = w
         .operator
         .post_empty(&format!("/api/channels/{sim}/items/{}/take", w.show.item));
-    r.expect(404, "an item take in one's simulation (current behavior)");
+    r.expect(200, "an item take in one's simulation");
     // The same take as a command works there.
     let r = w.operator.post(
         &format!("/api/channels/{sim}/command"),
@@ -468,7 +466,6 @@ fn rundown_item_routes_do_not_reach_a_simulation() {
 /// People go on air from a production station only, whatever the route:
 /// the control API (`/api/v1`) too, when a person's session calls it.
 #[test]
-#[ignore = "BUG: /api/v1/{channel}/… lets a signed-in person drive a real channel off a production station"]
 fn the_control_api_does_not_bypass_production_stations() {
     let w = World::new();
     declare_station(&w.admin, "Gallery");
@@ -580,7 +577,6 @@ fn an_operator_drives_only_the_channels_and_projects_in_scope() {
 /// for another one on the channel; they should not be able to remove or
 /// switch them off either.
 #[test]
-#[ignore = "BUG: DELETE/PATCH /api/channels/{id}/schedule/{sid} let an operator change takes programmed for a project out of their scope"]
 fn programmed_takes_of_a_project_out_of_scope_stay_out_of_reach() {
     let w = World::new();
     let (_, station) = declare_station(&w.admin, "Gallery");

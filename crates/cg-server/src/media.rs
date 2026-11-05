@@ -312,6 +312,13 @@ async fn put_shared(
     body: Body,
 ) -> ApiResult<Json<MediaFile>> {
     require(can_upload(&me))?;
+    // A file every project may use: replaced by those who see them all.
+    if valid_asset_name(&name) && s.assets_dir().join(&name).is_file() && !me.can_edit_shared() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "only a designer of every project replaces a shared file".into(),
+        ));
+    }
     let r = store(&s, &s.assets_dir(), "/assets/", &name, body).await?;
     s.changed("media");
     Ok(r)
@@ -322,7 +329,7 @@ async fn delete_shared(
     CurrentUser(me): CurrentUser,
     Path(name): Path<String>,
 ) -> ApiResult<StatusCode> {
-    require(me.can_create_projects())?;
+    require(me.can_edit_shared())?;
     let r = remove(&s, &s.assets_dir(), &name, SHARED).await?;
     s.changed("media");
     Ok(r)
@@ -636,8 +643,11 @@ pub async fn load_folders(s: &Shared) -> Folders {
         .unwrap_or_default()
 }
 
-async fn get_folders(State(s): State<Shared>, CurrentUser(_): CurrentUser) -> Json<Folders> {
-    Json(load_folders(&s).await)
+async fn get_folders(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> Json<Folders> {
+    let mut f = load_folders(&s).await;
+    // Not the projects this user cannot see.
+    f.assign.retain(|p, _| me.sees_project(p));
+    Json(f)
 }
 
 async fn put_folders(

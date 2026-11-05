@@ -531,7 +531,7 @@ fn matrix_rundown_media_and_self_service_routes() {
                 "application/json",
             )
         }),
-        row("POST /api/keys (own)", OPERATE, |w, c, _| {
+        row("POST /api/keys (own)", ADMIN, |w, c, _| {
             c.post("/api/keys", json!({ "name": w.unique("Stream Deck ") }))
         }),
         refusals("POST /api/render", OPERATE, |w, c, _| {
@@ -558,19 +558,14 @@ fn matrix_rundown_media_and_self_service_routes() {
             let id = key_of(w, w.id(role));
             c.delete(&format!("/api/keys/{id}"))
         }),
-        // QUESTION: anyone who sees a data source (a viewer too) makes the
-        // server fetch it again now. Current behavior asserted.
-        row(
-            "POST /api/data/sources/{id}/refresh",
-            EVERYONE,
-            |w, c, _| {
-                let id = push_source(w);
-                c.post_empty(&format!("/api/data/sources/{id}/refresh"))
-            },
-        ),
+        // A fetch may cost (paid services): not for viewers.
+        row("POST /api/data/sources/{id}/refresh", OPERATE, |w, c, _| {
+            let id = push_source(w);
+            c.post_empty(&format!("/api/data/sources/{id}/refresh"))
+        }),
         row(
             "DELETE /api/projects/{id}/templates/{tid}/lock (not held)",
-            EVERYONE,
+            DESIGN,
             |w, c, _| {
                 c.delete(&format!(
                     "/api/projects/{}/templates/{}/lock",

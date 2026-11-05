@@ -430,7 +430,7 @@
      "Users & API keys"
     ],
     "summary": "Create an API key",
-    "description": "The `secret` is returned **once**: use it as `Authorization: Bearer pcg_…`. The key acts with the rights of its user (create a dedicated operator account for automation).\n\n**Rights:** admin for any user; designers and operators for themselves.",
+    "description": "The `secret` is returned **once**: use it as `Authorization: Bearer pcg_…`. The key acts with the rights of its user (create a dedicated operator account for automation).\n\n**Rights:** admin (for any user). A key goes on air without a production station.",
     "requestBody": {
      "required": true,
      "content": {

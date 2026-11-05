@@ -45,6 +45,8 @@ export function friendlyError(raw: string | null | undefined): string {
   if (/^every NDI output needs a name/i.test(s)) return t('Every NDI output needs a name');
   if ((m = s.match(/^HTML5 output address already used: `(.+)`$/))) return t('Web address “{name}” already used', { name: m[1] });
   if (/^HTML5 output address: letters/.test(s)) return t('Web address: letters, digits, - or _ only');
+  if ((m = s.match(/^(.+) is editing this template$/))) return t('{user} is editing this template', { user: m[1] });
+  if ((m = s.match(/^(.+) is editing “(.+)”$/))) return t('{user} is editing “{template}”', { user: m[1], template: m[2] });
   return s;
 }
 

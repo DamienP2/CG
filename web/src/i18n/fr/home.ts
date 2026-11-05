@@ -797,4 +797,7 @@ export const home: Record<string, string> = {
   'No video': 'Aucune vidéo',
   'No sound': 'Aucun son',
   'No file': 'Aucun fichier',
+  'All its outputs and its scheduled takes are removed too.': 'Toutes ses sorties et ses prises programmées sont aussi supprimées.',
+  'Their personal playlists and their API keys are deleted too.': 'Ses playlists personnelles et ses clés d’API sont aussi supprimées.',
+  'This computer no longer goes on air: its Operator simulates.': 'Cet ordinateur ne passe plus à l’antenne : son Opérateur simule.',
 };

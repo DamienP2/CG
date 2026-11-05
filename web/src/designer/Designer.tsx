@@ -28,6 +28,7 @@ import { zoneArea } from '../engine/zones';
 import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
 import { fromLibrary, LibraryGrid, SaveToLibrary, useTemplateLibrary, type LibTemplate } from './templateLibrary';
+import { friendlyError } from '../ui/serverError';
 import { t, tn } from '../i18n';
 import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
@@ -434,7 +435,7 @@ function TemplateList({ project }: { project: Project }) {
                 onClick={async (e) => {
                   e.stopPropagation();
                   if (!(await confirmDialog({ title: t('Delete the template “{name}”?', { name: tpl.name }), message: t('Rundown items using it are removed too.'), confirm: t('Delete'), danger: true }))) return;
-                  await deleteTemplate(tpl.id).catch((err) => toast(String(err), 'error'));
+                  if (!(await deleteTemplate(tpl.id).then(() => true, (err) => (toast(friendlyError((err as Error).message ?? String(err)), 'error'), false)))) return;
                   if (template?.id === tpl.id) load(designTemplates(project).find((x) => x.id !== tpl.id) ?? null);
                 }}
               >

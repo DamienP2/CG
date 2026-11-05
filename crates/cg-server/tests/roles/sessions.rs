@@ -12,7 +12,13 @@ fn a_new_sign_in_closes_the_session_on_the_other_computer() {
     let w = World::new();
     let first = &w.designer;
     first.get("/api/projects").expect(200, "signed in");
-    let key = first.post("/api/keys", json!({ "name": "Deck" })).json()["secret"]
+    let key = w
+        .admin
+        .post(
+            "/api/keys",
+            json!({ "name": "Deck", "userId": w.id("designer") }),
+        )
+        .json()["secret"]
         .as_str()
         .unwrap()
         .to_string();
@@ -131,7 +137,13 @@ fn pages_of_other_sites_cannot_act_with_a_session() {
     // The web app itself, and automation without a browser, pass.
     d.post("/api/projects", json!({ "name": "Real" }))
         .expect(200, "same site");
-    let key = d.post("/api/keys", json!({ "name": "Script" })).json()["secret"]
+    let key = w
+        .admin
+        .post(
+            "/api/keys",
+            json!({ "name": "Script", "userId": w.id("designer") }),
+        )
+        .json()["secret"]
         .as_str()
         .unwrap()
         .to_string();

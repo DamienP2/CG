@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
 use crate::antenna::{Actor, ActorKind};
-use crate::api::{bad, not_found, require, ApiResult};
+use crate::api::{bad, not_found, ApiResult};
 use crate::auth::{CurrentUser, User};
 use crate::state::{now_ms, AppState, Event, Shared};
 
@@ -391,6 +391,23 @@ impl AppState {
             .collect()
     }
 
+    /// Forgets the scheduled takes of a removed project or channel.
+    pub async fn forget_scheduled(self: &Shared, gone: impl Fn(&Scheduled) -> bool) {
+        let channels: Vec<String> = self.schedule.edit(|items| {
+            let mut channels: Vec<String> = items
+                .iter()
+                .filter(|e| gone(e))
+                .map(|e| e.channel_id.clone())
+                .collect();
+            items.retain(|e| !gone(e));
+            channels.dedup();
+            channels
+        });
+        for c in channels {
+            self.broadcast_schedule(&c).await;
+        }
+    }
+
     /// Tells the clients what is programmed on a channel.
     async fn broadcast_schedule(&self, channel: &str) {
         let _ = self.events.send(Event::Schedule {
@@ -636,9 +653,7 @@ pub async fn create(
     UrlPath(id): UrlPath<String>,
     Json(input): Json<NewEntry>,
 ) -> ApiResult<(StatusCode, Json<Scheduled>)> {
-    visible(&me, &id)?;
-    require(me.can_operate(&id))?;
-    crate::api::on_air_here(&actor, &station, &id)?;
+    crate::api::authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let pid = match input.project_id {
         Some(p) => p,
@@ -713,12 +728,11 @@ pub async fn delete(
     station: crate::stations::OnStation,
     UrlPath((id, sid)): UrlPath<(String, String)>,
 ) -> ApiResult<StatusCode> {
-    visible(&me, &id)?;
-    require(me.can_operate(&id))?;
-    crate::api::on_air_here(&actor, &station, &id)?;
+    crate::api::authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     let gone = s.schedule.edit(|items| {
         let before = items.len();
-        items.retain(|e| !(e.id == sid && e.channel_id == id));
+        // Not one of a project out of the user's scope (it does not show).
+        items.retain(|e| !(e.id == sid && e.channel_id == id && me.sees_project(&e.project_id)));
         items.len() != before
     });
     if !gone {
@@ -742,14 +756,12 @@ pub async fn patch(
     UrlPath((id, sid)): UrlPath<(String, String)>,
     Json(p): Json<Patch>,
 ) -> ApiResult<Json<Scheduled>> {
-    visible(&me, &id)?;
-    require(me.can_operate(&id))?;
-    crate::api::on_air_here(&actor, &station, &id)?;
+    crate::api::authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     let (tz, rate, now) = (s.tz(), s.rate_of(&id), now_ms());
     let entry = s.schedule.edit(|items| {
         let e = items
             .iter_mut()
-            .find(|e| e.id == sid && e.channel_id == id)
+            .find(|e| e.id == sid && e.channel_id == id && me.sees_project(&e.project_id))
             .ok_or_else(|| not_found("scheduled take"))?;
         if p.enabled && (e.missed || e.next <= now) {
             e.next = next_fire(&e.when, e.repeat, &tz, rate, now)

@@ -131,6 +131,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const user = auth?.user;
   const canUpload = !!user && user.role !== 'viewer';
   const canDelete = can.design(user);
+  // What every project shares: designers who see them all.
+  const canShared = canDelete && (can.admin(user) || !user?.projects);
+  const canRemoveFile = projectId ? canDelete : canShared;
   const [files, setFiles] = useState<MediaFile[] | null>(null);
   const [lib, setLib] = useState<LibraryFolders>(NO_FOLDERS);
   const families = useFonts((s) => s.families);
@@ -418,7 +421,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         title={tpls ? t('Templates') : logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
         sub={tpls ? tn(tlib?.length ?? 0, '{n} template', '{n} templates') : logic ? tn(sharedFlows + projectFlows, '{n} flow', '{n} flows') : colors ? tn(colourCount, '{n} colour', '{n} colours') : fonts ? tn(families.length, '{n} font', '{n} fonts') : tn(ofKind.length, '{n} file', '{n} files')}
       >
-        {colors && canDelete && (
+        {colors && canShared && (
           <button className="btn primary" onClick={addPalette}>
             <Plus size={14} /> {t('Palette')}
           </button>
@@ -500,7 +503,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       ) : logic ? (
         <LogicFlowsPanel projectId={projectId} canEdit={canDelete} />
       ) : colors ? (
-        <ColorsPanel projectId={projectId} canEdit={canDelete} />
+        <ColorsPanel projectId={projectId} canEdit={canDelete} canEditShared={canShared} />
       ) : fonts ? (
         <FontsPanel canEdit={canDelete} />
       ) : emptyHere ? (
@@ -566,7 +569,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
                         <a className="icon-btn" title={t('Download')} href={m.src} download={m.name}>
                           <Download size={14} />
                         </a>
-                        {canDelete && (
+                        {canRemoveFile && (
                           <button className="icon-btn danger" title={t('Delete')} onClick={() => void remove(m)}>
                             <Trash2 size={14} />
                           </button>

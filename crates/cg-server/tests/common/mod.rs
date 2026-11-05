@@ -295,7 +295,7 @@ impl Client {
             .http_status_as_error(false)
             .proxy(None)
             .max_redirects(0)
-            .timeout_global(Some(Duration::from_secs(60)))
+            .timeout_global(Some(Duration::from_secs(180)))
             .build()
             .into();
         let n = NEXT.fetch_add(1, Ordering::Relaxed);

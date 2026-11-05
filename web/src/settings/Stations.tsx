@@ -47,7 +47,7 @@ export function StationsPage() {
     }
   };
   const remove = async (s: StationView) => {
-    if (!(await confirmDialog({ title: t('Remove “{name}”?', { name: s.name }), confirm: t('Remove'), danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Remove “{name}”?', { name: s.name }), message: t('This computer no longer goes on air: its Operator simulates.'), confirm: t('Remove'), danger: true }))) return;
     try {
       await api('DELETE', `/api/stations/${encodeURIComponent(s.id)}`);
       if (here?.id === s.id) useApp.setState({ station: null });

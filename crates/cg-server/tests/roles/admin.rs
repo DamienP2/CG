@@ -241,9 +241,11 @@ fn the_admin_manages_accounts_and_their_rights_apply_at_once() {
     w.admin.get("/api/users").expect(403, "no longer an admin");
 
     // A deleted account: its session and keys end with it.
-    let key = w
-        .designer
-        .post("/api/keys", json!({ "name": "Stream Deck" }))
+    let key = deputy
+        .post(
+            "/api/keys",
+            json!({ "name": "Stream Deck", "userId": w.id("designer") }),
+        )
         .json()["secret"]
         .as_str()
         .unwrap()
@@ -271,8 +273,11 @@ fn the_admin_manages_accounts_and_their_rights_apply_at_once() {
 fn disabling_an_account_or_changing_its_password_signs_it_out_everywhere() {
     let w = World::new();
     let key = w
-        .operator
-        .post("/api/keys", json!({ "name": "Companion" }))
+        .admin
+        .post(
+            "/api/keys",
+            json!({ "name": "Companion", "userId": w.id("operator") }),
+        )
         .json()["secret"]
         .as_str()
         .unwrap()
@@ -519,11 +524,18 @@ fn production_stations_are_declared_renamed_and_removed_by_an_admin() {
 #[test]
 fn api_keys_act_with_their_owners_rights() {
     let w = World::new();
-    // Each person (but viewers) makes keys for their control surfaces.
-    let r = w
-        .operator
-        .post("/api/keys", json!({ "name": "Stream Deck" }));
-    r.expect(200, "operator key");
+    // Keys go on air from anywhere: only an admin makes them, for anyone.
+    w.operator
+        .post("/api/keys", json!({ "name": "Mine" }))
+        .expect(403, "operators make no keys");
+    w.designer
+        .post("/api/keys", json!({ "name": "Mine" }))
+        .expect(403, "designers make no keys");
+    let r = w.admin.post(
+        "/api/keys",
+        json!({ "name": "Stream Deck", "userId": w.id("operator") }),
+    );
+    r.expect(200, "a key for the operator");
     let secret = r.json()["secret"].as_str().unwrap().to_string();
     let kid = r.json()["key"]["id"].as_str().unwrap().to_string();
     assert!(secret.starts_with("pcg_"), "{secret}");
@@ -531,7 +543,7 @@ fn api_keys_act_with_their_owners_rights() {
     w.viewer
         .post("/api/keys", json!({ "name": "Mine" }))
         .expect(403, "viewers have no keys");
-    w.operator
+    w.admin
         .post("/api/keys", json!({ "name": "   " }))
         .expect(400, "a key needs a name");
     // Who sees which keys.

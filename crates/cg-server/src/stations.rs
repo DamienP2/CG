@@ -43,6 +43,8 @@ pub struct Stations {
     path: PathBuf,
     list: RwLock<Vec<Station>>,
     seen: Mutex<HashMap<String, i64>>,
+    /// A station removed: the pages of its computer reconnect (and simulate).
+    removed: tokio::sync::broadcast::Sender<()>,
 }
 
 fn hash(secret: &str) -> String {
@@ -63,6 +65,7 @@ impl Stations {
             path,
             list: RwLock::new(list),
             seen: Default::default(),
+            removed: tokio::sync::broadcast::channel(8).0,
         }
     }
 
@@ -137,7 +140,13 @@ impl Stations {
         }
         self.save(&next)?;
         *list = next;
+        let _ = self.removed.send(());
         Ok(true)
+    }
+
+    /// Told when a station is removed.
+    pub fn removals(&self) -> tokio::sync::broadcast::Receiver<()> {
+        self.removed.subscribe()
     }
 
     /// The station of this secret (and it was seen now).

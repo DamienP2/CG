@@ -153,7 +153,7 @@ export function Users() {
   const shown = users.filter((u) => inView(u) && (!q || u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q))).sort((a, b) => a.displayName.localeCompare(b.displayName));
   const disabled = users.filter((u) => u.disabled).length;
   const remove = async (u: User) => {
-    if (!(await confirmDialog({ title: t('Delete the user “{name}”?', { name: u.username }), confirm: t('Delete'), danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Delete the user “{name}”?', { name: u.username }), message: t('Their personal playlists and their API keys are deleted too.'), confirm: t('Delete'), danger: true }))) return;
     await api('DELETE', `/api/users/${encodeURIComponent(u.id)}`).catch((e) => toast((e as Error).message, 'error'));
     load();
   };

@@ -213,7 +213,6 @@ fn a_viewer_limited_to_a_project_does_not_see_another_project_on_air() {
 }
 
 #[test]
-#[ignore = "BUG: GET /api/channels/{id}/state shows the graphics and values of a project out of the user's scope"]
 fn the_state_of_a_channel_hides_a_project_out_of_scope() {
     let w = World::new();
     let mine = make_show(&w.admin, "Late show");
@@ -244,7 +243,6 @@ fn the_state_of_a_channel_hides_a_project_out_of_scope() {
 }
 
 #[test]
-#[ignore = "BUG: GET /api/asrun lists the graphics and values of projects out of the user's scope"]
 fn the_as_run_log_hides_projects_out_of_scope() {
     let w = World::new();
     let mine = make_show(&w.admin, "Late show");

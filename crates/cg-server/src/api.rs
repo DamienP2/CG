@@ -522,6 +522,7 @@ async fn update_user(
         .await
         .map_err(internal)?
         .map_err(bad)?;
+    s.drop_sims_out_of_reach(&u.id).await;
     Ok(Json((&u).into()))
 }
 
@@ -535,6 +536,27 @@ async fn delete_user(
         return Err(bad("you cannot delete your own account"));
     }
     s.auth.delete(&id).map_err(bad)?;
+    s.drop_sims_out_of_reach(&id).await;
+    // Their personal playlists go with them (no one else sees them).
+    let _edit = s.edits.lock().await;
+    for summary in s.summaries().await {
+        let Some(p) = s.project(&summary.id).await else {
+            continue;
+        };
+        if !p.playlists.iter().any(|l| l.owner == id) {
+            continue;
+        }
+        let mut p = (*p).clone();
+        let gone: std::collections::HashSet<String> = p
+            .playlists
+            .iter()
+            .filter(|l| l.owner == id)
+            .map(|l| l.id.clone())
+            .collect();
+        p.playlists.retain(|l| !gone.contains(&l.id));
+        p.rundown.retain(|r| !gone.contains(&r.playlist));
+        s.save_project(p).await.map_err(internal)?;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -574,8 +596,9 @@ async fn create_key(
     CurrentUser(me): CurrentUser,
     Json(n): Json<NewKey>,
 ) -> ApiResult<Json<CreatedKey>> {
+    // Keys go on air from anywhere: only an admin makes them (for anyone).
+    require(me.is_admin())?;
     let owner = n.user_id.unwrap_or_else(|| me.id.clone());
-    require(me.is_admin() || (owner == me.id && me.role != Role::Viewer))?;
     let (secret, key) = s.auth.create_api_key(&owner, &n.name).map_err(bad)?;
     tracing::info!(by = me.username, key = key.name, "API key created");
     Ok(Json(CreatedKey { key, secret }))
@@ -799,6 +822,8 @@ async fn create_project(
         p = serde_json::from_str(&json).map_err(internal)?;
     }
     let p = s.save_project(p).await.map_err(internal)?;
+    // A designer limited to some projects sees the one they made.
+    s.auth.grant_project(&me.id, &p.id).map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
 
@@ -845,6 +870,8 @@ async fn create_from_example(
         s.changed("sources");
     }
     let p = s.save_project(p).await.map_err(internal)?;
+    // A designer limited to some projects sees the one they made.
+    s.auth.grant_project(&me.id, &p.id).map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
 
@@ -925,6 +952,8 @@ async fn import_project(
         p.id = cg_core::new_id();
     }
     let p = s.save_project(p).await.map_err(internal)?;
+    // A designer limited to some projects sees the one they made.
+    s.auth.grant_project(&me.id, &p.id).map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
 
@@ -968,6 +997,8 @@ async fn import_archive(
         .map_err(internal)?
         .map_err(internal)?;
     let p = s.save_project(p).await.map_err(internal)?;
+    // A designer limited to some projects sees the one they made.
+    s.auth.grant_project(&me.id, &p.id).map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
 
@@ -1148,6 +1179,7 @@ async fn import_create(
         p.publish(&id);
     }
     let p = s.save_project(p).await.map_err(internal)?;
+    s.auth.grant_project(&me.id, &p.id).map_err(internal)?;
     tracing::info!(user = me.username, project = p.name, "project imported");
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
@@ -1334,6 +1366,9 @@ async fn delete_project(
         all.remove(&id);
     })
     .await;
+    // Its programmed takes and the templates kept with it in the library.
+    s.forget_scheduled(|e| e.project_id == id).await;
+    crate::tpllib::forget_project(&s, &id);
     // Its own data connectors go with it (the shared ones stay).
     let own: Vec<String> = s
         .data
@@ -1361,7 +1396,7 @@ struct PutTemplateQuery {
 
 async fn put_template(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    auth::Acting(me, actor): auth::Acting,
     Path((id, tid)): Path<(String, String)>,
     Query(q): Query<PutTemplateQuery>,
     headers: HeaderMap,
@@ -1372,7 +1407,13 @@ async fn put_template(
     if t.id != tid {
         return Err(bad("template id mismatch"));
     }
-    s.locks.check(&id, &tid, &me, client_id(&headers))?;
+    s.locks.check(
+        &id,
+        &tid,
+        &me,
+        client_id(&headers),
+        actor.kind != crate::antenna::ActorKind::User,
+    )?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     p.save_draft(t);
     if q.publish {
@@ -1443,12 +1484,13 @@ async fn lock_template(
 
 async fn unlock_template(
     State(s): State<Shared>,
-    CurrentUser(_me): CurrentUser,
+    CurrentUser(me): CurrentUser,
     Path((id, tid)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> ApiResult<StatusCode> {
+    require(me.can_design(&id))?;
     let client = client_id(&headers).ok_or_else(|| bad("missing X-Strata-Client header"))?;
-    if s.locks.release(&id, &tid, client) {
+    if s.locks.release(&id, &tid, &me, client) {
         let _ = s.events.send(Event::Lock {
             project_id: id,
             template_id: tid,
@@ -1595,9 +1637,28 @@ async fn restore_version(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
     Path((id, vid)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> ApiResult<StatusCode> {
     let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
+    // Not while someone else edits a template (their saves would undo it).
+    if let Some((tid, l)) = s.locks.held_by_other(&id, None, &me, client_id(&headers)) {
+        let name = s
+            .project(&id)
+            .await
+            .and_then(|p| {
+                p.templates
+                    .iter()
+                    .chain(&p.drafts)
+                    .find(|t| t.id == tid)
+                    .map(|t| t.name.clone())
+            })
+            .unwrap_or(tid);
+        return Err((
+            StatusCode::CONFLICT,
+            format!("{} is editing “{name}”", l.user_name),
+        ));
+    }
     let current = visible_project(&s, &me, &id).await?;
     let mut old = s
         .library
@@ -1717,9 +1778,20 @@ async fn delete_template(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
     Path((id, tid)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> ApiResult<StatusCode> {
     let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
+    // Not while someone else edits it (their next save would bring it back).
+    if let Some((_, l)) = s
+        .locks
+        .held_by_other(&id, Some(&tid), &me, client_id(&headers))
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("{} is editing this template", l.user_name),
+        ));
+    }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     if p.design_templates().all(|t| t.id == tid) {
         return Err((
@@ -2179,11 +2251,12 @@ async fn list_channels(
 
 /// The project loaded on a channel is one the user may see (operators scoped to projects).
 async fn sees_loaded(s: &Shared, me: &User, channel: &str) -> ApiResult<()> {
-    let Some(ch) = s.channel(channel) else {
+    let Some(ch) = s.channel_or_sim(channel) else {
         return Ok(());
     };
-    match ch.project_id.read().await.as_deref() {
-        Some(pid) if !me.sees_project(pid) => Err(not_found("project")),
+    let loaded = ch.project_id.read().await.clone();
+    match loaded {
+        Some(pid) if !me.sees_project(&pid) => Err(not_found("project")),
         _ => Ok(()),
     }
 }
@@ -2208,8 +2281,10 @@ async fn channel_state(
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
-    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
-    Ok(Json(ch.state.read().await.clone()))
+    sees_loaded(&s, &me, &id).await?;
+    let ch = s.channel_or_sim(&id).ok_or_else(|| not_found("channel"))?;
+    let state = ch.state.read().await.clone();
+    Ok(Json(state))
 }
 
 // ---------- production stations, simulations ----------
@@ -2222,17 +2297,29 @@ pub(crate) fn may_drive(me: &User, id: &str) -> bool {
     }
 }
 
+/// Whether `me` (acting as `actor`, from a production station or not) may
+/// drive this channel or their simulation now: it is theirs to see, their
+/// role allows it, a person is at a production station for a real channel,
+/// and the project loaded there is one they see. Every way of driving a
+/// channel (HTTP, WebSocket, programmed takes, `/api/v1`) asks this.
+pub(crate) async fn authorize_drive(
+    s: &Shared,
+    me: &User,
+    actor: &crate::antenna::Actor,
+    on_station: bool,
+    id: &str,
+) -> ApiResult<std::sync::Arc<crate::state::ChannelRt>> {
+    visible_channel(me, id)?;
+    require(may_drive(me, id))?;
+    on_air_from(actor, on_station, id)?;
+    sees_loaded(s, me, id).await?;
+    s.channel_or_sim(id).ok_or_else(|| not_found("channel"))
+}
+
 /// A person changes a real channel only from a production station (an API
 /// key, the MOS… are not concerned; a simulation is theirs).
-pub(crate) fn on_air_here(
-    actor: &crate::antenna::Actor,
-    station: &OnStation,
-    channel: &str,
-) -> ApiResult<()> {
-    if crate::sim::is_sim(channel)
-        || actor.kind != crate::antenna::ActorKind::User
-        || station.0.is_some()
-    {
+fn on_air_from(actor: &crate::antenna::Actor, on_station: bool, channel: &str) -> ApiResult<()> {
+    if crate::sim::is_sim(channel) || actor.kind != crate::antenna::ActorKind::User || on_station {
         Ok(())
     } else {
         Err((
@@ -2397,9 +2484,7 @@ async fn load_project(
     Path(id): Path<String>,
     Json(l): Json<LoadProject>,
 ) -> ApiResult<StatusCode> {
-    visible_channel(&me, &id)?;
-    require(me.can_operate(&id))?;
-    on_air_here(&actor, &station, &id)?;
+    authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     if let Some(pid) = &l.project_id {
         require(me.sees_project(pid))?;
     }
@@ -2414,10 +2499,7 @@ async fn channel_command(
     Path(id): Path<String>,
     Json(cmd): Json<cg_core::playout::Routed>,
 ) -> ApiResult<impl IntoResponse> {
-    visible_channel(&me, &id)?;
-    require(may_drive(&me, &id))?;
-    on_air_here(&actor, &station, &id)?;
-    sees_loaded(&s, &me, &id).await?;
+    authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     s.command_on(&id, cmd.command, cmd.buses, &actor)
         .await
         .map(Json)
@@ -2451,10 +2533,7 @@ async fn channel_undo(
     station: OnStation,
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    visible_channel(&me, &id)?;
-    require(may_drive(&me, &id))?;
-    on_air_here(&actor, &station, &id)?;
-    sees_loaded(&s, &me, &id).await?;
+    authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     s.undo(&id, &actor).await.map(Json).map_err(bad)
 }
 
@@ -2476,9 +2555,7 @@ async fn take_zone(
     station: OnStation,
     Path((id, zone)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
-    visible_channel(&me, &id)?;
-    require(me.can_operate(&id))?;
-    on_air_here(&actor, &station, &id)?;
+    authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     s.set_zone_lock(&id, &zone, Some(&me)).map_err(bad)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2490,10 +2567,7 @@ async fn free_zone(
     station: OnStation,
     Path((id, zone)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
-    visible_channel(&me, &id)?;
-    require(me.can_operate(&id))?;
-    on_air_here(&actor, &station, &id)?;
-    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    let ch = authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     let holder = ch.ops.locks().into_iter().find(|l| l.zone == zone);
     require(holder.is_none_or(|l| l.user_id == me.id || me.role == Role::Admin))?;
     s.set_zone_lock(&id, &zone, None).map_err(bad)?;
@@ -2519,11 +2593,7 @@ async fn item_command(
     Path((id, item, action)): Path<(String, String, String)>,
     body: Option<Json<ItemBody>>,
 ) -> ApiResult<impl IntoResponse> {
-    visible_channel(&me, &id)?;
-    require(me.can_operate(&id))?;
-    on_air_here(&actor, &station, &id)?;
-    sees_loaded(&s, &me, &id).await?;
-    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    let ch = authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     let pid = ch
         .project_id
         .read()
@@ -2992,6 +3062,13 @@ async fn put_system_config(
             )));
         }
     }
+    // Channels removed: their programmed takes and their place in the users' scopes go.
+    let removed: Vec<String> = before
+        .channels
+        .iter()
+        .filter(|c| !cfg.channels.iter().any(|x| x.id == c.id))
+        .map(|c| c.id.clone())
+        .collect();
     let time = (before.time != cfg.time).then(|| cfg.time.clone());
     // Only the time changed: the engine goes on.
     let restart = {
@@ -3010,6 +3087,11 @@ async fn put_system_config(
                 tracing::warn!("cannot set the time: {e}");
             }
         });
+    }
+    if !removed.is_empty() {
+        s.forget_scheduled(|e| removed.contains(&e.channel_id))
+            .await;
+        s.auth.forget_channels(&removed).map_err(internal)?;
     }
     s.changed("config");
     if restart {
@@ -3473,6 +3555,8 @@ async fn refresh_source(
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
     visible_source(&s, &me, &id)?;
+    // A fetch costs (paid services): not for viewers.
+    require(me.role != Role::Viewer)?;
     s.data.refresh(&id);
     Ok(StatusCode::NO_CONTENT)
 }
@@ -3986,10 +4070,25 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
     }
 
     let mut ended = s.auth.ended();
+    let mut users_changed = s.auth.users_changed();
+    let mut stations_removed = s.stations.removals();
     loop {
         tokio::select! {
+            // Its computer is no longer a production station: the page reconnects (and simulates).
+            r = stations_removed.recv() => {
+                if r.is_ok() && viewer.station.as_deref().is_some_and(|k| s.stations.of_secret(k).is_none()) {
+                    break;
+                }
+            },
             // Engine restart / shutdown: close so the client reconnects.
             _ = &mut closing => break,
+            // Its user changed (role, scope) or can no longer sign in: closed,
+            // the page reconnects with what it is allowed now (or signs in).
+            id = users_changed.recv() => {
+                if id.is_ok_and(|id| viewer.user.as_ref().is_some_and(|u| u.id == id)) {
+                    break;
+                }
+            },
             // Its user signed in on another computer: told, then closed.
             t = ended.recv() => {
                 if let Ok(t) = t {
@@ -4023,10 +4122,20 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                         (None, None) => false,
                     },
                     Event::ProjectDeleted { id } => viewer.user.as_ref().is_some_and(|u| u.sees_project(id)),
-                    Event::Channel { channel_id, .. } => viewer.sees_channel(channel_id),
+                    // Not what a project out of the user's scope shows.
+                    Event::Channel { channel_id, .. } => {
+                        viewer.sees_channel(channel_id)
+                            && match viewer.user.as_ref().filter(|u| u.projects.is_some()) {
+                                Some(u) => match s.channel_or_sim(channel_id) {
+                                    Some(ch) => ch.project_id.read().await.as_deref().is_none_or(|p| u.sees_project(p)),
+                                    None => true,
+                                },
+                                None => true,
+                            }
+                    }
                     Event::Presence { .. } => viewer.user.is_some(),
                     Event::ZoneLocks { channel_id, .. } => viewer.user.is_some() && viewer.sees_channel(channel_id),
-                    Event::AsRun { entry } => viewer.user.is_some() && viewer.sees_channel(&entry.channel_id),
+                    Event::AsRun { entry } => viewer.user.as_ref().is_some_and(|u| entry.project_id.is_empty() || u.sees_project(&entry.project_id)) && viewer.sees_channel(&entry.channel_id),
                     // Signed-in users (designer, operator, settings), not output pages.
                     Event::Data { .. } | Event::Folders { .. } => viewer.user.is_some(),
                     Event::Changed { what } => viewer.user.as_ref().is_some_and(|u| what.strip_prefix("media:").is_none_or(|p| u.sees_project(p))),
@@ -4058,6 +4167,12 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                     Event::Project { project } if viewer.user.as_ref().is_some_and(|u| !std::sync::Arc::ptr_eq(&mine(project, u), project)) => {
                         viewer.user.as_ref().map(|u| Event::Project { project: mine(project, u) })
                     }
+                    // Not the folder of a project out of the user's scope.
+                    Event::Folders { folders } if viewer.user.as_ref().is_some_and(|u| u.projects.is_some()) => viewer.user.as_ref().map(|u| {
+                        let mut f = folders.clone();
+                        f.assign.retain(|p, _| u.sees_project(p));
+                        Event::Folders { folders: f }
+                    }),
                     Event::Channels { channels } if !channels.iter().all(|c| viewer.sees_channel(&c.id)) => Some(Event::Channels { channels: channels.iter().filter(|c| viewer.sees_channel(&c.id)).cloned().collect() }),
                     Event::Presence { present } if !present.iter().all(|p| viewer.sees_channel(&p.channel_id)) => Some(Event::Presence { present: present.iter().filter(|p| viewer.sees_channel(&p.channel_id)).cloned().collect() }),
                     Event::Schedule { channel_id, items } => {
@@ -4088,11 +4203,15 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                                 let _ = send(&mut tx, &Event::Error { message: "login required".into() }).await;
                                 break;
                             }
-                            let here = crate::sim::is_sim(&channel_id) || viewer.station.as_deref().is_some_and(|k| s.stations.of_secret(k).is_some());
+                            let here = viewer.station.as_deref().is_some_and(|k| s.stations.of_secret(k).is_some());
                             match &now {
-                                Some(u) if !may_drive(u, &channel_id) || !viewer.sees_channel(&channel_id) => Some("you do not have the rights to operate this channel".into()),
-                                Some(_) if !here => Some("this computer is not a production station".into()),
-                                Some(u) => s.command_on(&channel_id, command, buses, &crate::antenna::Actor::user(u)).await.err(),
+                                Some(u) => {
+                                    let actor = crate::antenna::Actor::user(u);
+                                    match authorize_drive(&s, u, &actor, here, &channel_id).await {
+                                        Ok(_) => s.command_on(&channel_id, command, buses, &actor).await.err(),
+                                        Err((_, e)) => Some(e),
+                                    }
+                                }
                                 None => Some("you do not have the rights to operate this channel".into()),
                             }
                         }

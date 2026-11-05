@@ -94,36 +94,55 @@ impl Locks {
         Acquired::Granted { lock, taken_from }
     }
 
-    /// Releases the lock if this client holds it. Returns true if released.
-    pub fn release(&self, project: &str, template: &str, client: &str) -> bool {
+    /// Releases the lock if this user's client holds it. Returns true if released.
+    pub fn release(&self, project: &str, template: &str, me: &User, client: &str) -> bool {
         let key = (project.to_string(), template.to_string());
         let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
-        if Self::live(&mut map, &key).is_some_and(|l| l.client == client) {
+        if Self::live(&mut map, &key).is_some_and(|l| l.client == client && l.user_id == me.id) {
             map.remove(&key);
             return true;
         }
         false
     }
 
-    /// Refuses a save from a designer tab that does not hold the lock.
-    /// Requests without a client id (automation, API keys) are not locked out.
+    /// Refuses a save from a person whose designer tab does not hold the
+    /// lock (the tab of the same person: a client id seen by others is no
+    /// use to them). Automation (an API key) is not locked out.
     pub fn check(
         &self,
         project: &str,
         template: &str,
-        _me: &User,
+        me: &User,
         client: Option<&str>,
+        automation: bool,
     ) -> Result<(), (StatusCode, String)> {
-        let Some(client) = client else { return Ok(()) };
+        if automation {
+            return Ok(());
+        }
         let key = (project.to_string(), template.to_string());
         let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
         match Self::live(&mut map, &key) {
-            Some(l) if l.client != client => Err((
+            Some(l) if Some(l.client.as_str()) != client || l.user_id != me.id => Err((
                 StatusCode::CONFLICT,
                 format!("{} is editing this template", l.user_name),
             )),
             _ => Ok(()),
         }
+    }
+
+    /// A lock of the project (of one template, or any) held by someone
+    /// else than this person's tab: (template id, lock).
+    pub fn held_by_other(
+        &self,
+        project: &str,
+        template: Option<&str>,
+        me: &User,
+        client: Option<&str>,
+    ) -> Option<(String, Lock)> {
+        self.of_project(project).into_iter().find(|(t, l)| {
+            template.is_none_or(|x| x == t)
+                && (l.user_id != me.id || Some(l.client.as_str()) != client)
+        })
     }
 
     /// Current locks of a project, by template id.
@@ -158,12 +177,16 @@ mod tests {
                 ..
             }
         ));
-        assert!(l.check("p", "t", &a, Some("tab-a")).is_ok());
+        assert!(l.check("p", "t", &a, Some("tab-a"), false).is_ok());
         assert!(
             matches!(l.acquire("p", "t", &b, "tab-b", false), Acquired::Held(ref h) if h.user_name == "LEA")
         );
-        assert!(l.check("p", "t", &b, Some("tab-b")).is_err());
-        assert!(l.check("p", "t", &b, None).is_ok());
+        assert!(l.check("p", "t", &b, Some("tab-b"), false).is_err());
+        // Another person with the holder's tab id, or none: refused; automation passes.
+        assert!(l.check("p", "t", &b, Some("tab-a"), false).is_err());
+        assert!(l.check("p", "t", &b, None, false).is_err());
+        assert!(l.check("p", "t", &b, None, true).is_ok());
+        assert!(!l.release("p", "t", &b, "tab-a"));
         match l.acquire("p", "t", &b, "tab-b", true) {
             Acquired::Granted {
                 taken_from: Some(prev),
@@ -171,9 +194,9 @@ mod tests {
             } => assert_eq!(prev.client, "tab-a"),
             _ => panic!("take over"),
         }
-        assert!(l.check("p", "t", &a, Some("tab-a")).is_err());
-        assert!(!l.release("p", "t", "tab-a"));
-        assert!(l.release("p", "t", "tab-b"));
+        assert!(l.check("p", "t", &a, Some("tab-a"), false).is_err());
+        assert!(!l.release("p", "t", &a, "tab-a"));
+        assert!(l.release("p", "t", &b, "tab-b"));
         assert!(l.of_project("p").is_empty());
     }
 }

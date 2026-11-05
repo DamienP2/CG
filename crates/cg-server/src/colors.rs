@@ -48,7 +48,8 @@ pub async fn put(
     CurrentUser(me): CurrentUser,
     Json(palettes): Json<Vec<Palette>>,
 ) -> ApiResult<StatusCode> {
-    require(me.can_create_projects())?;
+    // Shared by every project: those who see them all.
+    require(me.can_edit_shared())?;
     for p in &palettes {
         check(&p.colors)?;
     }

@@ -6,7 +6,8 @@ import { t } from '../i18n';
 import { useTicker } from '../engine/LiveTime';
 import type { FrameRate, Project, RundownItem } from '../engine/types';
 import type { TimecodeState } from '../outputs/types';
-import { api, clientNow, serverEvents, useApp } from '../store';
+import { api, can, clientNow, serverEvents, useApp } from '../store';
+import { confirmDialog } from '../ui/dialogs';
 
 /*
  * Takes and outs programmed in advance (crates/cg-server/src/schedule.rs):
@@ -183,6 +184,7 @@ function ScheduleList({ channelId, project, entries, anchor }: { channelId: stri
   const ref = useRef<HTMLDivElement>(null);
   const tz = useApp((s) => s.timezone);
   const toast = useApp((s) => s.toast);
+  const mayEdit = useApp((s) => can.operate(s.auth?.user));
   const loaded = useApp((s) => s.channels.find((c) => c.id === channelId)?.projectId);
   const now = useServerNow(4);
   useEffect(() => {
@@ -223,12 +225,22 @@ function ScheduleList({ channelId, project, entries, anchor }: { channelId: stri
               </span>
             </span>
             <span className={`sch-left ${!off && !waiting && ms < 5 * 60_000 ? 'soon' : ''}`}>{off ? '—' : left(ms)}</span>
-            <button className={`wk-tog ${e.enabled && !e.missed ? 'on' : ''}`} title={e.enabled && !e.missed ? t('Turn off') : t('Turn on')} onClick={() => api('PATCH', url(e.id), { enabled: !(e.enabled && !e.missed) }).catch(fail)}>
-              <i />
-            </button>
-            <button className="sch-x" title={t('Remove')} onClick={() => api('DELETE', url(e.id)).catch(fail)}>
-              <X size={13} />
-            </button>
+            {mayEdit && (
+              <>
+                <button className={`wk-tog ${e.enabled && !e.missed ? 'on' : ''}`} title={e.enabled && !e.missed ? t('Turn off') : t('Turn on')} onClick={() => api('PATCH', url(e.id), { enabled: !(e.enabled && !e.missed) }).catch(fail)}>
+                  <i />
+                </button>
+                <button
+                  className="sch-x"
+                  title={t('Remove')}
+                  onClick={async () => {
+                    if (await confirmDialog({ title: t('Remove “{name}”?', { name }), confirm: t('Remove'), danger: true })) api('DELETE', url(e.id)).catch(fail);
+                  }}
+                >
+                  <X size={13} />
+                </button>
+              </>
+            )}
           </div>
         );
       })}

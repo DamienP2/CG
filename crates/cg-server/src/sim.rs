@@ -132,6 +132,33 @@ impl AppState {
     }
 }
 
+impl AppState {
+    /// The simulations of a user that are no longer theirs to drive (a
+    /// narrower scope, a disabled or removed account) stop.
+    pub async fn drop_sims_out_of_reach(self: &Shared, user_id: &str) {
+        let user = self.auth.users().into_iter().find(|u| u.id == user_id);
+        let theirs: Vec<(String, Arc<Sim>)> = self
+            .sims
+            .map()
+            .iter()
+            .filter(|(id, _)| parse(id).is_some_and(|(u, _)| u == user_id))
+            .map(|(id, sim)| (id.clone(), sim.clone()))
+            .collect();
+        for (id, sim) in theirs {
+            let project = sim.ch.project_id.read().await.clone();
+            let kept = user.as_ref().is_some_and(|u| {
+                !u.disabled
+                    && crate::api::may_drive(u, &id)
+                    && parse(&id).is_some_and(|(_, c)| c == NO_OUTPUT || u.sees_channel(c))
+                    && project.as_deref().is_none_or(|p| u.sees_project(p))
+            });
+            if !kept {
+                self.sims.map().remove(&id);
+            }
+        }
+    }
+}
+
 /// The clock of a simulation: the channel's playout at its rate, until it
 /// is dropped (idle, or the engine restarts).
 async fn run(s: Shared, sid: String, sim: Arc<Sim>) {
@@ -146,7 +173,10 @@ async fn run(s: Shared, sid: String, sim: Arc<Sim>) {
             _ = &mut closing => break,
             _ = tick.tick() => {}
         }
-        let idle = crate::state::now_ms() - sim.touched.load(Ordering::Relaxed) > IDLE_MS;
+        // Idle: no command for a long time, and its person's Operator is closed.
+        let idle = crate::state::now_ms() - sim.touched.load(Ordering::Relaxed) > IDLE_MS
+            && !parse(&sid)
+                .is_some_and(|(user, _)| s.presence.list().iter().any(|p| p.user_id == user));
         let current = s.sims.map().get(&sid).is_some_and(|x| Arc::ptr_eq(x, &sim));
         if idle || !current {
             if current {

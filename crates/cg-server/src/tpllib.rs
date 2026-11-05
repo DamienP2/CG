@@ -113,6 +113,20 @@ fn all(dir: &FsPath) -> Vec<Entry> {
     out
 }
 
+/// The entries kept with a removed project go with it.
+pub fn forget_project(s: &Shared, project: &str) {
+    let d = dir(s);
+    let mut n = 0;
+    for e in all(&d).into_iter().filter(|e| e.project == project) {
+        let _ = std::fs::remove_file(d.join(format!("{}.json", e.id)));
+        let _ = std::fs::remove_file(d.join(format!("{}.png", e.id)));
+        n += 1;
+    }
+    if n > 0 {
+        s.changed("template-library");
+    }
+}
+
 /// Someone sees an entry: shared, or of a project they see.
 fn sees(me: &User, e: &Entry) -> bool {
     e.project.is_empty() || me.sees_project(&e.project)

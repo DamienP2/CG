@@ -118,6 +118,11 @@ impl User {
     pub fn sees_channel(&self, id: &str) -> bool {
         self.is_admin() || in_scope(&self.channels, id)
     }
+    /// What every project shares (palettes, shared files): designers who
+    /// see every project.
+    pub fn can_edit_shared(&self) -> bool {
+        self.can_create_projects() && (self.is_admin() || self.projects.is_none())
+    }
     /// Create projects.
     pub fn can_create_projects(&self) -> bool {
         matches!(self.role, Role::Admin | Role::Designer)
@@ -280,6 +285,9 @@ pub struct Auth {
     /// Sessions closed by a sign-in on another computer (their tokens):
     /// their live connections are told and close.
     ended: tokio::sync::broadcast::Sender<String>,
+    /// Users changed (role, scope, disabled, password, deleted): their live
+    /// pages reconnect and see what they are now allowed.
+    changed: tokio::sync::broadcast::Sender<String>,
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
@@ -307,6 +315,7 @@ impl Auth {
             seal_path: data_dir.join("keys.secret"),
             key_use: Mutex::new(HashMap::new()),
             ended: tokio::sync::broadcast::channel(64).0,
+            changed: tokio::sync::broadcast::channel(64).0,
         }
     }
 
@@ -511,6 +520,7 @@ impl Auth {
         if updated.disabled || !input.password.is_empty() {
             self.drop_sessions_of(&updated.id);
         }
+        let _ = self.changed.send(updated.id.clone());
         Ok(updated)
     }
 
@@ -525,6 +535,42 @@ impl Auth {
         let updated = u.clone();
         self.save(list).map_err(|e| e.to_string())?;
         Ok(updated)
+    }
+
+    /// A project its user just made joins their scope (when they have one).
+    pub fn grant_project(&self, id: &str, project: &str) -> Result<(), String> {
+        let mut list = self.users();
+        let u = list.iter_mut().find(|u| u.id == id).ok_or("no such user")?;
+        match &mut u.projects {
+            Some(ids) if !ids.iter().any(|p| p == project) => ids.push(project.to_string()),
+            _ => return Ok(()),
+        }
+        self.save(list).map_err(|e| e.to_string())?;
+        let _ = self.changed.send(id.to_string());
+        Ok(())
+    }
+
+    /// Removed channels leave the users' scopes.
+    pub fn forget_channels(&self, gone: &[String]) -> Result<(), String> {
+        let mut list = self.users();
+        let mut changed = Vec::new();
+        for u in &mut list {
+            if let Some(ids) = &mut u.channels {
+                let before = ids.len();
+                ids.retain(|c| !gone.contains(c));
+                if ids.len() != before {
+                    changed.push(u.id.clone());
+                }
+            }
+        }
+        if changed.is_empty() {
+            return Ok(());
+        }
+        self.save(list).map_err(|e| e.to_string())?;
+        for id in changed {
+            let _ = self.changed.send(id);
+        }
+        Ok(())
     }
 
     /// The colour theme a user chose for the interface.
@@ -732,6 +778,7 @@ impl Auth {
         if let Ok(mut s) = self.sessions.lock() {
             s.retain(|_, v| v.user_id != user_id);
         }
+        let _ = self.changed.send(user_id.to_string());
     }
 
     /// Checks credentials and opens a session.
@@ -869,6 +916,11 @@ impl Auth {
     /// The sessions a sign-in elsewhere closes, as they go.
     pub fn ended(&self) -> tokio::sync::broadcast::Receiver<String> {
         self.ended.subscribe()
+    }
+
+    /// The ids of users just changed or removed.
+    pub fn users_changed(&self) -> tokio::sync::broadcast::Receiver<String> {
+        self.changed.subscribe()
     }
 
     pub fn logout(&self, token: &str) {

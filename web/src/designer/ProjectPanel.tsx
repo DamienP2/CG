@@ -1,3 +1,4 @@
+import { friendlyError } from '../ui/serverError';
 import { HYPHEN_LANGS } from '../engine/textFit';
 import { Dropdown } from '../ui/Dropdown';
 import { History, MoreHorizontal, Pencil, Plus, RotateCcw, X } from 'lucide-react';
@@ -262,7 +263,7 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
     try {
       await api('POST', `${url}/versions/${encodeURIComponent(v.id)}/restore`);
     } catch (e) {
-      toast((e as Error).message, 'error');
+      toast(friendlyError((e as Error).message), 'error');
       return;
     }
     // The open template is reloaded as restored: a later autosave must not write the old one back.

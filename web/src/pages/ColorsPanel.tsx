@@ -100,7 +100,7 @@ function PaletteView({ title, sub, colors, canEdit, onColors, onName, onRemove }
   );
 }
 
-export function ColorsPanel({ projectId, canEdit }: { projectId?: string; canEdit: boolean }) {
+export function ColorsPanel({ projectId, canEdit, canEditShared }: { projectId?: string; canEdit: boolean; canEditShared: boolean }) {
   const { palettes, loaded, load, save, saveProject } = useColors();
   const project = useApp((s) => (projectId ? s.full[projectId] : undefined));
   useEffect(() => {
@@ -115,7 +115,7 @@ export function ColorsPanel({ projectId, canEdit }: { projectId?: string; canEdi
     <div className="lc-panel">
       {projectId && project && <PaletteView title={t('Project')} sub={t('this project only')} colors={project.colors ?? []} canEdit={canEdit} onColors={(c) => void saveProject(projectId, c)} />}
       {palettes.map((p) => (
-        <PaletteView key={p.id} title={p.name} sub={t('shared · every project')} colors={p.colors} canEdit={canEdit} onName={(name) => setPalette(p.id, (x) => ({ ...x, name }))} onColors={(colors) => setPalette(p.id, (x) => ({ ...x, colors }))} onRemove={() => void removePalette(p)} />
+        <PaletteView key={p.id} title={p.name} sub={t('shared · every project')} colors={p.colors} canEdit={canEditShared} onName={(name) => setPalette(p.id, (x) => ({ ...x, name }))} onColors={(colors) => setPalette(p.id, (x) => ({ ...x, colors }))} onRemove={() => void removePalette(p)} />
       ))}
       {loaded && !palettes.length && !projectId && (
         <div className="lib-void">

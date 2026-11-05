@@ -246,7 +246,6 @@ export const operator: Record<string, string> = {
   'Its {n} channels move to “{name}”.': 'Ses {n} canaux passent dans « {name} ».',
   'Channel {n}': 'Canal {n}',
   'Remove the channel “{name}”?': 'Retirer le canal « {name} » ?',
-  'All its outputs are removed too.': 'Toutes ses sorties sont aussi retirées.',
   'Outputs applied — the engine is restarting': 'Sorties appliquées : le moteur redémarre',
   'Locations': 'Sites',
   'Add a location': 'Ajouter un site',

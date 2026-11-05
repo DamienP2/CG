@@ -994,28 +994,17 @@ fn segments(rest: &str) -> Vec<String> {
         .collect()
 }
 
-/// The loaded project of the channel must be one the user sees.
-async fn check_operate(s: &Shared, me: &User, channel: &str) -> Result<(), Fail> {
-    crate::api::require(me.can_operate(channel))?;
-    if let Some(ch) = s.channel(channel) {
-        if let Some(pid) = ch.project_id.read().await.as_deref() {
-            if !me.sees_project(pid) {
-                return Err(not_found("project"));
-            }
-        }
-    }
-    Ok(())
-}
-
 async fn channel_post(
     State(s): State<Shared>,
     auth::Acting(me, actor): auth::Acting,
+    station: crate::stations::OnStation,
     Path((channel, rest)): Path<(String, String)>,
     Query(q): Query<BTreeMap<String, String>>,
     body: Bytes,
 ) -> ApiResult<Json<serde_json::Value>> {
     let channel = channel_id(&s, &channel, |id| me.sees_channel(id))?;
-    check_operate(&s, &me, &channel).await?;
+    // A person at a production station; an API key anywhere.
+    crate::api::authorize_drive(&s, &me, &actor, station.0.is_some(), &channel).await?;
     let extra = extra_of(q, &body).map_err(bad)?;
     let (action, opts) = parse_action(&segments(&rest), extra).map_err(|e| {
         if e.starts_with("unknown action") {

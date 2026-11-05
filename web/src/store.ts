@@ -75,6 +75,8 @@ interface AppStore {
   elsewhere: boolean;
   /** The production station this computer is: none, the Operator drives a simulation (unknown: undefined). */
   station?: { id: string; name: string } | null;
+  /** Connections to the server so far (a new one: the engine may have restarted). */
+  connections?: number;
   connected: boolean;
   /** Server clock − client clock, ms. */
   serverOffset: number;
@@ -103,7 +105,8 @@ interface AppStore {
   openProject: (id: string | null) => Promise<void>;
   selectChannel: (id: string | null) => void;
   command: (cmd: Command, channelId?: string) => void;
-  loadOnChannel: (channelId: string, projectId: string | null) => Promise<void>;
+  /** False when refused (already toasted). */
+  loadOnChannel: (channelId: string, projectId: string | null) => Promise<boolean>;
   /** False when not saved (already toasted). */
   /** Saved in `projectId` (default: the open project). */
   saveTemplate: (t: Template, projectId?: string) => Promise<boolean>;
@@ -314,7 +317,7 @@ export const useApp = create<AppStore>((set, get) => {
           switch (msg.type) {
             case 'hello': {
               setDefaultTz(msg.timezone);
-              set({ channels: msg.channels, timezone: msg.timezone, serverOffset: clockOffset(msg.serverTime, now) });
+              set({ channels: msg.channels, timezone: msg.timezone, serverOffset: clockOffset(msg.serverTime, now), connections: (get().connections ?? 0) + 1 });
               if (!outputChannel) {
                 set({ projects: msg.projects });
                 api<Folders>('GET', '/api/folders').then((folders) => set({ folders }), () => {});
@@ -422,8 +425,10 @@ export const useApp = create<AppStore>((set, get) => {
     async loadOnChannel(channelId, projectId) {
       try {
         await api('PUT', `/api/channels/${encodeURIComponent(channelId)}/project`, { projectId });
+        return true;
       } catch (e) {
         get().toast(errText(e), 'error');
+        return false;
       }
     },
 

@@ -18702,6 +18702,10 @@ input.lc-pal-name:focus {
 .opl-zrow:hover {
   background: var(--panel-2);
 }
+.opl-zbtns {
+  display: flex;
+  gap: 4px;
+}
 .opl-zc {
   width: 10px;
   height: 10px;

@@ -831,7 +831,7 @@ export function Outputs({ mode }: { mode: Mode }) {
   };
   const removeChannel = async () => {
     if (cfg.channels.length < 2) return;
-    if (!(await confirmDialog({ title: t('Remove the channel “{name}”?', { name: ch.name }), message: t('All its outputs are removed too.'), confirm: t('Remove'), danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Remove the channel “{name}”?', { name: ch.name }), message: t('All its outputs and its scheduled takes are removed too.'), confirm: t('Remove'), danger: true }))) return;
     edit((c) => void c.channels.splice(chIndex, 1));
     setCurrent(null);
     setSel('program');

@@ -88,6 +88,7 @@ export function useZoneLocks(channelId: string | null, project: Project | null) 
 /** In the top bar: the zones and who holds them (a square per zone, the holders' faces); a click lists them, to take or free. */
 export function ZonesButton({ project, channelId, locks, operate }: { project: Project; channelId: string; locks: ZoneLock[]; operate: boolean }) {
   const me = useApp((s) => s.auth?.user?.id);
+  const admin = useApp((s) => s.auth?.user?.role === 'admin');
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState<{ right: number; top: number } | null>(null);
   const pop = useRef<HTMLDivElement>(null);
@@ -152,9 +153,17 @@ export function ZonesButton({ project, channelId, locks, operate }: { project: P
                       {tc('zone', 'Free')}
                     </button>
                   ) : l ? (
-                    <button className="opl-mini take" disabled={!operate} onClick={() => setZoneLock(channelId, z.id, true)}>
-                      {tc('zone', 'Take')}
-                    </button>
+                    <span className="opl-zbtns">
+                      <button className="opl-mini take" disabled={!operate} onClick={() => setZoneLock(channelId, z.id, true)}>
+                        {tc('zone', 'Take')}
+                      </button>
+                      {/* An admin frees someone else's zone at once. */}
+                      {admin && (
+                        <button className="opl-mini" disabled={!operate} onClick={() => setZoneLock(channelId, z.id, false)}>
+                          {tc('zone', 'Free')}
+                        </button>
+                      )}
+                    </span>
                   ) : (
                     <span />
                   )}

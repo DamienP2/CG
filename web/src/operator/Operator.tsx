@@ -260,17 +260,20 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const sourceName = (id: string) => allSources.find((s) => s.id === id)?.name ?? id;
   // Off a production station: this person's simulation of the output (nothing goes on air).
   const simulation = useApp((s) => s.station === null);
+  // Made again after a reconnection (the engine restarted: simulations are gone).
+  const connections = useApp((s) => s.connections);
+  const mayOperate = can.operate(auth?.user);
   const [simId, setSimId] = useState<string | null>(null);
   useEffect(() => {
     setSimId(null);
-    if (!simulation || !project) return;
+    if (!simulation || !project || !mayOperate) return;
     let gone = false;
     // Without an output of the project: in the project's own format.
     api<{ channelId: string }>('POST', '/api/simulate', { channelId, projectId: project.id })
       .then((r) => !gone && setSimId(r.channelId))
       .catch((e) => toast((e as Error).message, 'error'));
     return () => void (gone = true);
-  }, [simulation, channelId, project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [simulation, channelId, project?.id, connections, mayOperate]); // eslint-disable-line react-hooks/exhaustive-deps
   /** The channel the commands go to and the on-air picture comes from. */
   const driven = simulation ? simId : channelId;
   const liveState = useApp((s) => (driven ? s.live[driven] : undefined));
@@ -2334,12 +2337,13 @@ function MonitorToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) 
 /** In the project's top bar: the output and its web page. */
 function TopControls({ channelId, simulation }: { channelId: string | null; simulation: boolean }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const mayOperate = useApp((s) => can.operate(s.auth?.user));
   useEffect(() => setSlot(document.getElementById('topbar-slot')), []);
   if (!slot) return null;
   return createPortal(
     <div className="opx-top">
       {/* Only a production station chooses the project's output. */}
-      {!simulation && <OutputSelect channelId={channelId} />}
+      {!simulation && mayOperate && <OutputSelect channelId={channelId} />}
     </div>,
     slot,
   );
@@ -2359,7 +2363,7 @@ const OutputSelect = memo(function OutputSelect({ channelId }: { channelId: stri
       if (cur) {
         const onAir = Object.keys(live()[cur.id]?.state.layers ?? {}).length;
         if (onAir && !(await confirmDialog({ title: t('Unload {channel}?', { channel: cur.name }), message: tn(onAir, 'The {n} graphic on air on {channel} is cleared.', 'The {n} graphics on air on {channel} are cleared.', { channel: cur.name }), confirm: t('Unload'), danger: true }))) return;
-        await loadOnChannel(cur.id, null);
+        if (!(await loadOnChannel(cur.id, null))) return;
       }
       return navigate(projectPath(project.id, 'operator', 'none'));
     }
@@ -2377,7 +2381,7 @@ const OutputSelect = memo(function OutputSelect({ channelId }: { channelId: stri
         }))
       )
         return;
-      await loadOnChannel(c.id, project.id);
+      if (!(await loadOnChannel(c.id, project.id))) return;
     }
     navigate(projectPath(project.id, 'operator', c.id));
   };

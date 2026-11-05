@@ -42,7 +42,7 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
       toast((err as Error).message, 'error');
     }
   };
-  const canCreate = !!me && me.role !== 'viewer';
+  const canCreate = admin;
   // An admin sees a key again after typing their password.
   const reveal = async (k: ApiKey) => {
     const password = await promptDialog({ title: t('Show the key “{name}”', { name: k.name }), label: t('Your password'), password: true, confirm: t('Show') });

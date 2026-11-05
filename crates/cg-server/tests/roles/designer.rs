@@ -276,7 +276,13 @@ fn a_template_is_edited_by_one_designer_at_a_time_and_can_be_taken_over() {
     w.operator.post(&lock, json!({})).expect(403, "operator");
     w.viewer.post(&lock, json!({})).expect(403, "viewer");
     // Automation (no designer tab) is not held back by a lock.
-    let key = a.post("/api/keys", json!({ "name": "CI" })).json()["secret"]
+    let key = w
+        .admin
+        .post(
+            "/api/keys",
+            json!({ "name": "CI", "userId": w.id("designer") }),
+        )
+        .json()["secret"]
         .as_str()
         .unwrap()
         .to_string();
@@ -406,7 +412,17 @@ fn a_scoped_designer_sees_and_changes_only_their_projects() {
         )
         .expect(404, "driving a project out of scope");
         d.put("/api/channels/main/project", json!({ "projectId": o }))
-            .expect(403, "loading a project out of scope");
+            .expect(404, "loading a project out of scope");
+        d.put(
+            "/api/channels/main/project",
+            json!({ "projectId": mine.project }),
+        )
+        .expect(404, "replacing a project out of scope on air");
+    });
+    w.admin
+        .put("/api/channels/main/project", json!({ "projectId": null }))
+        .expect(204, "the channel freed");
+    at_station(&d, &station, || {
         d.put(
             "/api/channels/main/project",
             json!({ "projectId": mine.project }),
@@ -418,7 +434,6 @@ fn a_scoped_designer_sees_and_changes_only_their_projects() {
 /// A designer limited to some projects creates a new one: it should be
 /// theirs to see (they made it).
 #[test]
-#[ignore = "BUG: a project scoped designer cannot see the project they just created"]
 fn a_scoped_designer_sees_the_project_they_create() {
     let w = World::new();
     create_user(

@@ -350,6 +350,7 @@ async fn query(s: &Shared, me: User, f: Filter, limit: usize) -> ApiResult<Vec<E
         flush();
         read(&data_dir, &f, crate::state::now_ms(), limit, |e: &Entry| {
             me.sees_channel(&e.channel_id)
+                && (e.project_id.is_empty() || me.sees_project(&e.project_id))
         })
     })
     .await
