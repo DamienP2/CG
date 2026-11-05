@@ -737,7 +737,8 @@ mod tests {
             tx.send_to(&packet(1, SAMPLE.as_bytes()), ("127.0.0.1", port))
                 .unwrap();
             std::thread::sleep(Duration::from_millis(20));
-            if t.sample("fr7").is_some() {
+            // Received, and passed on to the clients (at most every 20 ms).
+            if t.sample("fr7").is_some() && rx.has_changed().unwrap_or(false) {
                 break;
             }
         }
