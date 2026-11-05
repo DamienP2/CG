@@ -20935,7 +20935,6 @@ textarea.tx-grow {
   place-items: center;
   overflow: hidden;
   pointer-events: none;
-  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .opx-sim-mark span {
   transform: rotate(-18deg);
