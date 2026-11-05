@@ -880,7 +880,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <>
             <section className="opx-pane" style={mon.air ? { height: layout.preview, flex: 'none' } : { flex: 'none' }}>
               <header className="opx-head opx-mon-head">
-                <span className={`opx-title ${busy.length || simulation ? 'live' : ''}`}>● {simulation ? t('SIMULATION') : t('On air')}</span>
+                <span className={`opx-title ${busy.length || (simulation && channelId) ? 'live' : ''}`}>● {simulation && channelId ? t('SIMULATION') : t('On air')}</span>
                 {pictures.length > 1 && (
                   <div className="opx-pics">
                     {pictures.map((p) => {
