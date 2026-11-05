@@ -3,6 +3,8 @@ import { Viewport } from '../engine/Scene';
 import { useApp } from '../store';
 import { Program } from './Program';
 import { OutputDebug } from './OutputDebug';
+import { useFonts } from '../engine/fonts';
+import { preloadProject } from '../engine/preload';
 
 /**
  * HTML5 output of one channel picture: a transparent, chrome-less page meant
@@ -36,6 +38,12 @@ export function Output({ channelId: first, rendition: second, path = '' }: { cha
   }, [connect, path, first]);
 
   const channel = channels.find((c) => c.id === channelId);
+  const shownProject = channel?.projectId ? full[channel.projectId] : undefined;
+  // Its fonts and pictures ready before they go on air (once the server's fonts are declared).
+  const fontsDeclared = useFonts((s) => s.families.length > 0);
+  useEffect(() => {
+    if (shownProject) preloadProject(shownProject);
+  }, [shownProject, fontsDeclared]);
   if (!channel) return null;
   const picture = channel.renditions.find((r) => r.id === rendition) ?? channel;
   const project = channel.projectId ? full[channel.projectId] : undefined;

@@ -93,15 +93,19 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
   const r = logic ?? resolveLayer(layer, frame, data, hold);
   const w = num(r.width);
   const h = num(r.height);
+  // The position is a transform, not left/top: moving does not lay the page out again each
+  // frame, and goes by fractions of a pixel. A layer that moves gets a layer of its own.
+  const moves = (['x', 'y', 'rotation', 'scaleX', 'scaleY'] as const).some((p) => (layer.tracks[p]?.length ?? 0) > 1);
   const style: CSSProperties = {
     position: 'absolute',
-    left: num(r.x),
-    top: num(r.y),
+    left: 0,
+    top: 0,
     width: w,
     height: h,
     opacity: num(r.opacity),
     transformOrigin: `${num(r.anchorX) * 100}% ${num(r.anchorY) * 100}%`,
-    transform: `rotate(${num(r.rotation)}deg) scale(${num(r.scaleX)}, ${num(r.scaleY)})`,
+    transform: `translate(${num(r.x)}px, ${num(r.y)}px) rotate(${num(r.rotation)}deg) scale(${num(r.scaleX)}, ${num(r.scaleY)})`,
+    ...(moves ? { willChange: 'transform' } : {}),
     boxSizing: 'border-box',
   };
   const cl = num(r.cropLeft);

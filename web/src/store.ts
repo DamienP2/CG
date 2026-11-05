@@ -356,9 +356,13 @@ export const useApp = create<AppStore>((set, get) => {
             case 'channels':
               set({ channels: msg.channels });
               break;
-            case 'channel':
-              set({ live: { ...get().live, [msg.channelId]: { state: msg.state, at: now } }, serverOffset: clockOffset(msg.serverTime, now) });
+            case 'channel': {
+              // When the server made this state, on our clock: what moves on from it does not
+              // take the network's and the page's uneven delays for motion.
+              const offset = clockOffset(msg.serverTime, now);
+              set({ live: { ...get().live, [msg.channelId]: { state: msg.state, at: Math.min(now, msg.serverTime - offset) } }, serverOffset: offset });
               break;
+            }
             case 'lock':
               lockEvents.dispatchEvent(new CustomEvent('lock', { detail: msg }));
               break;

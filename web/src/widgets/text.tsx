@@ -320,17 +320,21 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
         borderRadius: Math.min(k.bandRadius, (lw * sx + 2 * pad) / 2, Math.max(4, heights[i] - k.bandGap) / 2),
         boxShadow: k.bandAccent ? `inset ${rtl ? -8 : 8}px 0 ${hex(k.bandAccentColor)}` : undefined,
       });
+    // A scroll moves as a transform (no layout each frame, fractions of a pixel), on a layer of its own.
+    const dx = scroll === 'horizontal' ? x * sx : 0;
+    const dy = scroll === 'vertical' ? oy : 0;
     const st: CSSProperties = {
       position: 'absolute',
-      left,
-      top: lineY,
+      left: left - dx,
+      top: lineY - dy,
       width: lw + 1,
       height: lineH,
       lineHeight: `${lineH}px`,
       whiteSpace: justified ? 'nowrap' : 'pre',
       textAlign: justified ? 'justify' : rtl ? 'right' : 'left',
       textAlignLast: justified ? 'justify' : undefined,
-      transform: sx !== 1 ? `scaleX(${sx})` : undefined,
+      transform: scroll ? `translate3d(${dx}px, ${dy}px, 0)${sx !== 1 ? ` scaleX(${sx})` : ''}` : sx !== 1 ? `scaleX(${sx})` : undefined,
+      willChange: scroll ? 'transform' : undefined,
       transformOrigin: '0 0',
       direction: rtl ? 'rtl' : 'ltr',
       unicodeBidi: 'plaintext',
