@@ -1,4 +1,5 @@
-import { Plus, Trash2, X } from 'lucide-react';
+import { Palette as PaletteIcon, Plus, Trash2, X } from 'lucide-react';
+import { Empty } from '../ui/Empty';
 import { useEffect, useRef, useState } from 'react';
 import { useColors } from '../colors';
 import { newId, parseHex, toHex } from '../engine/evaluate';
@@ -116,7 +117,11 @@ export function ColorsPanel({ projectId, canEdit }: { projectId?: string; canEdi
       {palettes.map((p) => (
         <PaletteView key={p.id} title={p.name} sub={t('shared · every project')} colors={p.colors} canEdit={canEdit} onName={(name) => setPalette(p.id, (x) => ({ ...x, name }))} onColors={(colors) => setPalette(p.id, (x) => ({ ...x, colors }))} onRemove={() => void removePalette(p)} />
       ))}
-      {loaded && !palettes.length && !projectId && <p className="muted">{t('No palette yet.')}</p>}
+      {loaded && !palettes.length && !projectId && (
+        <div className="lib-void">
+          <Empty icon={PaletteIcon} text={t('No palette yet.')} />
+        </div>
+      )}
     </div>
   );
 }

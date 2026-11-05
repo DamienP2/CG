@@ -1,4 +1,5 @@
-import { BookMarked, Pencil, Trash2 } from 'lucide-react';
+import { BookMarked, Link2, Pencil, Trash2 } from 'lucide-react';
+import { Empty } from '../ui/Empty';
 import { useEffect } from 'react';
 import type { LogicFlow, Template } from '../engine/types';
 import { useLogicFlows } from '../logicFlows';
@@ -79,6 +80,12 @@ export function LogicFlowsPanel({ projectId, canEdit }: { projectId?: string; ca
       )}
     </section>
   );
+  if (!own.length && !shared.length)
+    return (
+      <div className="lib-void">
+        <Empty icon={Link2} text={t('No flow')} />
+      </div>
+    );
   return (
     <div className="lf-panel">
       {projectId && group(t('This project'), own, 'project')}

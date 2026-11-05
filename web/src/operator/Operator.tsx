@@ -2,10 +2,12 @@ import { withSettings } from '../engine/settings';
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Eraser, Share2, UserRound, Clock, Copy, CopyPlus, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Eraser, Share2, UserRound, Clock, Copy, CopyPlus, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal } from 'lucide-react';
 import { busItems, busOf } from '../engine/buses';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
+import { Empty } from '../ui/Empty';
+import { ContextMenu as RowMenu } from '../ui/ContextMenu';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, interpolateText, newId, parseHex, resolveLayer, toHex } from '../engine/evaluate';
@@ -51,18 +53,6 @@ import type { ZoneLock } from '../store';
  *           controls of the graphics on air (widgets, values, triggers)
  */
 
-/** An empty area: a small icon and a word, in its middle. */
-function Empty({ icon: Icon, text, children }: { icon: LucideIcon; text: string; children?: React.ReactNode }) {
-  return (
-    <div className="opx-void">
-      <span className="opx-void-ic">
-        <Icon size={18} />
-      </span>
-      <span className="opx-void-t">{text}</span>
-      {children}
-    </div>
-  );
-}
 
 /** Credits entries from a field's JSON (none when it is not). */
 const entriesOf = (v: string): Entry[] => {
@@ -1739,60 +1729,6 @@ function GraphicRow(props: {
       )}
       {autoAt && <AutoNextEditor item={item} at={autoAt} onChange={props.onAuto} onClose={() => setAutoAt(null)} />}
     </div>
-  );
-}
-
-interface RowMenuItem {
-  icon: React.ReactNode;
-  label: string;
-  run: () => unknown;
-  disabled?: boolean;
-  danger?: boolean;
-  /** Set on this graphic (auto next). */
-  on?: boolean;
-}
-
-/** A rundown row's menu (« … » or right-click), kept in the window; Esc or a click elsewhere closes it. */
-function RowMenu({ at, items, onClose }: { at: { x: number; y: number }; items: (RowMenuItem | null)[]; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  // Where it fits, from its real size: under the click, else above it, always in the window.
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
-    const m = 8;
-    const left = Math.max(m, Math.min(at.x, window.innerWidth - width - m));
-    const below = at.y + height + m <= window.innerHeight;
-    const top = below ? at.y : Math.max(m, Math.min(at.y - height, window.innerHeight - height - m));
-    setPos({ left, top });
-  }, [at.x, at.y, items.length]);
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), onClose());
-    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
-    window.addEventListener('keydown', esc);
-    window.addEventListener('pointerdown', away, true);
-    window.addEventListener('resize', onClose);
-    return () => {
-      window.removeEventListener('keydown', esc);
-      window.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('resize', onClose);
-    };
-  }, [onClose]);
-  return createPortal(
-    <div ref={ref} className="menu project-menu clip-menu opx-row-menu" style={{ position: 'fixed', left: pos?.left ?? at.x, top: pos?.top ?? at.y, right: 'auto', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto', visibility: pos ? undefined : 'hidden' }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
-      {items.map((it, i) =>
-        it ? (
-          <button key={i} className={it.danger ? 'danger' : ''} disabled={it.disabled} onClick={() => (onClose(), void it.run())}>
-            {it.icon} {it.label}
-            {it.on && <i className="opx-row-menu-on" />}
-          </button>
-        ) : (
-          <div key={i} className="menu-sep" />
-        ),
-      )}
-    </div>,
-    document.body,
   );
 }
 

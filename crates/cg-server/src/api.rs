@@ -1330,6 +1330,10 @@ async fn delete_project(
         return Err(not_found("project"));
     }
     let _ = tokio::fs::remove_dir_all(crate::media::project_dir(&s, &id)).await;
+    let _ = crate::media::edit_library_folders(&s, |all| {
+        all.remove(&id);
+    })
+    .await;
     // Its own data connectors go with it (the shared ones stay).
     let own: Vec<String> = s
         .data

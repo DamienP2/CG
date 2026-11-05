@@ -1,7 +1,9 @@
-import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, LayoutTemplate, Link2, Palette as PaletteIcon, Plus, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
+import { Check, ChevronRight, Copy, Download, File, FileAudio, Film, Folder, FolderOpen, FolderPlus, HardDrive, Image as ImageIcon, LayoutGrid, LayoutTemplate, Link2, Palette as PaletteIcon, Pause, Pencil, Play, Plus, Search, Trash2, Type, Upload, UploadCloud, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
-import { confirmDialog } from '../ui/dialogs';
+import { confirmDialog, promptDialog } from '../ui/dialogs';
+import { ContextMenu } from '../ui/ContextMenu';
+import { Empty } from '../ui/Empty';
 import { Segmented } from '../ui/fields';
 import { Dropdown } from '../ui/Dropdown';
 import { loadFonts, useFonts } from '../engine/fonts';
@@ -104,9 +106,25 @@ const formatDate = (ms: number) => new Date(ms).toLocaleDateString(locale(), { d
 
 type Upload = { name: string; progress: number; error?: string };
 
+/** The folders of a library: by kind of file, one level; a file keeps its address in any of them. */
+interface LibraryFolders {
+  folders: { kind: string; name: string }[];
+  /** File name → folder name (of the file's kind). */
+  assign: Record<string, string>;
+}
+
+const NO_FOLDERS: LibraryFolders = { folders: [], assign: {} };
+
+/** A file dragged onto a folder (not a file from the computer). */
+const DRAG_MIME = 'application/x-strata-media';
+
+/** What an empty kind says. */
+const nothing = (k: Kind | 'all') => (k === 'image' ? t('No image') : k === 'video' ? t('No video') : k === 'audio' ? t('No sound') : k === 'other' ? t('No file') : t('No media yet'));
+
 /**
  * A media library: the files of one project (`projectId`), or the files
- * shared by every project. Upload by button or by dropping files anywhere.
+ * shared by every project. Upload by button or by dropping files anywhere;
+ * each kind of file sorted into folders.
  */
 export function MediaLibrary({ projectId }: { projectId?: string }) {
   const { auth, toast } = useApp();
@@ -114,11 +132,14 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const canUpload = !!user && user.role !== 'viewer';
   const canDelete = can.design(user);
   const [files, setFiles] = useState<MediaFile[] | null>(null);
+  const [lib, setLib] = useState<LibraryFolders>(NO_FOLDERS);
   const families = useFonts((s) => s.families);
   useEffect(() => {
     if (!families.length) void loadFonts();
   }, [families.length]);
-  const [kind, setKind] = useState<Kind | 'all' | 'colors' | 'logic' | 'templates'>('all');
+  const [kind, setKindRaw] = useState<Kind | 'all' | 'colors' | 'logic' | 'templates'>('all');
+  const [open, setOpen] = useState<string | null>(null);
+  const setKind = (k: typeof kind) => (setKindRaw(k), setOpen(null));
   const tlib = useTemplateLibrary(projectId);
   const sharedFlows = useLogicFlows((s) => s.shared.length);
   const flowsLoaded = useLogicFlows((s) => s.loaded);
@@ -138,20 +159,60 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; folder: string } | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
   const depth = useRef(0);
   const url = mediaUrl(projectId);
+  const foldersUrl = `${url}-folders`;
 
   const refresh = () =>
-    api<MediaFile[]>('GET', url)
-      .then(setFiles)
-      .catch((e) => toast((e as Error).message, 'error'));
-  // Uploads and deletions by other users.
+    Promise.all([api<MediaFile[]>('GET', url), api<LibraryFolders>('GET', foldersUrl)])
+      .then(([list, f]) => {
+        setFiles(list);
+        setLib({ ...NO_FOLDERS, ...f });
+        return list;
+      })
+      .catch((e) => (toast((e as Error).message, 'error'), null));
+  // Uploads, deletions and folders changed by other users.
   useChanged(projectId ? `media:${projectId}` : 'media', () => void refresh());
   useEffect(() => {
     setFiles(null);
+    setLib(NO_FOLDERS);
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
+
+  const saveLib = async (next: LibraryFolders) => {
+    setLib(next);
+    try {
+      setLib({ ...NO_FOLDERS, ...(await api<LibraryFolders>('PUT', foldersUrl, next)) });
+    } catch (e) {
+      toast((e as Error).message, 'error');
+      void refresh();
+    }
+  };
+
+  const mediaKind = kind === 'image' || kind === 'video' || kind === 'audio' || kind === 'other' ? kind : null;
+  const foldersOf = (k: string) => lib.folders.filter((f) => f.kind === k).map((f) => f.name);
+  const folderOf = (m: MediaFile) => {
+    const f = lib.assign[m.name];
+    return f && lib.folders.some((x) => x.kind === m.kind && x.name === f) ? f : null;
+  };
+  // A folder removed elsewhere.
+  useEffect(() => {
+    if (open && mediaKind && !foldersOf(mediaKind).includes(open)) setOpen(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lib, open, mediaKind]);
+
+  const moveTo = (names: string[], folder: string | null) => {
+    const assign = { ...lib.assign };
+    for (const n of names) {
+      if (folder) assign[n] = folder;
+      else delete assign[n];
+    }
+    void saveLib({ ...lib, assign });
+  };
 
   const upload = async (list: FileList | File[]) => {
     // Fonts are global: they go to the server's fonts, never to a project.
@@ -162,6 +223,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     const existing = new Set(files?.map((f) => f.name));
     const replaced = todo.filter((f) => existing.has(mediaName(f.name))).map((f) => mediaName(f.name));
     if (replaced.length && !(await confirmDialog({ title: t('Replace {names}?', { names: replaced.join(', ') }), message: tn(replaced.length, 'Templates using it show the new file.', 'Templates using them show the new files.'), confirm: t('Replace') }))) return;
+    const into = mediaKind && open ? { kind: mediaKind, folder: open } : null;
     setUploads((u) => [...u, ...todo.map((f) => ({ name: f.name, progress: 0 }))]);
     await Promise.all(
       todo.map(async (f) => {
@@ -174,7 +236,16 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         }
       }),
     );
-    void refresh();
+    const now = await refresh();
+    // Dropped in an open folder: the new files of its kind go in it.
+    if (into && now) {
+      const names = new Set(todo.map((f) => mediaName(f.name)));
+      const mine = now.filter((m) => names.has(m.name) && m.kind === into.kind).map((m) => m.name);
+      if (mine.length) {
+        const f = await api<LibraryFolders>('GET', foldersUrl).catch(() => null);
+        if (f) void saveLib({ ...NO_FOLDERS, ...f, assign: { ...f.assign, ...Object.fromEntries(mine.map((n) => [n, into.folder])) } });
+      }
+    }
   };
 
   const remove = async (m: MediaFile) => {
@@ -197,6 +268,39 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     }
   };
 
+  const newFolder = async () => {
+    if (!mediaKind) return;
+    const name = (await promptDialog({ title: t('New folder'), label: t('Name'), confirm: t('Create') }))?.trim();
+    if (!name) return;
+    if (!foldersOf(mediaKind).includes(name)) await saveLib({ ...lib, folders: [...lib.folders, { kind: mediaKind, name }] });
+    setOpen(name);
+  };
+  const renameFolder = async (old: string) => {
+    if (!mediaKind) return;
+    const name = (await promptDialog({ title: t('Rename the folder'), label: t('Name'), value: old, confirm: t('Rename') }))?.trim();
+    if (!name || name === old) return;
+    if (foldersOf(mediaKind).includes(name)) return toast(t('A folder “{name}” already exists', { name }), 'error');
+    const assign = Object.fromEntries(Object.entries(lib.assign).map(([f, d]) => [f, d === old && (files ?? []).some((m) => m.name === f && m.kind === mediaKind) ? name : d]));
+    void saveLib({ folders: lib.folders.map((f) => (f.kind === mediaKind && f.name === old ? { kind: f.kind, name } : f)), assign });
+    if (open === old) setOpen(name);
+  };
+  const deleteFolder = async (name: string) => {
+    if (!mediaKind) return;
+    const n = (files ?? []).filter((m) => m.kind === mediaKind && folderOf(m) === name).length;
+    if (
+      !(await confirmDialog({
+        title: t('Delete the folder “{name}”?', { name }),
+        message: n ? tn(n, 'Its file goes back to the top (it is not deleted).', 'Its {n} files go back to the top (they are not deleted).') : undefined,
+        confirm: t('Delete'),
+        danger: true,
+      }))
+    )
+      return;
+    const assign = Object.fromEntries(Object.entries(lib.assign).filter(([f, d]) => !(d === name && (files ?? []).some((m) => m.name === f && m.kind === mediaKind))));
+    void saveLib({ folders: lib.folders.filter((f) => !(f.kind === mediaKind && f.name === name)), assign });
+    if (open === name) setOpen(null);
+  };
+
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: files?.length ?? 0 };
     for (const f of files ?? []) c[f.kind] = (c[f.kind] ?? 0) + 1;
@@ -204,15 +308,44 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   }, [files]);
   const total = useMemo(() => (files ?? []).reduce((n, f) => n + f.size, 0), [files]);
   const q = query.trim().toLowerCase();
-  const shown = (files ?? [])
-    .filter((f) => (kind === 'all' || f.kind === kind) && f.name.toLowerCase().includes(q))
+  const ofKind = (files ?? []).filter((f) => kind === 'all' || f.kind === kind);
+  // Searching looks in every folder; otherwise a kind shows what is in the open folder (or at its top).
+  const shown = ofKind
+    .filter((f) => (q ? f.name.toLowerCase().includes(q) : !mediaKind || folderOf(f) === open))
     .sort((a, b) => (sort === 'date' ? b.modified - a.modified : sort === 'size' ? b.size - a.size : 0) || a.name.localeCompare(b.name));
+  const folderList = mediaKind && !open && !q ? foldersOf(mediaKind).sort((a, b) => a.localeCompare(b, locale())) : [];
   const fonts = kind === 'font';
   const colourCount = palettes.reduce((n, p) => n + p.colors.length, projectColors);
   const colors = kind === 'colors';
   const logic = kind === 'logic';
   const tpls = kind === 'templates';
   const label = KINDS.find((k) => k.kind === kind)?.label ?? 'All files';
+  const KindIcon = KINDS.find((k) => k.kind === kind)?.icon ?? LayoutGrid;
+
+  const dropZone = canUpload && (
+    <label className="lib-dropzone">
+      <UploadCloud size={22} />
+      {t('Drop files here or click to choose them')}
+      <input type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />
+    </label>
+  );
+  /** Drop target of a file dragged from the grid (a folder, or the top of the kind). */
+  const target = (folder: string | null) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      setDropOn(folder ?? '');
+    },
+    onDragLeave: () => setDropOn((d) => (d === (folder ?? '') ? null : d)),
+    onDrop: (e: React.DragEvent) => {
+      const name = e.dataTransfer.getData(DRAG_MIME);
+      if (!name) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDropOn(null);
+      moveTo([name], folder);
+    },
+  });
 
   const nav = (
     <>
@@ -234,6 +367,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     </>
   );
 
+  const mediaView = !fonts && !colors && !logic && !tpls;
+  const emptyHere = files !== null && !q && !shown.length && !folderList.length;
+
   return (
     <SidePage
       nav={nav}
@@ -251,30 +387,48 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       }}
       onDragOver={(e) => canUpload && e.dataTransfer.types.includes('Files') && e.preventDefault()}
       onDrop={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
         e.preventDefault();
         depth.current = 0;
         setDragging(false);
         if (canUpload) void upload(e.dataTransfer.files);
       }}
       after={
-        dragging && (
-          <div className="drop-overlay">
-            <UploadCloud size={42} />
-            <strong>{projectId ? t('Drop to upload to this project') : t('Drop to upload to the shared assets')}</strong>
-          </div>
-        )
+        <>
+          {dragging && (
+            <div className="drop-overlay">
+              <UploadCloud size={42} />
+              <strong>{projectId ? t('Drop to upload to this project') : t('Drop to upload to the shared assets')}</strong>
+            </div>
+          )}
+          {menu && (
+            <ContextMenu
+              at={menu}
+              onClose={() => setMenu(null)}
+              items={[
+                { icon: <Pencil size={13} />, label: t('Rename'), run: () => renameFolder(menu.folder) },
+                { icon: <Trash2 size={13} />, label: t('Delete'), danger: true, run: () => deleteFolder(menu.folder) },
+              ]}
+            />
+          )}
+        </>
       }
     >
       <PageHead
         title={tpls ? t('Templates') : logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
-        sub={tpls ? tn(tlib?.length ?? 0, '{n} template', '{n} templates') : logic ? tn(sharedFlows + projectFlows, '{n} flow', '{n} flows') : colors ? tn(colourCount, '{n} colour', '{n} colours') : fonts ? tn(families.length, '{n} font', '{n} fonts') : tn(shown.length, '{n} file', '{n} files')}
+        sub={tpls ? tn(tlib?.length ?? 0, '{n} template', '{n} templates') : logic ? tn(sharedFlows + projectFlows, '{n} flow', '{n} flows') : colors ? tn(colourCount, '{n} colour', '{n} colours') : fonts ? tn(families.length, '{n} font', '{n} fonts') : tn(ofKind.length, '{n} file', '{n} files')}
       >
         {colors && canDelete && (
           <button className="btn primary" onClick={addPalette}>
             <Plus size={14} /> {t('Palette')}
           </button>
         )}
-        {!colors && !logic && !tpls && canUpload && (
+        {mediaKind && canUpload && !open && (
+          <button className="btn" onClick={() => void newFolder()}>
+            <FolderPlus size={14} /> {t('Folder')}
+          </button>
+        )}
+        {!colors && !logic && !tpls && canUpload && (!fonts || canDelete) && (
           <label className="btn primary">
             <Upload size={14} /> {fonts ? t('Add fonts') : t('Upload')}
             <input type="file" multiple hidden accept={fonts ? '.ttf,.otf,.woff,.woff2,.ttc' : undefined} onChange={(e) => e.target.files && void upload(e.target.files)} />
@@ -282,13 +436,28 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         )}
       </PageHead>
 
-      {!fonts && !colors && !logic && !tpls && (
+      {mediaView && !(files && !files.length) && (
         <div className="media-toolbar">
+          {mediaKind && (
+            <div className="lib-crumb">
+              {open ? (
+                <>
+                  <button className={`lib-crumb-root ${dropOn === '' ? 'drop' : ''}`} onClick={() => setOpen(null)} {...target(null)}>
+                    {t(label)}
+                  </button>
+                  <ChevronRight size={14} />
+                  <b>{open}</b>
+                </>
+              ) : (
+                <b>{t(label)}</b>
+              )}
+            </div>
+          )}
+          <div className="spacer" />
           <label className="search">
             <Search size={14} />
             <input value={query} placeholder={t('Search files')} onChange={(e) => setQuery(e.target.value)} />
           </label>
-          <div className="spacer" />
           <label className="sort">
             {t('Sort')}
             <Dropdown
@@ -334,59 +503,235 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         <ColorsPanel projectId={projectId} canEdit={canDelete} />
       ) : fonts ? (
         <FontsPanel canEdit={canDelete} />
-      ) : files && files.length === 0 ? (
-        <label className={`media-empty ${canUpload ? '' : 'static'}`}>
-          <UploadCloud size={36} />
-          <strong>{t('No media yet')}</strong>
-          {canUpload && <input type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />}
-        </label>
-      ) : (
-        <div className="media-grid">
-          {shown.map((m) => {
-            const Icon = ICON[m.kind];
-            return (
-              <div key={m.src} className="media-tile" title={m.src}>
-                <div className="media-preview">
-                  {m.kind === 'image' ? (
-                    <img src={`${m.src}?v=${m.modified}`} alt="" loading="lazy" />
-                  ) : m.kind === 'video' ? (
-                    <>
-                      <Icon size={30} />
-                      <video src={`${m.src}?v=${m.modified}#t=0.5`} muted preload="metadata" onError={(e) => (e.currentTarget.style.display = 'none')} onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} />
-                    </>
-                  ) : (
-                    <Icon size={30} />
-                  )}
-                  <span className={`media-kind ${m.kind}`}>
-                    <Icon size={11} /> {m.name.split('.').pop()?.toUpperCase()}
-                  </span>
-                  <div className="media-actions">
-                    <button className="icon-btn" title={t('Copy the URL')} onClick={() => void copy(m)}>
-                      {copied === m.src ? <Check size={14} /> : <Copy size={14} />}
-                    </button>
-                    <a className="icon-btn" title={t('Download')} href={m.src} download={m.name}>
-                      <Download size={14} />
-                    </a>
-                    {canDelete && (
-                      <button className="icon-btn danger" title={t('Delete')} onClick={() => void remove(m)}>
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="media-info">
-                  <strong>{m.name}</strong>
-                  <span className="muted small">
-                    {formatSize(m.size)} · {formatDate(m.modified)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-          {files && !shown.length && <p className="muted">{t('No file matches.')}</p>}
+      ) : emptyHere ? (
+        <div className="lib-void">
+          <Empty icon={open ? FolderOpen : KindIcon} text={open ? t('Empty folder') : nothing(mediaKind ?? 'all')}>
+            {dropZone}
+          </Empty>
         </div>
+      ) : (
+        <>
+          {folderList.length > 0 && (
+            <div className="lib-folders">
+              {folderList.map((f) => (
+                <button
+                  key={f}
+                  className={`lib-folder ${dropOn === f ? 'drop' : ''}`}
+                  onDoubleClick={() => setOpen(f)}
+                  onContextMenu={(e) => canUpload && (e.preventDefault(), setMenu({ x: e.clientX, y: e.clientY, folder: f }))}
+                  {...target(f)}
+                >
+                  <Folder size={18} />
+                  <span className="grow">{f}</span>
+                  <span className="muted small">{ofKind.filter((m) => folderOf(m) === f).length}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {files && !shown.length && q ? (
+            <div className="lib-void">
+              <Empty icon={Search} text={t('No file matches.')} />
+            </div>
+          ) : (
+            <div className="media-grid">
+              {shown.map((m) => {
+                const Icon = ICON[m.kind];
+                return (
+                  <div
+                    key={m.src}
+                    className="media-tile"
+                    title={m.src}
+                    draggable={canUpload && !!mediaKind}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(DRAG_MIME, m.name);
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={() => setDropOn(null)}
+                  >
+                    <div className="media-preview">
+                      {m.kind === 'image' ? (
+                        <img src={`${m.src}?v=${m.modified}`} alt="" loading="lazy" draggable={false} />
+                      ) : m.kind === 'video' || m.kind === 'audio' ? (
+                        <MediaPlayer m={m} playing={playing === m.src} onPlaying={(on) => setPlaying((p) => (on ? m.src : p === m.src ? null : p))} />
+                      ) : (
+                        <Icon size={30} />
+                      )}
+                      <span className={`media-kind ${m.kind}`}>
+                        <Icon size={11} /> {m.name.split('.').pop()?.toUpperCase()}
+                      </span>
+                      <div className="media-actions">
+                        <button className="icon-btn" title={t('Copy the URL')} onClick={() => void copy(m)}>
+                          {copied === m.src ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                        <a className="icon-btn" title={t('Download')} href={m.src} download={m.name}>
+                          <Download size={14} />
+                        </a>
+                        {canDelete && (
+                          <button className="icon-btn danger" title={t('Delete')} onClick={() => void remove(m)}>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="media-info">
+                      <strong>{m.name}</strong>
+                      <span className="muted small">
+                        {formatSize(m.size)} · {formatDate(m.modified)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </SidePage>
+  );
+}
+
+/** "0:04", "12:30". */
+const clock = (s: number) => {
+  const v = Number.isFinite(s) ? Math.max(0, Math.floor(s)) : 0;
+  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
+};
+
+/** Sounds read once to draw their wave (the bigger ones show an icon). */
+const WAVE_MAX_BYTES = 30 * 1024 * 1024;
+const waves = new Map<string, Promise<number[] | null>>();
+let waveQueue: Promise<unknown> = Promise.resolve();
+let decoder: AudioContext | null = null;
+
+/** The loudness of a sound in `bars` slices (0–1), one sound decoded at a time. */
+function waveOf(src: string, bars: number): Promise<number[] | null> {
+  let p = waves.get(src);
+  if (!p) {
+    p = waveQueue.then(async () => {
+      try {
+        const buf = await (await fetch(src)).arrayBuffer();
+        decoder ??= new AudioContext();
+        const audio = await decoder.decodeAudioData(buf);
+        const data = audio.getChannelData(0);
+        const step = Math.max(1, Math.floor(data.length / bars));
+        const out: number[] = [];
+        for (let i = 0; i < bars; i++) {
+          let peak = 0;
+          for (let j = i * step; j < Math.min(data.length, (i + 1) * step); j += 16) peak = Math.max(peak, Math.abs(data[j]));
+          out.push(peak);
+        }
+        const top = Math.max(...out, 0.0001);
+        return out.map((v) => v / top);
+      } catch {
+        return null;
+      }
+    });
+    waveQueue = p;
+    waves.set(src, p);
+  }
+  return p;
+}
+
+const BARS = 48;
+
+/** A sound or a video in its tile: ▶ plays it there (one at a time in the page), with pause, position and time. */
+function MediaPlayer({ m, playing, onPlaying }: { m: MediaFile; playing: boolean; onPlaying: (on: boolean) => void }) {
+  const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
+  const [started, setStarted] = useState(false);
+  const [paused, setPaused] = useState(true);
+  const [at, setAt] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const [wave, setWave] = useState<number[] | null>(null);
+  const video = m.kind === 'video';
+  const src = `${m.src}?v=${m.modified}`;
+
+  useEffect(() => {
+    if (video || m.size > WAVE_MAX_BYTES) return;
+    let live = true;
+    void waveOf(src, BARS).then((w) => live && setWave(w));
+    return () => void (live = false);
+  }, [src, video, m.size]);
+  // Another file started: this one stops.
+  useEffect(() => {
+    if (!playing) ref.current?.pause();
+  }, [playing]);
+  // The position, smooth while it plays.
+  useEffect(() => {
+    if (paused) return;
+    let raf = 0;
+    const tick = () => {
+      if (ref.current) setAt(ref.current.currentTime);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [paused]);
+
+  const toggle = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.paused) {
+      setStarted(true);
+      void el.play().catch(() => {});
+    } else el.pause();
+  };
+  const seek = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el || !duration) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    el.currentTime = Math.min(duration, Math.max(0, ((e.clientX - r.left) / r.width) * duration));
+    setAt(el.currentTime);
+  };
+  const events = {
+    onPlay: () => (setPaused(false), onPlaying(true)),
+    onPause: () => (setPaused(true), onPlaying(false)),
+    onEnded: () => (setPaused(true), setAt(0), onPlaying(false)),
+    onLoadedMetadata: (e: React.SyntheticEvent<HTMLMediaElement>) => setDuration(e.currentTarget.duration),
+  };
+  const part = duration ? at / duration : 0;
+  const Icon = ICON[m.kind];
+
+  return (
+    <>
+      {video ? (
+        <video ref={ref} src={`${src}#t=0.5`} preload="metadata" muted={muted} playsInline {...events} />
+      ) : (
+        <>
+          <audio ref={ref} src={src} preload="metadata" {...events} />
+          {wave ? (
+            <div className="mp-wave">
+              {wave.map((v, i) => (
+                <b key={i} className={i / BARS < part ? 'on' : ''} style={{ height: `${Math.max(6, v * 100)}%` }} />
+              ))}
+            </div>
+          ) : (
+            <Icon size={30} />
+          )}
+        </>
+      )}
+      {started && !(paused && at === 0) ? (
+        <div className="mp-bar" onClick={(e) => e.stopPropagation()}>
+          <button className="mp-btn" title={paused ? t('Play') : t('Pause')} onClick={toggle}>
+            {paused ? <Play size={14} fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
+          </button>
+          <div className="mp-track" onPointerDown={seek}>
+            <i style={{ width: `${part * 100}%` }} />
+          </div>
+          <span className="mp-time">
+            {clock(at)} / {clock(duration)}
+          </span>
+          {video && (
+            <button className="mp-btn" title={muted ? t('Sound on') : t('Mute')} onClick={() => setMuted((x) => !x)}>
+              {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            </button>
+          )}
+        </div>
+      ) : (
+        <button className="mp-play" title={t('Play')} onClick={toggle}>
+          <Play size={18} fill="currentColor" />
+        </button>
+      )}
+    </>
   );
 }
 
@@ -414,7 +759,9 @@ function TemplatesPanel({ list, projectId }: { list: LibTemplate[] | null; proje
       {shown.length ? (
         <LibraryGrid list={shown} canRemove={canRemove} />
       ) : (
-        <p className="muted tlib-empty">{t('No template')}</p>
+        <div className="lib-void">
+          <Empty icon={LayoutTemplate} text={t('No template')} />
+        </div>
       )}
     </>
   );

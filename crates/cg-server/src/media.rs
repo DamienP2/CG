@@ -1,6 +1,7 @@
 //! Media libraries: files shared by every project (`/assets/<name>`) and the
 //! files of one project (`/assets/projects/<id>/<name>`), plus the folders
-//! the project list is sorted into.
+//! the project list is sorted into, and the folders each library's files are
+//! sorted into (by kind; a file keeps its address in any folder).
 
 use std::collections::BTreeMap;
 use std::path::{Path as FsPath, PathBuf};
@@ -46,6 +47,14 @@ pub fn router() -> Router<Shared> {
                 .layer(DefaultBodyLimit::max(MAX_UPLOAD)),
         )
         .route("/api/folders", get(get_folders).put(put_folders))
+        .route(
+            "/api/media-folders",
+            get(get_shared_folders).put(put_shared_folders),
+        )
+        .route(
+            "/api/projects/{id}/media-folders",
+            get(get_project_folders).put(put_project_folders),
+        )
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -260,12 +269,18 @@ fn illustrator_svgs(bytes: Vec<u8>) -> Result<Vec<String>, String> {
     Ok(svgs)
 }
 
-async fn remove(s: &Shared, dir: &FsPath, name: &str) -> ApiResult<StatusCode> {
+async fn remove(s: &Shared, dir: &FsPath, name: &str, lib: &str) -> ApiResult<StatusCode> {
     if !valid_asset_name(name) {
         return Err(bad("invalid file name"));
     }
     match tokio::fs::remove_file(dir.join(name)).await {
         Ok(()) => {
+            edit_library_folders(s, |all| {
+                if let Some(f) = all.get_mut(lib) {
+                    f.assign.remove(name);
+                }
+            })
+            .await?;
             s.renderer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -308,7 +323,7 @@ async fn delete_shared(
     Path(name): Path<String>,
 ) -> ApiResult<StatusCode> {
     require(me.can_create_projects())?;
-    let r = remove(&s, &s.assets_dir(), &name).await?;
+    let r = remove(&s, &s.assets_dir(), &name, SHARED).await?;
     s.changed("media");
     Ok(r)
 }
@@ -589,7 +604,7 @@ async fn delete_project(
 ) -> ApiResult<StatusCode> {
     visible_project(&s, &me, &id).await?;
     require(me.can_design(&id))?;
-    let r = remove(&s, &project_dir(&s, &id), &name).await?;
+    let r = remove(&s, &project_dir(&s, &id), &name, &id).await?;
     s.changed(format!("media:{id}"));
     Ok(r)
 }
@@ -660,9 +675,190 @@ async fn put_folders(
     Ok(Json(f))
 }
 
+// ------------------------------------------------------- media folders ----
+
+/// The library of the shared files (the others are named by project id).
+const SHARED: &str = "";
+
+/// A folder of a library, in one kind of file (Images, Videos, Audio, Other).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaFolder {
+    pub kind: String,
+    pub name: String,
+}
+
+/// The folders of a library and the folder of each file (by name).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryFolders {
+    #[serde(default)]
+    pub folders: Vec<MediaFolder>,
+    /// File name → folder name (of the file's kind). Files not listed are at the top.
+    #[serde(default)]
+    pub assign: BTreeMap<String, String>,
+}
+
+static MEDIA_FOLDERS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn media_folders_file(s: &Shared) -> PathBuf {
+    s.data_dir.join("media-folders.json")
+}
+
+async fn load_library_folders(s: &Shared) -> BTreeMap<String, LibraryFolders> {
+    tokio::fs::read(media_folders_file(s))
+        .await
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+/// Changes the folders of every library, one change at a time.
+pub async fn edit_library_folders(
+    s: &Shared,
+    f: impl FnOnce(&mut BTreeMap<String, LibraryFolders>),
+) -> ApiResult<()> {
+    let _guard = MEDIA_FOLDERS.lock().await;
+    let mut all = load_library_folders(s).await;
+    let before = all.clone();
+    f(&mut all);
+    all.retain(|_, l| !l.folders.is_empty());
+    if all == before {
+        return Ok(());
+    }
+    let json = serde_json::to_vec_pretty(&all).map_err(internal)?;
+    let file = media_folders_file(s);
+    let tmp = file.with_extension("json.tmp");
+    tokio::fs::write(&tmp, json).await.map_err(internal)?;
+    tokio::fs::rename(tmp, file).await.map_err(internal)
+}
+
+/// Folder names checked, one per kind and name; files kept in folders of their kind.
+fn clean_folders(mut f: LibraryFolders) -> ApiResult<LibraryFolders> {
+    let mut folders: Vec<MediaFolder> = Vec::new();
+    for x in f.folders {
+        let name = x.name.trim().to_string();
+        if name.is_empty() || name.chars().count() > 80 {
+            return Err(bad("a folder name has 1 to 80 characters"));
+        }
+        if !matches!(x.kind.as_str(), "image" | "video" | "audio" | "other") {
+            return Err(bad("unknown kind of file"));
+        }
+        if !folders.iter().any(|y| y.kind == x.kind && y.name == name) {
+            folders.push(MediaFolder { kind: x.kind, name });
+        }
+    }
+    f.assign.retain(|file, folder| {
+        let kind = kind_of(file);
+        folders.iter().any(|y| y.kind == kind && &y.name == folder)
+    });
+    f.folders = folders;
+    Ok(f)
+}
+
+async fn library_folders(s: &Shared, lib: &str) -> LibraryFolders {
+    load_library_folders(s)
+        .await
+        .remove(lib)
+        .unwrap_or_default()
+}
+
+async fn save_library_folders(
+    s: &Shared,
+    lib: &str,
+    f: LibraryFolders,
+) -> ApiResult<Json<LibraryFolders>> {
+    let f = clean_folders(f)?;
+    let kept = f.clone();
+    edit_library_folders(s, |all| {
+        all.insert(lib.to_string(), kept);
+    })
+    .await?;
+    s.changed(if lib == SHARED {
+        "media".to_string()
+    } else {
+        format!("media:{lib}")
+    });
+    Ok(Json(f))
+}
+
+async fn get_shared_folders(
+    State(s): State<Shared>,
+    CurrentUser(_): CurrentUser,
+) -> Json<LibraryFolders> {
+    Json(library_folders(&s, SHARED).await)
+}
+
+async fn put_shared_folders(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(f): Json<LibraryFolders>,
+) -> ApiResult<Json<LibraryFolders>> {
+    require(can_upload(&me))?;
+    save_library_folders(&s, SHARED, f).await
+}
+
+async fn get_project_folders(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<LibraryFolders>> {
+    visible_project(&s, &me, &id).await?;
+    Ok(Json(library_folders(&s, &id).await))
+}
+
+async fn put_project_folders(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(f): Json<LibraryFolders>,
+) -> ApiResult<Json<LibraryFolders>> {
+    visible_project(&s, &me, &id).await?;
+    require(can_upload(&me))?;
+    save_library_folders(&s, &id, f).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn media_folders_are_checked_and_keep_files_of_their_kind() {
+        let f = clean_folders(LibraryFolders {
+            folders: vec![
+                MediaFolder {
+                    kind: "image".into(),
+                    name: " Logos ".into(),
+                },
+                MediaFolder {
+                    kind: "image".into(),
+                    name: "Logos".into(),
+                },
+                MediaFolder {
+                    kind: "audio".into(),
+                    name: "Jingles".into(),
+                },
+            ],
+            assign: [
+                ("logo.png".to_string(), "Logos".to_string()),
+                ("clip.mp4".to_string(), "Logos".to_string()),
+                ("a.wav".to_string(), "Gone".to_string()),
+            ]
+            .into(),
+        })
+        .unwrap();
+        assert_eq!(f.folders.len(), 2);
+        assert_eq!(f.assign.len(), 1);
+        assert_eq!(f.assign["logo.png"], "Logos");
+        assert!(clean_folders(LibraryFolders {
+            folders: vec![MediaFolder {
+                kind: "font".into(),
+                name: "x".into()
+            }],
+            assign: Default::default(),
+        })
+        .is_err());
+    }
 
     #[test]
     fn kinds() {
