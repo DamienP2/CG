@@ -13093,16 +13093,18 @@ a.lib-nav-item {
 }
 .asr-dates {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
-  padding: 4px 10px 8px;
 }
-.asr-dates label {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 11px;
-  color: var(--text-3);
+.asr-dates input {
+  height: 30px;
+  font-size: 11.5px;
+}
+.asr-filters {
+  margin-bottom: 8px;
+}
+.asr-filters .search {
+  width: 220px;
 }
 .asr-table {
   width: 100%;
@@ -21109,28 +21111,61 @@ textarea.tx-grow {
   padding-top: 14px;
   min-height: 38px;
 }
-.sys-subnav:empty {
-  display: none;
+.sys-tabrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: -6px 0 18px;
 }
-.sys-subnav {
+.sys-tabs {
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.fio-sync-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fio-sync-line .nav-dot + .nav-dot,
+.fio-sync-line .nav-dot:not(:first-child) {
+  margin-left: 10px;
+}
+.asr-chip-n {
+  margin-left: 4px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.api-tools {
+  display: flex;
+  gap: 8px;
+}
+.api-doc {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.api-toc {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin: 2px 0 6px 14px;
-  padding-left: 8px;
-  border-left: 1px solid var(--line);
 }
-.sys-subnav > .lib-nav-section:first-child,
-.sys-subnav .lib-nav-foot {
-  display: none;
+.api-doc-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: var(--fs-15);
 }
-.sys-subnav .lib-nav-section {
-  padding: 8px 10px 4px;
-  min-height: 0;
-}
-.sys-subnav .lib-nav-item {
-  padding: 5px 10px;
-  font-size: var(--fs-12);
+.sys-tab-n {
+  font-size: var(--fs-11);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Designer: a template deleted, still in the Operator until Publish. */

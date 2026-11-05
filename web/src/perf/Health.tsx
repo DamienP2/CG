@@ -1,7 +1,7 @@
 import { Activity, ChevronRight, Download, HardDrive, HeartPulse, RefreshCw, ScrollText, Search } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { t, tc, tn, useLang } from '../i18n';
-import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
+import { PageHead, SidePage, SubTabs } from '../pages/SidePage';
 import { api } from '../store';
 import { bytes, clock } from './format';
 import { useHealth, useHealthStore, type Incident, type JournalLine } from './health';
@@ -55,23 +55,23 @@ const dayLabel = (ms: number) => {
 export function Health() {
   const health = useHealth(true);
   const [section, setSection] = useState<Section>('overview');
-  const item = (s: Section, icon: React.ReactNode, label: string, extra?: Partial<React.ComponentProps<typeof NavItem>>) => <NavItem on={section === s} icon={icon} label={label} onClick={() => setSection(s)} {...extra} />;
   const incidents = health?.incidents.length ?? 0;
-  const nav = (
-    <>
-      <NavSection>{t('Health')}</NavSection>
-      {item('overview', <HeartPulse size={15} />, tc('perf', 'Overview'), { status: health ? (health.unseenCrash || health.lastHourErrors ? 'warn' : 'ok') : undefined, count: incidents || undefined })}
-      {item('journal', <ScrollText size={15} />, t('Journal'))}
-      {item('live', <Activity size={15} />, t('Live log'))}
-    </>
-  );
   return (
-    <SidePage nav={nav} className="perf-page health-page">
+    <SidePage nav={null} className="perf-page health-page">
       <PageHead title={t('Health')} sub={health ? t('Strata {version} · up {up}', { version: health.version, up: uptime(health.uptimeSecs) }) : undefined}>
         <a className="btn" href="/api/system/health/export.zip" download>
           <Download size={14} /> {t('Export for the support')}
         </a>
       </PageHead>
+      <SubTabs
+        value={section}
+        onChange={setSection}
+        items={[
+          { id: 'overview', icon: <HeartPulse size={14} />, label: tc('perf', 'Overview'), status: health ? (health.unseenCrash || health.lastHourErrors ? 'warn' : 'ok') : undefined, count: incidents || undefined },
+          { id: 'journal', icon: <ScrollText size={14} />, label: t('Journal') },
+          { id: 'live', icon: <Activity size={14} />, label: t('Live log') },
+        ]}
+      />
       {section === 'overview' ? <Overview /> : section === 'journal' ? <Journal /> : <Logs />}
     </SidePage>
   );

@@ -4,7 +4,7 @@ import { friendlyError } from '../ui/serverError';
 import { Cable, Copy, KeyRound, ListOrdered, Newspaper, Plug, Radio } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t, tn } from '../i18n';
-import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
+import { PageHead, SidePage, SubTabs } from '../pages/SidePage';
 import { navigate } from '../router';
 import { Card, Field, SaveBar } from '../settings/ui';
 import { useServerConfig } from '../settings/serverConfig';
@@ -56,23 +56,22 @@ export function MosPage() {
   const stateText = !mos.enabled ? t('Off') : status?.listening ? tn(status.connections, 'Listening · {n} connection', 'Listening · {n} connections') : (status?.error ? friendlyError(status.error) : t('Not listening'));
   const orders = status?.runningOrders ?? [];
 
-  const item = (s: Section, icon: React.ReactNode, label: string, extra?: Partial<React.ComponentProps<typeof NavItem>>) => <NavItem on={section === s} icon={icon} label={label} onClick={() => setSection(s)} {...extra} />;
-  const nav = (
-    <>
-      <NavSection>{t('Newsroom')}</NavSection>
-      {item('connection', <Cable size={15} />, t('Connection'), { status: state })}
-      {item('orders', <ListOrdered size={15} />, t('Running orders'), { count: orders.length })}
-      {item('plugin', <Plug size={15} />, t('Journalist plugin'))}
-    </>
-  );
-
   return (
-    <SidePage nav={nav}>
+    <SidePage nav={null}>
       <PageHead title={t('Newsroom (MOS)')} sub={stateText}>
         <span className={`mos-state ${state}`}>
           <span className={`nav-dot ${state}`} /> {!mos.enabled ? t('Off') : !status?.listening ? t('Not listening') : status.connections ? t('Connected') : t('Listening')}
         </span>
       </PageHead>
+      <SubTabs
+        value={section}
+        onChange={setSection}
+        items={[
+          { id: 'connection', icon: <Cable size={14} />, label: t('Connection'), status: state },
+          { id: 'orders', icon: <ListOrdered size={14} />, label: t('Running orders'), count: orders.length },
+          { id: 'plugin', icon: <Plug size={14} />, label: t('Journalist plugin') },
+        ]}
+      />
 
       {section === 'connection' && (
         <>

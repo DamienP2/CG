@@ -2,7 +2,7 @@ import { Activity, CircleCheck, CircleX, Cpu, Film, Gauge, Image as ImageIcon, I
 import { useState } from 'react';
 import { loadTone, useMetrics, type CapacityItem, type ChannelMetrics, type InputMetrics, type Metrics, type PictureMetrics, type Warning } from '../engine/metrics';
 import { t, tc, tn } from '../i18n';
-import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
+import { PageHead, SidePage, SubTabs } from '../pages/SidePage';
 import { Card } from '../settings/ui';
 import { useApp } from '../store';
 import { Logo } from '../ui/Logo';
@@ -36,29 +36,20 @@ const kindOf = (k: string) => KIND[k] ?? { label: k, badge: k.toUpperCase(), col
 export function Performance() {
   const m = useMetrics(1000);
   const [section, setSection] = useState<Section>('overview');
-  const item = (s: Section, icon: React.ReactNode, label: string, extra?: Partial<React.ComponentProps<typeof NavItem>>) => <NavItem on={section === s} icon={icon} label={label} onClick={() => setSection(s)} {...extra} />;
   const warns = m?.warnings.filter((w) => w.level !== 'info').length ?? 0;
 
-  const nav = (
-    <>
-      <NavSection>{t('Performance')}</NavSection>
-      {item('overview', <Gauge size={15} />, tc('perf', 'Overview'), { status: m ? (warns ? 'warn' : 'ok') : undefined, count: warns || undefined })}
-      {item('capacity', <Lightbulb size={15} />, t('Capacity'))}
-      {m && (
-        <div className="lib-nav-foot">
-          <Dot tone={loadTone(m.machine.cpu)} /> {m.machine.hostname}
-          <span className="muted">
-            {m.machine.cpuName} · {tn(m.machine.cores, '{n} core', '{n} cores')} · {bytes(m.machine.memTotal)}
-          </span>
-        </div>
-      )}
-    </>
-  );
-
   return (
-    <SidePage nav={nav} className="perf-page">
+    <SidePage nav={null} className="perf-page">
       {/* The CPU shows once, in the tiles below. */}
       <PageHead title={t('Performance')} sub={m ? `${m.machine.hostname} · ${m.machine.cpuName} · ${tn(m.machine.cores, '{n} core', '{n} cores')}` : t('Measuring…')} />
+      <SubTabs
+        value={section}
+        onChange={setSection}
+        items={[
+          { id: 'overview', icon: <Gauge size={14} />, label: tc('perf', 'Overview'), status: m ? (warns ? 'warn' : 'ok') : undefined, count: warns || undefined },
+          { id: 'capacity', icon: <Lightbulb size={14} />, label: t('Capacity') },
+        ]}
+      />
       {!m ? <div className="loading">{t('Measuring…')}</div> : section === 'overview' ? <Overview m={m} /> : <CapacityView m={m} />}
     </SidePage>
   );

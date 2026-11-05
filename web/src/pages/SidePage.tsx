@@ -85,3 +85,22 @@ export function PageHead({ title, sub, children }: { title: React.ReactNode; sub
     </div>
   );
 }
+
+/** The pages of a section, as tabs under its title (System). */
+export function SubTabs<T extends string>({ value, onChange, items, children }: { value: T; onChange: (v: T) => void; items: { id: T; icon?: React.ReactNode; label: React.ReactNode; count?: React.ReactNode; status?: 'ok' | 'warn' | 'off' }[]; /** The open page's actions, at the right. */ children?: React.ReactNode }) {
+  return (
+    <div className="sys-tabrow">
+      <div className="tabs sys-tabs" role="tablist">
+        {items.map((i) => (
+          <button key={i.id} role="tab" aria-selected={value === i.id} className={value === i.id ? 'on' : ''} onClick={() => onChange(i.id)}>
+            {i.icon}
+            <span>{i.label}</span>
+            {i.status && <span className={`nav-dot ${i.status}`} />}
+            {i.count !== undefined && <span className="sys-tab-n">{i.count}</span>}
+          </button>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}

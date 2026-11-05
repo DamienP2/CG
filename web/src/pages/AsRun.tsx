@@ -1,10 +1,10 @@
-import { CalendarDays, CalendarRange, ChevronDown, ChevronRight, Clock, Cog, Database, Download, FileText, History, KeyRound, Layers, Newspaper, Radio, Search, Tv, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Cog, Database, Download, FileText, KeyRound, Newspaper, Radio, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { Zone } from '../engine/types';
 import { locale, t, tc, tn } from '../i18n';
 import { api, serverEvents, useApp } from '../store';
 import { Dropdown } from '../ui/Dropdown';
-import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
+import { PageHead, SidePage } from './SidePage';
 
 /*
  * The as-run log ("Journal d'antenne"): every action on air, who did it and
@@ -327,38 +327,16 @@ export function AsRun() {
     setTimeout(() => w.print(), 200);
   };
 
-  const periodItem = (p: Period, icon: React.ReactNode, label: string) => <NavItem on={period === p} icon={icon} label={label} onClick={() => setPeriod(p)} />;
-
-  const nav = (
-    <>
-      <NavSection>{t('Channels')}</NavSection>
-      <NavItem on={channel === null} icon={<Layers size={15} />} label={tc('asrun', 'All')} count={all.length} onClick={() => setChannel(null)} />
-      {chans.map((c) => (
-        <NavItem key={c.id} on={channel === c.id} icon={<Tv size={15} />} label={c.name} count={c.n} onClick={() => setChannel(c.id)} />
-      ))}
-      <NavSection>{t('Period')}</NavSection>
-      {periodItem('hour', <History size={15} />, t('Last hour'))}
-      {periodItem('today', <CalendarDays size={15} />, t('Today'))}
-      {periodItem('yesterday', <CalendarDays size={15} />, t('Yesterday'))}
-      {periodItem('week', <CalendarRange size={15} />, t('Last 7 days'))}
-      {periodItem('custom', <CalendarRange size={15} />, t('Dates…'))}
-      {period === 'custom' && (
-        <div className="asr-dates">
-          <label>
-            <span>{tc('asrun', 'From')}</span>
-            <input type="datetime-local" value={custom.from} onChange={(e) => e.target.value && setCustom({ ...custom, from: e.target.value })} />
-          </label>
-          <label>
-            <span>{tc('asrun', 'To')}</span>
-            <input type="datetime-local" value={custom.to} onChange={(e) => e.target.value && setCustom({ ...custom, to: e.target.value })} />
-          </label>
-        </div>
-      )}
-    </>
-  );
+  const PERIODS: [Period, string][] = [
+    ['hour', t('Last hour')],
+    ['today', t('Today')],
+    ['yesterday', t('Yesterday')],
+    ['week', t('Last 7 days')],
+    ['custom', t('Dates…')],
+  ];
 
   return (
-    <SidePage nav={nav} className="asr-page">
+    <SidePage nav={null} className="asr-page">
       <PageHead title={t('As-run log')} sub={`${periodText()} · ${tn(shown.length, '{n} action', '{n} actions')}`}>
         <div className="asr-head-actions">
           {live && (
@@ -375,7 +353,20 @@ export function AsRun() {
         </div>
       </PageHead>
 
-      <div className="asr-toolbar ux3-asr-row">
+      {/* What is shown: when, where, who, how; then the actions. */}
+      <div className="asr-toolbar asr-filters">
+        <Dropdown className="asr-drop" value={period} title={t('Period')} onChange={(v) => setPeriod(v as Period)} options={PERIODS.map(([value, label]) => ({ value, label }))} />
+        {period === 'custom' && (
+          <span className="asr-dates">
+            <input type="datetime-local" title={tc('asrun', 'From')} value={custom.from} onChange={(e) => e.target.value && setCustom({ ...custom, from: e.target.value })} />
+            <span className="muted">→</span>
+            <input type="datetime-local" title={tc('asrun', 'To')} value={custom.to} onChange={(e) => e.target.value && setCustom({ ...custom, to: e.target.value })} />
+          </span>
+        )}
+        <Dropdown className="asr-drop" value={channel ?? ''} title={t('Channels')} onChange={(v) => setChannel(v || null)} options={[{ value: '', label: t('Channels · all'), note: String(all.length) }, ...chans.map((c) => ({ value: c.id, label: c.name, note: String(c.n) }))]} />
+        <Dropdown className="asr-drop" value={actor} title={t('Operators')} onChange={setActor} options={[{ value: '', label: t('Operators · all') }, ...actors.map(([id, name]) => ({ value: id, label: name }))]} />
+        <Dropdown className="asr-drop" value={kind} title={t('Sources')} onChange={(v) => setKind(v as '' | Kind)} options={[{ value: '', label: t('Sources · all') }, ...KINDS.map((k) => ({ value: k, label: kindLabel(k) }))]} />
+        <div className="spacer" />
         <label className="search">
           <Search size={14} />
           <input value={query} placeholder={t('Search…')} title={t('Graphic, value, operator…')} onChange={(e) => setQuery(e.target.value)} />
@@ -385,6 +376,8 @@ export function AsRun() {
             </button>
           )}
         </label>
+      </div>
+      <div className="asr-toolbar">
         <div className="asr-chips">
           <button className={`asr-chip ${groups.length ? '' : 'on'}`} onClick={() => setGroups([])}>
             {t('All actions')}
@@ -395,9 +388,6 @@ export function AsRun() {
             </button>
           ))}
         </div>
-        <div className="spacer" />
-        <Dropdown className="asr-drop" value={actor} title={t('Operators')} onChange={setActor} options={[{ value: '', label: t('Operators · all') }, ...actors.map(([id, name]) => ({ value: id, label: name }))]} />
-        <Dropdown className="asr-drop" value={kind} title={t('Sources')} onChange={(v) => setKind(v as '' | Kind)} options={[{ value: '', label: t('Sources · all') }, ...KINDS.map((k) => ({ value: k, label: kindLabel(k) }))]} />
       </div>
 
       {rows === null ? (

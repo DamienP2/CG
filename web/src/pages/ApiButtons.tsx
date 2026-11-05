@@ -7,7 +7,6 @@ import { promptDialog } from '../ui/dialogs';
 import { Dropdown } from '../ui/Dropdown';
 import { NumberField } from '../ui/fields';
 import type { ApiKey } from './ApiKeys';
-import { PageHead } from './SidePage';
 
 /*
  * API › Bitfocus Buttons: the control API for surfaces (crates/cg-server/src/apiv1):
@@ -91,7 +90,7 @@ function OnOff({ on }: { on: boolean }) {
   return <span className={`btn1-state ${on ? 'on' : ''}`}>{on ? t('Enabled') : t('Disabled')}</span>;
 }
 
-export function ApiButtons({ keys, onCreateKey }: { keys: ApiKey[]; onCreateKey: () => void }) {
+export function ApiButtons({ keys, onCreateKey, head }: { keys: ApiKey[]; onCreateKey: () => void; /** The page's title and tabs, with these actions. */ head: (actions: React.ReactNode) => React.ReactNode }) {
   const { auth, channels, toast } = useApp();
   const admin = can.admin(auth?.user);
   const [status, setStatus] = useState<V1Status | null>(null);
@@ -198,17 +197,14 @@ export function ApiButtons({ keys, onCreateKey }: { keys: ApiKey[]; onCreateKey:
 
   return (
     <div className="btn1-page">
-      <PageHead
-        title={
-          <span className="btn1-title">
-            Bitfocus Buttons <span className={`btn1-chip ${status?.surfaces ? 'on' : ''}`}>● {tn(status?.surfaces ?? 0, '{n} surface connected', '{n} surfaces connected')}</span>
-          </span>
-        }
-      >
-        <button className="btn" onClick={onCreateKey}>
-          <KeyRound size={14} /> {t('Create key')}
-        </button>
-      </PageHead>
+      {head(
+        <span className="btn1-title">
+          <span className={`btn1-chip ${status?.surfaces ? 'on' : ''}`}>● {tn(status?.surfaces ?? 0, '{n} surface connected', '{n} surfaces connected')}</span>
+          <button className="btn" onClick={onCreateKey}>
+            <KeyRound size={14} /> {t('Create key')}
+          </button>
+        </span>,
+      )}
 
       <div className="btn1-bar">
         <label>

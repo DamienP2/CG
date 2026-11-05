@@ -1,5 +1,5 @@
 import { Braces, CircuitBoard, ClipboardList, Clock, CloudDownload, Gauge, HeartPulse, KeyRound, Lock, Monitor, Network, Newspaper, RotateCcw, SlidersHorizontal, Users as UsersIcon } from 'lucide-react';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { t } from '../i18n';
 import { needsLook, useHealthStore } from '../perf/health';
 import { navigate, systemPath, type SystemSection } from '../router';
@@ -94,7 +94,7 @@ function Section({ id }: { id: SystemSection }) {
   }
 }
 
-/** Administration and supervision, one page: a list on the left (a section's own list under it), the section on the right. */
+/** Administration and supervision, one page: the sections on the left, the open one on the right. */
 export function SystemPage({ section }: { section: SystemSection | '' }) {
   const user = useApp((s) => s.auth?.user);
   const admin = can.admin(user);
@@ -104,8 +104,6 @@ export function SystemPage({ section }: { section: SystemSection | '' }) {
     .filter((g) => g.items.length);
   const all = shown.flatMap((g) => g.items);
   const current = all.find((i) => i.id === section) ?? all[0];
-  // Where the open section puts its own list (under its item).
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
   return (
     <div className="projects-page sys-page">
       <aside className="lib-nav">
@@ -113,16 +111,14 @@ export function SystemPage({ section }: { section: SystemSection | '' }) {
           <div key={g.title} className="sys-group">
             <NavSection>{g.title}</NavSection>
             {g.items.map((i) => (
-              <div key={i.id}>
-                <NavItem on={i.id === current.id} icon={i.icon} label={i.label} status={i.id === 'health' && needsLook(health) ? 'warn' : undefined} onClick={() => navigate(systemPath(i.id))} />
-                {i.id === current.id && <div className="sys-subnav" ref={setSlot} />}
-              </div>
+              <NavItem key={i.id} on={i.id === current.id} icon={i.icon} label={i.label} status={i.id === 'health' && needsLook(health) ? 'warn' : undefined} onClick={() => navigate(systemPath(i.id))} />
             ))}
           </div>
         ))}
       </aside>
       <main className="library">
-        <EmbeddedNav.Provider value={slot}>
+        {/* The sections show their pages as tabs and their filters in the page: the list keeps the sections only. */}
+        <EmbeddedNav.Provider value={null}>
           <Suspense fallback={<div className="loading">{t('Loading…')}</div>}>
             <Section key={current.id} id={current.id} />
           </Suspense>

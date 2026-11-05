@@ -2,7 +2,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Network, Plus, RefreshCw, Settings2, 
 import { useEffect, useId, useState } from 'react';
 import { t, tc, tn } from '../i18n';
 import { friendlyError } from '../ui/serverError';
-import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
+import { PageHead, SidePage, SubTabs } from '../pages/SidePage';
 import { SaveBar } from '../settings/ui';
 import { useServerConfig } from '../settings/serverConfig';
 import { joinAddr, splitAddr, type ChannelConfig, type DetectedCard, type HardwareConfig, type HardwareInfo, type InputConfig, type InputInfo, type Nic, type OutputState, type OutputsConfig, type SdiCard, type ServerConfig, type St2110Flow } from '../outputs/types';
@@ -123,30 +123,44 @@ export function Hardware() {
   const ref = refState(hw, det);
   const ptp = det?.sync?.ptp;
   const ptpDot = !ptp?.running ? 'off' : ptp.locked ? 'ok' : 'warn';
-  const nav = (
+  // The title, the synchronisation, the two kinds of hardware as tabs, and the open one's action.
+  const head = (action: React.ReactNode) => (
     <>
-      <NavSection>{t('Hardware')}</NavSection>
-      <NavItem on={section === 'sdi'} icon={<Tv size={15} />} label="SDI · DeckLink" count={tn(hw.sdi.cards.length, '{n} card', '{n} cards')} onClick={() => go('sdi')} />
-      <NavItem on={section === 'st2110'} icon={<Network size={15} />} label="SMPTE ST 2110" count={tn(hw.st2110.flows.length, '{n} flow', '{n} flows')} onClick={() => go('st2110')} />
-      <NavSection>{t('Sync')}</NavSection>
-      <NavItem className="fio-sync" icon={<span className={`nav-dot ${ref.dot}`} />} label={ref.label} count={ref.state} onClick={() => go('sdi')} />
-      <NavItem className="fio-sync" icon={<span className={`nav-dot ${ptpDot}`} />} label={`PTP · ${t('domain {n}', { n: hw.sync!.ptpDomain })}`} count={ptp?.running ? ptpStateLabel(ptp.portState) : '—'} onClick={() => go('st2110')} />
+      <PageHead
+        title={t('Video hardware')}
+        sub={
+          <span className="fio-sync-line">
+            <span className={`nav-dot ${ref.dot}`} /> {ref.label} · {ref.state}
+            <span className={`nav-dot ${ptpDot}`} /> {`PTP · ${t('domain {n}', { n: hw.sync!.ptpDomain })}`} · {ptp?.running ? ptpStateLabel(ptp.portState) : '—'}
+          </span>
+        }
+      />
+      <SubTabs
+        value={section}
+        onChange={go}
+        items={[
+          { id: 'sdi', icon: <Tv size={14} />, label: 'SDI · DeckLink', count: tn(hw.sdi.cards.length, '{n} card', '{n} cards') },
+          { id: 'st2110', icon: <Network size={14} />, label: 'SMPTE ST 2110', count: tn(hw.st2110.flows.length, '{n} flow', '{n} flows') },
+        ]}
+      >
+        {action}
+      </SubTabs>
     </>
   );
 
   return (
-    <SidePage nav={nav} className="hw-page fio-page">
+    <SidePage nav={null} className="hw-page fio-page">
       {section === 'sdi' && (
         <>
-          <PageHead title="SDI · DeckLink">
+          {head(
             <button className="btn" disabled={scanning} onClick={() => void detect(true)}>
               <RefreshCw size={14} className={scanning ? 'spin' : ''} /> {t('Search')}
-            </button>
-          </PageHead>
+            </button>,
+          )}
           <SdiView hw={hw} det={det} cfg={cfg} editHw={editHw} status={status} />
         </>
       )}
-      {section === 'st2110' && <St2110View hw={hw} det={det} cfg={cfg} editHw={editHw} status={status} />}
+      {section === 'st2110' && <St2110View hw={hw} det={det} cfg={cfg} editHw={editHw} status={status} head={head} />}
       <SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={discard} />
     </SidePage>
   );
@@ -670,7 +684,7 @@ function BracketDrawing({ card, bracket, hw, sel, onPick }: { card: SdiCard; bra
 const nicOf = (det: HardwareInfo | null, name: string): Nic | undefined => det?.nics?.find((n) => n.name === name);
 const ipOf = (n?: Nic) => n?.ipv4[0]?.split('/')[0];
 
-function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det: HardwareInfo | null; cfg: ServerConfig; editHw: EditHw; status: Statuses }) {
+function St2110View({ hw, det, cfg, editHw, status, head }: { hw: HardwareConfig; det: HardwareInfo | null; cfg: ServerConfig; editHw: EditHw; status: Statuses; head: (action: React.ReactNode) => React.ReactNode }) {
   const [sel, setSel] = useState<string | null>(null);
   const ptp = det?.sync?.ptp;
   const net = hw.network!;
@@ -710,11 +724,11 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
 
   return (
     <>
-      <PageHead title="SMPTE ST 2110">
+      {head(
         <button className="btn" onClick={add}>
           <Plus size={14} /> {t('Flow')}
-        </button>
-      </PageHead>
+        </button>,
+      )}
       <div className="fio-row">
         <section className="fio-box fio-ptp">
           <header>

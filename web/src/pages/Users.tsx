@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import type { Role, User } from '../engine/types';
 import { api, useApp } from '../store';
 import { t, tn } from '../i18n';
-import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
+import { PageHead, SidePage } from './SidePage';
 import { confirmDialog } from '../ui/dialogs';
 
 const ROLES: { value: Role; label: string; plural: string; hint: string; icon: typeof ShieldCheck }[] = [
@@ -159,18 +159,7 @@ export function Users() {
   };
 
   const role = (r: Role) => ROLES.find((x) => x.value === r)!;
-  const title = view.kind === 'all' ? t('All users') : view.kind === 'disabled' ? t('Disabled accounts') : t(role(view.role).plural);
-  const nav = (
-    <>
-      <NavSection>{t('People')}</NavSection>
-      <NavItem on={view.kind === 'all'} icon={<UsersIcon size={15} />} label={t('All users')} count={users.length} onClick={() => setView({ kind: 'all' })} />
-      <NavSection>{t('Roles')}</NavSection>
-      {ROLES.map((r) => (
-        <NavItem key={r.value} on={view.kind === 'role' && view.role === r.value} icon={<r.icon size={15} />} label={t(r.plural)} title={t(r.hint)} count={users.filter((u) => u.role === r.value).length} onClick={() => setView({ kind: 'role', role: r.value })} />
-      ))}
-      {disabled > 0 && <NavItem on={view.kind === 'disabled'} icon={<Ban size={15} />} label={t('Disabled')} count={disabled} onClick={() => setView({ kind: 'disabled' })} />}
-    </>
-  );
+  const title = t('Users');
 
   const Scopes = ({ icon, ids, all }: { icon: React.ReactNode; ids: string[] | null; all: { id: string; name: string }[] }) => {
     const names = scope(ids, all);
@@ -196,7 +185,7 @@ export function Users() {
   };
 
   return (
-    <SidePage nav={nav}>
+    <SidePage nav={null}>
       <PageHead title={title} sub={tn(shown.length, '{n} user', '{n} users')}>
         <button className="btn primary" onClick={() => setEditing(blank(view.kind === 'role' ? view.role : 'operator'))}>
           <Plus size={14} /> {t('New user')}
@@ -207,6 +196,22 @@ export function Users() {
           <Search size={14} />
           <input value={query} placeholder={t('Search users')} onChange={(e) => setQuery(e.target.value)} />
         </label>
+        {/* Who is shown: everyone, a role, the disabled accounts. */}
+        <div className="asr-chips">
+          <button className={`asr-chip ${view.kind === 'all' ? 'on' : ''}`} onClick={() => setView({ kind: 'all' })}>
+            {t('All users')} <span className="asr-chip-n">{users.length}</span>
+          </button>
+          {ROLES.map((r) => (
+            <button key={r.value} className={`asr-chip ${view.kind === 'role' && view.role === r.value ? 'on' : ''}`} title={t(r.hint)} onClick={() => setView({ kind: 'role', role: r.value })}>
+              {t(r.plural)} <span className="asr-chip-n">{users.filter((u) => u.role === r.value).length}</span>
+            </button>
+          ))}
+          {disabled > 0 && (
+            <button className={`asr-chip ${view.kind === 'disabled' ? 'on' : ''}`} onClick={() => setView({ kind: 'disabled' })}>
+              {t('Disabled')} <span className="asr-chip-n">{disabled}</span>
+            </button>
+          )}
+        </div>
       </div>
       <div className="user-grid">
         {shown.map((u) => {
