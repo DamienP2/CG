@@ -29,7 +29,7 @@ function useSounds(): Opt[] {
   const projectId = useApp((s) => s.project?.id ?? null);
   const own = useList<MediaFile[]>(mediaUrl(projectId), []);
   const shared = useList<MediaFile[]>(mediaUrl(null), []);
-  const audio = (l: MediaFile[], group: string) => l.filter((m) => m.kind === 'audio').map((m) => ({ value: m.src, label: m.name, group }));
+  const audio = (l: MediaFile[], group: string) => l.filter((m) => m.kind === 'audio').map((m) => ({ value: m.src, label: m.label ?? m.name, group }));
   return [...(projectId ? audio(own, t('Project')) : []), ...audio(shared, t('Shared'))];
 }
 

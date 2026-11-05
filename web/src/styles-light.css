@@ -178,9 +178,6 @@
 :root[data-theme='light'] .oc-node-status {
   border-top-color: var(--line);
 }
-:root[data-theme='light'] .oc-col {
-  color: var(--text-3);
-}
 :root[data-theme='light'] .oc-node-sub {
   color: var(--text-3);
 }

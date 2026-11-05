@@ -526,6 +526,8 @@ export interface MediaFile {
   size: number;
   modified: number;
   kind: 'image' | 'video' | 'audio' | 'font' | 'other';
+  /** The name shown instead of the file's, given in the library. */
+  label?: string;
 }
 
 /** Media library URL: a project's, or the one shared by every project. */

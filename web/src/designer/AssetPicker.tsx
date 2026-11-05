@@ -125,7 +125,7 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
     }
   };
 
-  const list = useMemo(() => lists[tab].filter((m) => m.name.toLowerCase().includes(q.trim().toLowerCase())), [lists, tab, q]);
+  const list = useMemo(() => lists[tab].filter((m) => `${m.name} ${m.label ?? ''}`.toLowerCase().includes(q.trim().toLowerCase())), [lists, tab, q]);
   const selected = [...lists.project, ...lists.shared].find((m) => m.src === sel);
 
   return createPortal(
@@ -248,7 +248,7 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
                     )}
                   </div>
                   <div className="lib-meta">
-                    <b>{m.name}</b>
+                    <b>{m.label ?? m.name}</b>
                     <span>{sizes.current.get(m.src) ?? ' '}</span>
                   </div>
                 </button>
@@ -278,7 +278,7 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
         )}
         {tab !== 'library' && (
         <div className="lib-f">
-          <span className="lib-sel">{selected ? `${selected.name}${sizes.current.get(selected.src) ? ` · ${sizes.current.get(selected.src)}` : ''}` : kind === 'image' ? t('Double-click a picture to choose it') : t('Double-click a file to choose it')}</span>
+          <span className="lib-sel">{selected ? `${selected.label ?? selected.name}${sizes.current.get(selected.src) ? ` · ${sizes.current.get(selected.src)}` : ''}` : kind === 'image' ? t('Double-click a picture to choose it') : t('Double-click a file to choose it')}</span>
           <button className="btn ghost" onClick={onClose}>
             {t('Cancel')}
           </button>

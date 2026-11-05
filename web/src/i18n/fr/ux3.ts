@@ -112,4 +112,5 @@ export const ux3: Record<string, string> = {
   'Source number': 'N° de source',
   Cameras: 'Caméras',
   'Channels · all': 'Canaux · tous',
+  'Edit the label': 'Modifier le libellé',
 };

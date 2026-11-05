@@ -2345,6 +2345,13 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.media-info .media-label-input {
+  height: 20px;
+  margin: -1px -6px;
+  padding: 0 5px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
 /* Library: an empty kind or folder (the Operator's empty look), and where to drop files. */
 .lib-void {
   min-height: calc(100vh - 260px);
@@ -5042,15 +5049,6 @@ a.btn {
 .oc-plane {
   position: relative;
 }
-.oc-col {
-  position: absolute;
-  top: 10px;
-  font-size: var(--fs-11);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
 .oc-wires {
   position: absolute;
   inset: 0;
@@ -5341,9 +5339,70 @@ a.btn {
   text-align: left;
   cursor: pointer;
 }
-.oc-add-menu button:hover {
+.oc-add-menu button:hover,
+.oc-add-menu button.on {
   background: var(--panel-3);
   color: var(--text);
+}
+/* The add menu's families and their choices beside. */
+.oc-add-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.oc-add-chev,
+.oc-add-hint {
+  margin-left: auto;
+  color: var(--text-3);
+}
+.oc-add-hint {
+  font-family: var(--mono);
+  font-size: var(--fs-11);
+  padding-left: 12px;
+}
+.oc-add-menu.oc-add-sub {
+  top: -6px;
+  left: calc(100% + 4px);
+}
+.oc-add-menu.oc-add-sub.left {
+  left: auto;
+  right: calc(100% + 4px);
+}
+.oc-add-menu.oc-add-sub.up {
+  top: auto;
+  bottom: -6px;
+}
+.oc-add-menu.oc-add-root {
+  position: fixed;
+  z-index: 1000;
+}
+/* The « + » after a node's output: what follows it. */
+.oc-plus {
+  position: absolute;
+  top: 16px;
+  right: -34px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+  color: var(--text-2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.oc-node:hover .oc-plus,
+.oc-node.sel .oc-plus,
+.oc-plus:focus-visible {
+  opacity: 1;
+}
+.oc-plus:hover {
+  color: var(--text);
+  border-color: var(--k);
+  background: var(--panel-3);
 }
 .oc-detail summary {
   cursor: pointer;

@@ -68,6 +68,9 @@ pub struct MediaFile {
     pub modified: i64,
     /// image, video, audio, font or other.
     pub kind: &'static str,
+    /// The name shown instead of the file's, given in the library.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 pub fn kind_of(name: &str) -> &'static str {
@@ -122,6 +125,7 @@ async fn list_dir(dir: &FsPath, prefix: &str) -> ApiResult<Vec<MediaFile>> {
             size: meta.len(),
             modified,
             name,
+            label: None,
         });
     }
     out.sort_by(|a, b| {
@@ -278,6 +282,7 @@ async fn remove(s: &Shared, dir: &FsPath, name: &str, lib: &str) -> ApiResult<St
             edit_library_folders(s, |all| {
                 if let Some(f) = all.get_mut(lib) {
                     f.assign.remove(name);
+                    f.labels.remove(name);
                 }
             })
             .await?;
@@ -302,7 +307,17 @@ async fn list_shared(
     State(s): State<Shared>,
     CurrentUser(_): CurrentUser,
 ) -> ApiResult<Json<Vec<MediaFile>>> {
-    list_dir(&s.assets_dir(), "/assets/").await.map(Json)
+    let files = list_dir(&s.assets_dir(), "/assets/").await?;
+    Ok(Json(labelled(&s, SHARED, files).await))
+}
+
+/// The files of a library with the labels given to them.
+async fn labelled(s: &Shared, lib: &str, mut files: Vec<MediaFile>) -> Vec<MediaFile> {
+    let labels = library_folders(s, lib).await.labels;
+    for f in &mut files {
+        f.label = labels.get(&f.name).cloned();
+    }
+    files
 }
 
 async fn put_shared(
@@ -341,9 +356,8 @@ async fn list_project(
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<MediaFile>>> {
     visible_project(&s, &me, &id).await?;
-    list_dir(&project_dir(&s, &id), &project_prefix(&id))
-        .await
-        .map(Json)
+    let files = list_dir(&project_dir(&s, &id), &project_prefix(&id)).await?;
+    Ok(Json(labelled(&s, &id, files).await))
 }
 
 async fn put_project(
@@ -707,6 +721,9 @@ pub struct LibraryFolders {
     /// File name → folder name (of the file's kind). Files not listed are at the top.
     #[serde(default)]
     pub assign: BTreeMap<String, String>,
+    /// File name → the name shown instead (the file keeps its own).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 static MEDIA_FOLDERS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -732,7 +749,7 @@ pub async fn edit_library_folders(
     let mut all = load_library_folders(s).await;
     let before = all.clone();
     f(&mut all);
-    all.retain(|_, l| !l.folders.is_empty());
+    all.retain(|_, l| !l.folders.is_empty() || !l.labels.is_empty());
     if all == before {
         return Ok(());
     }
@@ -763,6 +780,17 @@ fn clean_folders(mut f: LibraryFolders) -> ApiResult<LibraryFolders> {
         folders.iter().any(|y| y.kind == kind && &y.name == folder)
     });
     f.folders = folders;
+    let mut labels = BTreeMap::new();
+    for (file, label) in f.labels {
+        let label = label.trim().to_string();
+        if label.chars().count() > 80 {
+            return Err(bad("a label has at most 80 characters"));
+        }
+        if valid_asset_name(&file) && !label.is_empty() && label != file {
+            labels.insert(file, label);
+        }
+    }
+    f.labels = labels;
     Ok(f)
 }
 
@@ -855,8 +883,16 @@ mod tests {
                 ("a.wav".to_string(), "Gone".to_string()),
             ]
             .into(),
+            labels: [
+                ("logo.png".to_string(), " Logo du club ".to_string()),
+                ("a.wav".to_string(), "a.wav".to_string()),
+                ("clip.mp4".to_string(), " ".to_string()),
+            ]
+            .into(),
         })
         .unwrap();
+        assert_eq!(f.labels.len(), 1);
+        assert_eq!(f.labels["logo.png"], "Logo du club");
         assert_eq!(f.folders.len(), 2);
         assert_eq!(f.assign.len(), 1);
         assert_eq!(f.assign["logo.png"], "Logos");
@@ -865,7 +901,7 @@ mod tests {
                 kind: "font".into(),
                 name: "x".into()
             }],
-            assign: Default::default(),
+            ..Default::default()
         })
         .is_err());
     }

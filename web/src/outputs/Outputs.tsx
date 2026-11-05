@@ -1,7 +1,8 @@
-import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Volume2, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe, MonitorPlay } from 'lucide-react';
+import { ArrowLeftRight, ArrowRightToLine, Check, ChevronRight, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Volume2, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe, MonitorPlay } from 'lucide-react';
 import { HexColorField, NumberField } from '../ui/fields';
 import { Dropdown } from '../ui/Dropdown';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, can, useApp, useChanged } from '../store';
 import { KIND_COLOR, VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type AudioOutput, type AudioState, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
 import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, sdiPorts, usedHardware } from '../hardware/model';
@@ -53,6 +54,23 @@ const OUTPUT_COLOR = KIND_COLOR.output;
 type SrcFamily = 'sdi' | 'ndi' | 'st2110' | 'stream';
 const SRC_FAMILIES: SrcFamily[] = ['sdi', 'ndi', 'st2110', 'stream'];
 const familyOf = (k: InputKind): SrcFamily => (k === 'sdi' || k === 'ndi' || k === 'st2110' ? k : 'stream');
+/** What the add menu of the canvas offers, by family. */
+type AddFamily = 'format' | 'output' | 'source' | 'dest' | 'sound';
+const ADD_FAMILIES: AddFamily[] = ['format', 'output', 'source', 'dest', 'sound'];
+const ADD_LOOK: Record<AddFamily, { label: string; color: string; icon: typeof Play }> = {
+  format: KIND.picture,
+  output: { label: 'Output', color: KIND_COLOR.output, icon: MonitorPlay },
+  source: KIND.source,
+  dest: { label: 'Destination', color: KIND.html5.color, icon: Globe },
+  sound: KIND.audio,
+};
+/** A menu opened at the pointer moved back into the window when it overflows. */
+const keepInWindow = (el: HTMLElement | null) => {
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  if (r.bottom > window.innerHeight - 8) el.style.top = `${Math.max(8, window.innerHeight - r.height - 8)}px`;
+  if (r.right > window.innerWidth - 8) el.style.left = `${Math.max(8, window.innerWidth - r.width - 8)}px`;
+};
 /** Destinations that send to something Hardware declares. */
 const needsHardware = (k: DestKind) => k === 'sdi' || k === 'st2110';
 
@@ -98,7 +116,6 @@ const PICTURE_PRESETS = [
   { id: 'hd', name: '720p', width: 1280, height: 720 },
   { id: 'uhd', name: 'UHD', width: 3840, height: 2160 },
 ];
-const TOOLBAR_PRESETS = 3;
 
 /** Frames rendered ahead (Program inspector). */
 const RENDER_AHEAD = [1, 2, 3, 4];
@@ -276,24 +293,20 @@ export function Outputs({ mode }: { mode: Mode }) {
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [wire, setWire] = useState<{ from: string; moving?: string; x: number; y: number } | null>(null);
-  const [addMenu, setAddMenu] = useState<{ picture: string; x: number; y: number } | null>(null);
-  const [moreFormats, setMoreFormats] = useState(false);
+  // The add menu of the canvas: where it opens (in the window), what it offers, where the new node goes (on the plane).
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number; fams: AddFamily[]; picture?: string; at?: { x: number; y: number } } | null>(null);
+  const [addSub, setAddSub] = useState<AddFamily | null>(null);
   const [slatePick, setSlatePick] = useState<string | null>(null);
   const metrics = useMetrics();
   const inputLive = useInputs();
   const planeRef = useRef<HTMLDivElement>(null);
-  // The menu of other formats closes on a click elsewhere (or Esc).
+  // The add menu closes on a click elsewhere.
   useEffect(() => {
-    if (!moreFormats) return;
-    const close = () => setMoreFormats(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), close());
+    if (!addMenu) return;
+    const close = () => setAddMenu(null);
     window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', esc);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', esc);
-    };
-  }, [moreFormats]);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [addMenu]);
   // Esc: the add menu of the canvas, then the drawer of the inspector.
   useEffect(() => {
     const esc = (e: KeyboardEvent) => {
@@ -588,11 +601,6 @@ export function Outputs({ mode }: { mode: Mode }) {
     );
     setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), ...at } }));
   };
-  /** Column titles follow the nodes of the column. */
-  const colX = (k: 'source' | 'program' | 'picture' | 'dest') => {
-    const xs = nodes.filter((n) => (k === 'dest' ? n.kind !== 'program' && n.kind !== 'picture' && n.kind !== 'source' : n.kind === k)).map((n) => pos[n.id].x);
-    return xs.length ? Math.min(...xs) : k === 'source' ? COL.program : COL[k] + shift;
-  };
   const width = Math.max(980, ...Object.values(pos).map((p) => p.x + NODE_W + 60));
   const height = Math.max(560, ...Object.values(pos).map((p) => p.y + 160));
 
@@ -646,33 +654,40 @@ export function Outputs({ mode }: { mode: Mode }) {
         (picOutputs.html5 ??= []).push({ id, name: t('Web page'), path: defaultPath(all, c, picture ? p : undefined), background: '' });
       }
     });
-    if (at) setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), [id]: at } }));
+    placeAt(id, at);
     setSel(id);
   };
+  /** A new node where the canvas was right-clicked (else in its column). */
+  const placeAt = (node: string, at?: { x: number; y: number }) => at && setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), [node]: at } }));
 
-  const addPicture = (preset: (typeof PICTURE_PRESETS)[number]) => {
+  const addPicture = (preset: (typeof PICTURE_PRESETS)[number], at?: { x: number; y: number }) => {
     const taken = new Set(pics.map((p) => p.id));
     const id = unique(preset.id, taken);
     editCh((c) => void (c.renditions ??= []).push({ id, name: preset.name, width: preset.width, height: preset.height, outputs: { st2110: [], sdi: [], ndi: [], html5: [], streams: [] } }));
+    placeAt(`pic:${id}`, at);
     setSel(`pic:${id}`);
-    setMoreFormats(false);
   };
 
   /** An output of its own (an « Écran plateau »): the channel's size, the playlists sent to it. */
-  const addOutput = () => {
+  const addOutput = (at?: { x: number; y: number }) => {
     const taken = new Set(pics.map((p) => p.id));
     const bus = Math.max(0, ...(ch?.renditions ?? []).map((r) => r.bus ?? 0)) + 1;
     const id = unique(`output-${bus + 1}`, taken);
     editCh((c) => void (c.renditions ??= []).push({ id, name: t('Output {n}', { n: bus + 1 }), width: c.width, height: c.height, bus, outputs: { st2110: [], sdi: [], ndi: [], html5: [], streams: [] } }));
+    placeAt(`pic:${id}`, at);
     setSel(`pic:${id}`);
   };
 
-  /** Places a live input as a source (the first of that family not placed yet; a new NDI or stream input when there is none). */
-  const addSource = (fam: SrcFamily) => {
+  /** Places a live input as a source (the first of that family not placed yet; a new NDI or stream input when there is none); from the Program's « + », its video goes under the graphics when none does. */
+  const addSource = (fam: SrcFamily, at?: { x: number; y: number }, under = false) => {
     const placed = new Set(ch.sources ?? []);
     const existing = inputs.find((i) => familyOf(i.kind) === fam && !placed.has(i.id));
     if (existing) {
-      editCh((c) => void (c.sources = [...(c.sources ?? []), existing.id]));
+      editCh((c) => {
+        c.sources = [...(c.sources ?? []), existing.id];
+        if (under) c.background ??= existing.id;
+      });
+      placeAt(`src:${existing.id}`, at);
       setSel(`src:${existing.id}`);
       return;
     }
@@ -695,7 +710,9 @@ export function Outputs({ mode }: { mode: Mode }) {
       (c.inputs ??= []).push(input);
       const cc = c.channels[chIndex];
       cc.sources = [...(cc.sources ?? []), id];
+      if (under) cc.background ??= id;
     });
+    placeAt(`src:${id}`, at);
     setSel(`src:${id}`);
   };
   const selSrc = sel.startsWith('src:') ? inputOf(sel.slice(4)) : undefined;
@@ -706,7 +723,7 @@ export function Outputs({ mode }: { mode: Mode }) {
       if (a) fn(a);
     });
   /** A new audio output on the channel (its id is unique on the server's channels). */
-  const addAudio = (kind: AudioOutput['kind']) => {
+  const addAudio = (kind: AudioOutput['kind'], at?: { x: number; y: number }) => {
     if (!ch) return;
     const taken = new Set(cfg.channels.flatMap((c) => [...pictures(c).flatMap((p) => dests(p).map((d) => d.value.id)), ...(c.audio ?? []).map((a) => a.id)]));
     let n = 1;
@@ -718,6 +735,7 @@ export function Outputs({ mode }: { mode: Mode }) {
     while (groups.has(`239.69.10.${g}:5004`)) g++;
     const a: AudioOutput = kind === 'aes67' ? { id, name: t('Audio {n}', { n }), kind, dest: `239.69.10.${g}:5004` } : { id, name: t('Audio {n}', { n }), kind, device: '', firstChannel: 1 };
     editCh((c) => void (c.audio ??= []).push(a));
+    placeAt(`aud:${id}`, at);
     setSel(`aud:${id}`);
   };
 
@@ -892,6 +910,75 @@ export function Outputs({ mode }: { mode: Mode }) {
   const planePoint = (ev: { clientX: number; clientY: number }) => {
     return cv.toWorld(ev.clientX, ev.clientY);
   };
+  /** Where a node dropped at `p` goes (its input port at the pointer). */
+  const nodeAt = (p: { x: number; y: number }) => ({ x: Math.max(0, Math.round(p.x)), y: Math.max(10, Math.round(p.y - 27)) });
+  const openAdd = (p: { x: number; y: number }, fams: AddFamily[], more?: { picture?: string; at?: { x: number; y: number } }) => {
+    setAddSub(null);
+    setAddMenu({ x: p.x, y: p.y, fams, ...more });
+  };
+  const addRun = (fn: () => void) => {
+    fn();
+    setAddMenu(null);
+  };
+  /** The choices of one family of the add menu. */
+  const addItems = (f: AddFamily) => {
+    const at = addMenu?.at;
+    if (f === 'format')
+      return PICTURE_PRESETS.map((p) => (
+        <button key={p.id} onClick={() => addRun(() => addPicture(p, at))}>
+          <Frame size={14} color={KIND.picture.color} /> {p.name}
+          <span className="oc-add-hint">
+            {p.width}×{p.height}
+          </span>
+        </button>
+      ));
+    if (f === 'source')
+      return SRC_FAMILIES.map((fam) => {
+        const look = famLook(fam);
+        const missing = (fam === 'sdi' || fam === 'st2110') && !inputs.some((i) => familyOf(i.kind) === fam);
+        return (
+          <button key={fam} className={missing ? 'unavailable' : ''} title={missing ? (fam === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware')) : undefined} onClick={() => addRun(() => addSource(fam, at, !at))}>
+            <look.icon size={14} color={look.color} /> {t(look.label)}
+          </button>
+        );
+      });
+    if (f === 'dest')
+      return DEST_KINDS.map((k) => {
+        const Icon = KIND[k].icon;
+        const missing = hwMissing(k);
+        return (
+          <button key={k} className={missing ? 'unavailable' : ''} title={missing ? hwHint(k) : undefined} onClick={() => addRun(() => addDest(k, addMenu?.picture ?? '', at))}>
+            <Icon size={14} color={KIND[k].color} /> {t(KIND[k].label)}
+          </button>
+        );
+      });
+    if (f === 'sound')
+      return (
+        <>
+          <button onClick={() => addRun(() => addAudio('aes67', at))}>
+            <Volume2 size={14} color={KIND.audio.color} /> AES67
+          </button>
+          <button onClick={() => addRun(() => addAudio('device', at))}>
+            <Volume2 size={14} color={KIND.audio.color} /> {t('Sound card')}
+          </button>
+        </>
+      );
+    return null;
+  };
+  /** The « + » after a node's output: what follows it, wired to it. */
+  const plusAfter = (fams: AddFamily[], picture?: string) => (
+    <button
+      className="oc-plus"
+      title={t('Add')}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        openAdd({ x: r.right + 6, y: r.top - 6 }, fams, { picture });
+      }}
+    >
+      <Plus size={13} />
+    </button>
+  );
   const startWire = (e: React.PointerEvent, from: string, moving?: string) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -928,8 +1015,7 @@ export function Outputs({ mode }: { mode: Mode }) {
       }
       if (target && !target.startsWith('pic:') && target !== 'program') moveDest(target, from);
       else if (!target) {
-        const at = planePoint(ev);
-        setAddMenu({ picture: from, x: at.x, y: at.y });
+        openAdd({ x: ev.clientX, y: ev.clientY }, ['dest'], { picture: from, at: nodeAt(planePoint(ev)) });
       }
     };
     window.addEventListener('pointermove', move);
@@ -1014,95 +1100,19 @@ export function Outputs({ mode }: { mode: Mode }) {
                     {formatLabel(ch)} · {projectName(liveCh?.projectId) ? t('plays “{name}”', { name: projectName(liveCh?.projectId)! }) : t('no project loaded')} · {tn(allDests.length, '{n} destination', '{n} destinations')}
                   </span>
                 </div>
-                <div className="spacer" />
-                <div className="oc-tools">
-                  <div className="oc-tool-group" role="group" aria-label={t('Formats')}>
-                    <span className="oc-tool-label">{t('Formats')}</span>
-                    {PICTURE_PRESETS.slice(0, TOOLBAR_PRESETS).map((p) => (
-                      <button key={p.id} className="oc-tool" onClick={() => addPicture(p)} title={t('Add a {ratio} format ({size})', { ratio: p.name, size: `${p.width}×${p.height}` })}>
-                        <Plus size={13} color={KIND.picture.color} /> {p.name}
-                      </button>
-                    ))}
-                    <span className="oc-more" onPointerDown={(e) => e.stopPropagation()}>
-                      <button className="oc-tool" onClick={() => setMoreFormats((v) => !v)} title={t('Other formats')} aria-label={t('Other formats')}>
-                        <MoreHorizontal size={15} />
-                      </button>
-                      {moreFormats && (
-                        <div className="menu oc-more-menu">
-                          {PICTURE_PRESETS.slice(TOOLBAR_PRESETS).map((p) => (
-                            <button key={p.id} onClick={() => addPicture(p)}>
-                              <Frame size={14} color={KIND.picture.color} /> {p.name} · {p.width}×{p.height}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </span>
-                  </div>
-                  <span className="oc-tool-sep" aria-hidden="true" />
-                  <div className="oc-tool-group" role="group" aria-label={t('Outputs')}>
-                    <span className="oc-tool-label">{t('Outputs')}</span>
-                    <button className="oc-tool" onClick={addOutput} title={t('Add an output')}>
-                      <Plus size={13} color={OUTPUT_COLOR} /> {t('Output')}
-                    </button>
-                  </div>
-                  <span className="oc-tool-sep" aria-hidden="true" />
-                  <div className="oc-tool-group" role="group" aria-label={t('Sources')}>
-                    <span className="oc-tool-label">{t('Sources')}</span>
-                    {SRC_FAMILIES.map((f) => {
-                      const look = famLook(f);
-                      const Icon = look.icon;
-                      const missing = (f === 'sdi' || f === 'st2110') && !inputs.some((i) => familyOf(i.kind) === f);
-                      return (
-                        <button key={f} className={`oc-tool ${missing ? 'unavailable' : ''}`} aria-disabled={missing} onClick={() => addSource(f)} title={missing ? (f === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware')) : t('Add a {kind} source', { kind: t(look.label) })}>
-                          <Icon size={15} color={look.color} /> {t(look.label)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <span className="oc-tool-sep" aria-hidden="true" />
-                  <div className="oc-tool-group" role="group" aria-label={t('Destinations')}>
-                    <span className="oc-tool-label">{t('Destinations')}</span>
-                    {DEST_KINDS.map((k) => {
-                      const Icon = KIND[k].icon;
-                      const missing = hwMissing(k);
-                      return (
-                        <button key={k} className={`oc-tool ${missing ? 'unavailable' : ''}`} aria-disabled={missing} onClick={() => addDest(k, '')} title={missing ? hwHint(k) : t('Add a {kind} destination', { kind: t(KIND[k].label) })}>
-                          <Icon size={15} color={KIND[k].color} /> {t(KIND[k].label)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <span className="oc-tool-sep" aria-hidden="true" />
-                  <div className="oc-tool-group" role="group" aria-label={t('Sound')}>
-                    <span className="oc-tool-label">{t('Sound')}</span>
-                    <button className="oc-tool" onClick={() => addAudio('aes67')} title={t('Add an AES67 / ST 2110-30 audio output')}>
-                      <Volume2 size={15} color={KIND.audio.color} /> AES67
-                    </button>
-                    <button className="oc-tool" onClick={() => addAudio('device')} title={t('Add a sound card output')}>
-                      <Volume2 size={15} color={KIND.audio.color} /> {t('Sound card')}
-                    </button>
-                  </div>
-                </div>
               </header>
 
               <div className="oc-body">
                 <div {...cv.viewport} className={`oc-canvas ${cv.viewport.className}`} onPointerDown={(e) => (setAddMenu(null), cv.viewport.onPointerDown(e))}>
-                  <div ref={planeRef} data-canvas-void className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height, ...cv.spaceStyle }} onPointerDown={() => setAddMenu(null)}>
-                    {srcIds.length > 0 && (
-                      <span className="oc-col" style={{ left: colX('source') }}>
-                        {t('Sources')}
-                      </span>
-                    )}
-                    <span className="oc-col" style={{ left: colX('program') }}>
-                      {t('Program')}
-                    </span>
-                    <span className="oc-col" style={{ left: colX('picture') }}>
-                      {t('Formats')}
-                    </span>
-                    <span className="oc-col" style={{ left: colX('dest') }}>
-                      {t('Destinations')}
-                    </span>
-                    <svg className="oc-wires" width={width} height={height} aria-hidden="true">
+                  <div ref={planeRef} data-canvas-void className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height, ...cv.spaceStyle }}
+                    onPointerDown={() => setAddMenu(null)}
+                    onContextMenu={(e) => {
+                      if ((e.target as HTMLElement).closest('[data-node], .oc-add-menu')) return;
+                      e.preventDefault();
+                      openAdd({ x: e.clientX, y: e.clientY }, ADD_FAMILIES, { at: nodeAt(planePoint(e)) });
+                    }}
+                  >
+<svg className="oc-wires" width={width} height={height} aria-hidden="true">
                       {edges.map((e) => {
                         const a = pos[e.from];
                         const b = pos[e.to];
@@ -1243,31 +1253,37 @@ export function Outputs({ mode }: { mode: Mode }) {
                           {n.kind === 'source' && <span className="oc-port in" />}
                           {n.kind === 'source' && <span className="oc-port out grab" title={t('Drag to a format')} onPointerDown={(e) => startWire(e, n.id)} />}
                           {n.kind === 'picture' && <span className="oc-port out grab" title={t('Drag to an output')} onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
+                          {n.kind === 'program' && plusAfter(['format', 'output', 'source'])}
+                          {n.kind === 'picture' && plusAfter(['dest'], n.id.slice(4))}
                           <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setWidth(n.id, w))} />
                         </div>
                       );
                     })}
-                    {addMenu && (
-                      <div className="menu oc-add-menu" style={{ left: addMenu.x, top: addMenu.y }} onPointerDown={(e) => e.stopPropagation()}>
-                        <div className="menu-label">{t('Add an output')}</div>
-                        {DEST_KINDS.map((k) => {
-                          const Icon = KIND[k].icon;
-                          const missing = hwMissing(k);
-                          return (
-                            <button
-                              key={k}
-                              className={missing ? 'unavailable' : ''}
-                              title={missing ? hwHint(k) : undefined}
-                              onClick={() => {
-                                addDest(k, addMenu.picture, { x: Math.max(0, Math.round(addMenu.x)), y: Math.max(30, Math.round(addMenu.y - 27)) });
-                                setAddMenu(null);
-                              }}
-                            >
-                              <Icon size={14} color={KIND[k].color} /> {t(KIND[k].label)}
-                            </button>
-                          );
-                        })}
-                      </div>
+                    {addMenu &&
+                      createPortal(
+                      <div className="menu oc-add-menu oc-add-root" ref={keepInWindow} style={{ left: addMenu.x, top: addMenu.y }} onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+                        {addMenu.fams.length === 1
+                          ? addItems(addMenu.fams[0])
+                          : addMenu.fams.map((f) => {
+                              const look = ADD_LOOK[f];
+                              if (f === 'output')
+                                return (
+                                  <button key={f} onMouseEnter={() => setAddSub(null)} onClick={() => addRun(() => addOutput(addMenu.at))}>
+                                    <look.icon size={14} color={look.color} /> {t(look.label)}
+                                  </button>
+                                );
+                              return (
+                                <div key={f} className="oc-add-wrap" onMouseEnter={() => setAddSub(f)}>
+                                  <button className={addSub === f ? 'on' : ''} onClick={() => setAddSub(f)}>
+                                    <look.icon size={14} color={look.color} /> {t(look.label)}
+                                    <ChevronRight size={12} className="oc-add-chev" />
+                                  </button>
+                                  {addSub === f && <div className={`menu oc-add-menu oc-add-sub ${addMenu.x > window.innerWidth - 420 ? 'left' : ''} ${addMenu.y > window.innerHeight / 2 ? 'up' : ''}`}>{addItems(f)}</div>}
+                                </div>
+                              );
+                            })}
+                      </div>,
+                      document.body,
                     )}
                   </div>
                   {cv.controls}

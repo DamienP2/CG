@@ -280,74 +280,10 @@
   white-space: nowrap;
 }
 
-/* ---------- Outputs canvas: toolbar groups, removable wires, on/off, formats ---------- */
-.oc-tools {
-  align-items: center;
-}
-.oc-tool-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.oc-tool-label {
-  font-size: var(--fs-11);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-right: 2px;
-}
-.oc-tool-sep {
-  width: 1px;
-  align-self: stretch;
-  min-height: 24px;
-  margin: 0 6px;
-  background: var(--line-2);
-}
-.oc-tool.unavailable,
+/* ---------- Outputs canvas: removable wires, on/off, formats ---------- */
 .oc-add-menu button.unavailable {
   opacity: 0.45;
   cursor: help;
-}
-.oc-tool.unavailable:hover {
-  background: var(--panel);
-  color: var(--text-2);
-  border-color: var(--line);
-}
-.oc-more {
-  position: relative;
-  display: inline-flex;
-}
-.oc-more > .oc-tool {
-  padding: 0 8px;
-}
-.oc-more-menu {
-  min-width: 190px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  left: auto;
-  right: 0;
-}
-.oc-more-menu button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 9px;
-  border: none;
-  background: none;
-  border-radius: 6px;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.oc-more-menu button:hover {
-  background: var(--panel-3);
-  color: var(--text);
 }
 
 /* Format → destination wires: hovered like the other canvases, a click removes them. */

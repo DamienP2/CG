@@ -111,6 +111,8 @@ interface LibraryFolders {
   folders: { kind: string; name: string }[];
   /** File name → folder name (of the file's kind). */
   assign: Record<string, string>;
+  /** File name → the name shown instead (the file keeps its own). */
+  labels?: Record<string, string>;
 }
 
 const NO_FOLDERS: LibraryFolders = { folders: [], assign: {} };
@@ -165,6 +167,8 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const [menu, setMenu] = useState<{ x: number; y: number; folder: string } | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
+  // The file whose label is being edited.
+  const [editing, setEditing] = useState<string | null>(null);
   const depth = useRef(0);
   const url = mediaUrl(projectId);
   const foldersUrl = `${url}-folders`;
@@ -284,7 +288,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     if (!name || name === old) return;
     if (foldersOf(mediaKind).includes(name)) return toast(t('A folder “{name}” already exists', { name }), 'error');
     const assign = Object.fromEntries(Object.entries(lib.assign).map(([f, d]) => [f, d === old && (files ?? []).some((m) => m.name === f && m.kind === mediaKind) ? name : d]));
-    void saveLib({ folders: lib.folders.map((f) => (f.kind === mediaKind && f.name === old ? { kind: f.kind, name } : f)), assign });
+    void saveLib({ ...lib, folders: lib.folders.map((f) => (f.kind === mediaKind && f.name === old ? { kind: f.kind, name } : f)), assign });
     if (open === old) setOpen(name);
   };
   const deleteFolder = async (name: string) => {
@@ -300,7 +304,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     )
       return;
     const assign = Object.fromEntries(Object.entries(lib.assign).filter(([f, d]) => !(d === name && (files ?? []).some((m) => m.name === f && m.kind === mediaKind))));
-    void saveLib({ folders: lib.folders.filter((f) => !(f.kind === mediaKind && f.name === name)), assign });
+    void saveLib({ ...lib, folders: lib.folders.filter((f) => !(f.kind === mediaKind && f.name === name)), assign });
     if (open === name) setOpen(null);
   };
 
@@ -313,9 +317,14 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const q = query.trim().toLowerCase();
   const ofKind = (files ?? []).filter((f) => kind === 'all' || f.kind === kind);
   // Searching looks in every folder; otherwise a kind shows what is in the open folder (or at its top).
+  const labelOf = (m: MediaFile) => lib.labels?.[m.name] || m.name;
+  const setLabel = (m: MediaFile, label: string) => {
+    setEditing(null);
+    if (label.trim() !== labelOf(m)) void saveLib({ ...lib, labels: { ...lib.labels, [m.name]: label.trim() } });
+  };
   const shown = ofKind
-    .filter((f) => (q ? f.name.toLowerCase().includes(q) : !mediaKind || folderOf(f) === open))
-    .sort((a, b) => (sort === 'date' ? b.modified - a.modified : sort === 'size' ? b.size - a.size : 0) || a.name.localeCompare(b.name));
+    .filter((f) => (q ? f.name.toLowerCase().includes(q) || labelOf(f).toLowerCase().includes(q) : !mediaKind || folderOf(f) === open))
+    .sort((a, b) => (sort === 'date' ? b.modified - a.modified : sort === 'size' ? b.size - a.size : 0) || labelOf(a).localeCompare(labelOf(b), locale()));
   const folderList = mediaKind && !open && !q ? foldersOf(mediaKind).sort((a, b) => a.localeCompare(b, locale())) : [];
   const fonts = kind === 'font';
   const colourCount = palettes.reduce((n, p) => n + p.colors.length, projectColors);
@@ -563,6 +572,11 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
                         <Icon size={11} /> {m.name.split('.').pop()?.toUpperCase()}
                       </span>
                       <div className="media-actions">
+                        {canUpload && (
+                          <button className="icon-btn" title={t('Edit the label')} onClick={() => setEditing(m.name)}>
+                            <Pencil size={14} />
+                          </button>
+                        )}
                         <button className="icon-btn" title={t('Copy the URL')} onClick={() => void copy(m)}>
                           {copied === m.src ? <Check size={14} /> : <Copy size={14} />}
                         </button>
@@ -577,7 +591,23 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
                       </div>
                     </div>
                     <div className="media-info">
-                      <strong>{m.name}</strong>
+                      {editing === m.name ? (
+                        <input
+                          className="input media-label-input"
+                          autoFocus
+                          defaultValue={labelOf(m)}
+                          placeholder={m.name}
+                          maxLength={80}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onBlur={(e) => (e.currentTarget.dataset.cancel ? setEditing(null) : setLabel(m, e.currentTarget.value))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') (e.stopPropagation(), (e.currentTarget.dataset.cancel = '1'));
+                            if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+                          }}
+                        />
+                      ) : (
+                        <strong>{labelOf(m)}</strong>
+                      )}
                       <span className="muted small">
                         {formatSize(m.size)} · {formatDate(m.modified)}
                       </span>
