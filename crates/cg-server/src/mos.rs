@@ -359,6 +359,7 @@ pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usi
             data: i.data.clone(),
             auto_secs: Default::default(),
             hold: Default::default(),
+            named: false,
         })
         .collect();
     let n = items.len();

@@ -1141,6 +1141,7 @@ fn demo_project_layers() -> Project {
                 data,
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1156,6 +1157,7 @@ fn demo_project_layers() -> Project {
                     .collect(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1168,6 +1170,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1180,6 +1183,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1192,6 +1196,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1204,6 +1209,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1216,6 +1222,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1228,6 +1235,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
             RundownItem {
                 read: Default::default(),
@@ -1240,6 +1248,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
                 auto_secs: Default::default(),
                 hold: Default::default(),
+                named: false,
             },
         ],
     }

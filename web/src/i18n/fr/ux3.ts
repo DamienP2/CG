@@ -122,4 +122,5 @@ export const ux3: Record<string, string> = {
   'Received from the camera': 'Reçu de la caméra',
   'Full frame': 'Plein format',
   'Received · {value}': 'Reçu · {value}',
+  'Name it after its first field': 'Titre d’après le premier champ',
 };

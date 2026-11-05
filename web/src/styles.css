@@ -18913,8 +18913,10 @@ input.lc-pal-name:focus {
 .opx-mon-name .opx-name:hover:not(:disabled) {
   background: var(--op-2);
 }
-.opx-mon-head .opx-zpill {
-  max-width: 30%;
+.opx-mon-head .opx-name-reset {
+  flex: none;
+  width: 24px;
+  height: 24px;
 }
 .opx-mon-eye {
   flex: none;

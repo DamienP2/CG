@@ -2047,6 +2047,9 @@ pub struct RundownItem {
     /// Stays on air when the next graphic is taken (in another zone).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hold: bool,
+    /// Renamed by hand: its name no longer follows its first text.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub named: bool,
 }
 
 /// When a rundown item reads its data sources.

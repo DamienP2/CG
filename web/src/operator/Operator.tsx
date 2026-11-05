@@ -149,18 +149,52 @@ const rundownName = (project: Project, id?: string | null) => (id ? project.rund
 const firstText = (t: Template) => t.fields.find((f) => (f.kind === 'text' || f.kind === 'multiline') && !f.options?.length && !f.binding?.source);
 const firstLine = (v: string | undefined) => plain(v ?? '').split('\n')[0].trim();
 
-/**
- * The item's new name when its first text changes, as long as the name was
- * that text (or the template's name): renamed by hand, it stays. `pendingName`:
- * a new name not saved yet.
- */
-function followName(t: Template, name: string, pendingName: string | undefined, before: Record<string, string>, next: Record<string, string>): string | undefined {
+/** The item's new name when its first text changes (that text, else the template's name); renamed by hand, it stays. */
+function followName(t: Template, named: boolean | undefined, before: Record<string, string>, next: Record<string, string>): string | undefined {
   const f = firstText(t);
-  if (!f || before[f.key] === next[f.key]) return undefined;
-  const current = (pendingName ?? name).trim();
-  if (current && current !== firstLine(before[f.key]) && current !== t.name) return undefined;
-  const v = firstLine(next[f.key]);
-  return v || t.name;
+  if (!f || named || before[f.key] === next[f.key]) return undefined;
+  return firstLine(next[f.key]) || t.name;
+}
+
+/** A new item's name: its first text, else the template's name. */
+const nameOf = (t: Template, data: Record<string, string>) => {
+  const f = firstText(t);
+  return (f && firstLine(data[f.key])) || t.name;
+};
+
+/** The graphic's name in the preview's header: saved when left (Enter, or a click elsewhere), so fast typing loses nothing; Esc gives it back. */
+function NameField({ name, disabled, onCommit }: { name: string; disabled: boolean; onCommit: (v: string) => void }) {
+  const [v, setV] = useState(name);
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setV(name);
+  }, [name]);
+  const commit = () => {
+    // Esc gave it back: nothing to save.
+    if (!editing.current) return;
+    editing.current = false;
+    if (v !== name) onCommit(v);
+  };
+  return (
+    <input
+      className="opx-name"
+      value={v}
+      disabled={disabled}
+      aria-label={t('Name in the playlist')}
+      onFocus={() => (editing.current = true)}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          editing.current = false;
+          setV(name);
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
 }
 
 /** The tab id of the fields that belong to no widget layer (texts, exposed shape settings). */
@@ -431,13 +465,29 @@ export function Operator({ channelId }: { channelId: string | null }) {
     const next = { ...before, ...patch };
     draftRef.current = next;
     setDraft(next);
-    saveData(item.id, next, template ? followName(template, item.name, pending.current?.id === item.id ? pending.current.name : undefined, before, next) : undefined);
+    saveData(item.id, next, template ? followName(template, item.named, before, next) : undefined);
   };
   const setItem = (id: string, patch: Partial<RundownItem>) => {
-    // Renamed by hand: the name no longer follows the first text.
     if (patch.name !== undefined && pending.current?.id === id) pending.current.name = undefined;
     return saveRundown(rundown.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
+  /** Renamed by hand: the name no longer follows the first text; emptied (or reset), it follows it again. */
+  const rename = (r: RundownItem, name: string) => {
+    const tpl = project?.templates.find((x) => x.id === r.templateId);
+    const data = r.id === item?.id ? draftRef.current : r.data;
+    return setItem(r.id, name.trim() ? { name, named: true } : { name: tpl ? nameOf(tpl, { ...defaultData(tpl), ...data }) : name, named: undefined });
+  };
+  // By default a graphic is named after its first text: those not renamed by hand that do not say it yet, renamed.
+  useEffect(() => {
+    if (!project || !canEdit) return;
+    const named = rundown.map((r) => {
+      const tpl = r.named ? undefined : project.templates.find((x) => x.id === r.templateId);
+      if (!tpl || !firstText(tpl)) return r;
+      const name = nameOf(tpl, { ...defaultData(tpl), ...r.data });
+      return name === r.name ? r : { ...r, name };
+    });
+    if (named.some((r, i) => r !== rundown[i])) void saveRundown(named);
+  }, [project?.rundown, project?.templates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onAirByItem = useMemo(() => {
     const m = new Map<string, PlayoutItem>();
@@ -627,7 +677,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               onClose={() => setAdding(false)}
               onPick={(t) => {
                 const z = project.zones.find((x) => x.id === t.zone);
-                const it: RundownItem = { id: newId(), name: t.name, templateId: t.id, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t), autoSecs: AUTO_SECS };
+                const it: RundownItem = { id: newId(), name: nameOf(t, defaultData(t)), templateId: t.id, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t), autoSecs: AUTO_SECS };
                 saveRundown([...rundown, it]);
                 setCued(it.id);
                 setAdding(false);
@@ -655,7 +705,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 onTake={() => takeItem(r)}
                 onOut={() => outZone(zoneOf(r))}
                 onContinue={() => continueZone(zoneOf(r))}
-                onRename={(name) => setItem(r.id, { name })}
+                onRename={(name) => rename(r, name)}
                 autoNext={!!activePl?.autoNext}
                 onAuto={(patch) => setItem(r.id, patch)}
                 onDuplicate={() => {
@@ -732,12 +782,12 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   <>
                     <span className="opx-mon-name" title={t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}>
                       <Pencil size={12} className="muted" />
-                      <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} aria-label={t('Name in the playlist')} />
+                      <NameField key={item.id} name={item.name} disabled={!canEdit} onCommit={(v) => rename(item, v)} />
                     </span>
-                    {itemZone && (
-                      <span className="opx-zpill" style={{ ['--zc' as string]: itemZone.color }}>
-                        {itemZone.name}
-                      </span>
+                    {item.named && canEdit && template && firstText(template) && (
+                      <button className="icon-btn ghost opx-name-reset" title={t('Name it after its first field')} onClick={() => rename(item, '')}>
+                        <RotateCcw size={13} />
+                      </button>
                     )}
                   </>
                 )}

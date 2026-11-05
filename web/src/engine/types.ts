@@ -588,6 +588,8 @@ export interface RundownItem {
   autoSecs?: number;
   /** Stays on air when the next graphic is taken (in another zone). */
   hold?: boolean;
+  /** Renamed by hand: its name no longer follows its first text. */
+  named?: boolean;
 }
 
 /** `live`: on take and on every change of the source; `take`: once, on take; `manual`: when the operator asks. */

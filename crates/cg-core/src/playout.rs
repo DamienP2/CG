@@ -3230,6 +3230,7 @@ mod tests {
             read: Default::default(),
             auto_secs: secs,
             hold,
+            named: false,
         };
         p.rundown = vec![
             item("a", "t", Some(1.0), false),
@@ -4787,6 +4788,7 @@ mod tests {
             read: Default::default(),
             auto_secs: Some(0.0),
             hold: false,
+            named: false,
         };
         p.rundown = vec![item("a"), item("b")];
         // No pause before the on-air point.
@@ -4839,6 +4841,7 @@ mod tests {
             read: Default::default(),
             auto_secs: None,
             hold: false,
+            named: false,
         };
         p.rundown = vec![
             item("a", "t", "pl"),
@@ -4943,6 +4946,7 @@ mod tests {
             read: Default::default(),
             auto_secs: None,
             hold: false,
+            named: false,
         };
         p.rundown = vec![
             item("a", "t", "pl"),
