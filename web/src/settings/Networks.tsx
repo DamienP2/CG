@@ -14,7 +14,7 @@ import '../hardware/hardware.css';
  * the machine. Saving restarts the server on its new addresses.
  */
 
-type RoleKey = 'control' | 'ndi' | 'mediaRed' | 'mediaBlue' | 'mos' | 'ptp' | 'buttons';
+type RoleKey = 'control' | 'ndi' | 'tracking' | 'mediaRed' | 'mediaBlue' | 'mos' | 'ptp' | 'buttons';
 
 const ipOf = (n?: Nic) => n?.ipv4[0]?.split('/')[0];
 
@@ -66,6 +66,8 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
       port: <NumberField value={Number(bindPort) || 8080} min={1} max={65535} title={t('Port')} onChange={(v) => edit((c) => void (c.bind = joinAddr(control.startsWith('ip:') ? control.slice(3) : '0.0.0.0', String(Math.round(v)))))} />,
     },
     { key: 'ndi', label: 'NDI', cell: picker(net.ndi, (v) => set('ndi', v), t('Every interface'), 'NDI'), addr: address(net.ndi, true), port: <span className="muted">—</span> },
+    // Camera tracking (multicast joined on it), when the server has a tracking input.
+    ...((cfg.inputs ?? []).some((i) => i.kind === 'tracking') ? [{ key: 'tracking' as const, label: t('Camera tracking'), cell: picker(net.tracking ?? '', (v) => set('tracking', v), t('Automatic'), t('Camera tracking')), addr: address(net.tracking ?? '', false), port: <span className="muted">—</span> }] : []),
     { key: 'mediaRed', label: t('2110 red'), cell: picker(net.mediaRed, (v) => set('mediaRed', v), t('Not set'), t('2110 red')), addr: address(net.mediaRed, false), port: <span className="muted">—</span> },
     { key: 'mediaBlue', label: t('2110 blue'), cell: picker(net.mediaBlue, (v) => set('mediaBlue', v), t('Not set'), t('2110 blue')), addr: address(net.mediaBlue, false), port: <span className="muted">—</span> },
     {
@@ -105,6 +107,7 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
     if (net.mediaRed === n.name) out.push({ label: t('2110 red'), cls: 'red' });
     if (net.mediaBlue === n.name) out.push({ label: t('2110 blue'), cls: 'blue' });
     if (net.ptp === n.name) out.push({ label: 'PTP', cls: 'on' });
+    if (net.tracking === n.name) out.push({ label: 'Tracking', cls: 'on' });
     return out;
   };
 

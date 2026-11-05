@@ -11,6 +11,7 @@ import { corePct, fps as fpsText, fpsTone, inputTone, num } from '../perf/format
 import '../perf/perf.css';
 import { deviceOf, hardwareOf } from '../hardware/model';
 import { navigate } from '../router';
+import { useCameras } from '../engine/tracking';
 import { OnSwitch } from './OnSwitch';
 import { NdiPicker } from './NdiPicker';
 
@@ -34,10 +35,11 @@ const KINDS: { value: InputKind; label: string; badge: string }[] = [
   { value: 'ndi', label: 'NDI', badge: 'NDI' },
   { value: 'sdi', label: 'SDI', badge: 'SDI' },
   { value: 'st2110', label: 'ST 2110', badge: 'ST 2110' },
+  { value: 'tracking', label: 'Camera tracking', badge: 'TRACKING' },
 ];
 const badgeOf = (k: InputKind) => KINDS.find((x) => x.value === k)?.badge ?? k.toUpperCase();
 const SCHEMES: Partial<Record<InputKind, RegExp>> = { srt: /^srt:/i, udp: /^udp:/i, rtmp: /^rtmps?:/i, hls: /^https?:/i, rtsp: /^rtsps?:/i };
-const isStream = (k: InputKind) => k !== 'ndi' && k !== 'sdi' && k !== 'st2110';
+const isStream = (k: InputKind) => k !== 'ndi' && k !== 'sdi' && k !== 'st2110' && k !== 'tracking';
 /** Inputs that receive something Hardware declares. */
 const needsHardware = (k: InputKind) => k === 'sdi' || k === 'st2110';
 /** An SRT listener waits on a port; the others have an address. */
@@ -67,6 +69,8 @@ const badgeText = (c: Pick<InputConfig, 'kind' | 'listen'>) => {
 
 /** Jitter buffer, in frames. */
 const BUFFERS = [0, 1, 2, 3, 5];
+/** Camera tracking: frames the samples are held, to meet the video. */
+const DELAYS = [0, 1, 2, 3, 4, 5, 6, 8, 10];
 
 
 function placeholder(c: Pick<InputConfig, 'kind' | 'listen'>): string {
@@ -95,7 +99,7 @@ function modeDefault(c: Pick<InputConfig, 'kind' | 'listen' | 'url'>): string {
 
 
 /** Waiting is not failing. */
-const WAITING = /^(Starting…|Waiting for the sender…|Connecting…|Connecting to .*…|Not started.*|Waiting for a signal .*…|Off)$/;
+const WAITING = /^(Starting…|Waiting for the sender…|Waiting for the camera…|Connecting…|Connecting to .*…|Not started.*|Waiting for a signal .*…|Off)$/;
 
 type Tone = 'ok' | 'warn' | 'idle';
 
@@ -177,6 +181,14 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
         i.port = portOf(i);
         i.url = '';
       }
+      // Camera tracking: OpenTrackIO's multicast group of source 1, on its port.
+      if (k === 'tracking') {
+        i.url = '';
+        i.port = 55555;
+        i.multicast = true;
+        i.source = 1;
+        i.delay = 0;
+      }
       // SDI and ST 2110: the first input Hardware declares.
       if (needsHardware(k)) {
         i.hardware = hwChoices(k)[0]?.id ?? '';
@@ -245,7 +257,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                   const st = stateOf(i);
                   return (
                     <div key={i.id} role="button" tabIndex={0} className={`vs-tile ${i.id === current?.id ? 'sel' : ''} ${i.enabled === false ? 'off' : ''}`} onClick={() => setSel(i.id)} onKeyDown={(e) => e.key === 'Enter' && setSel(i.id)}>
-                      <Preview id={i.id} live={st.live} />
+                      {i.kind === 'tracking' ? <TrackView id={i.id} /> : <Preview id={i.id} live={st.live} />}
                       <span className="vs-tile-head">
                         <OnSwitch on={i.enabled !== false} mini onChange={(v) => setOn(i.id, v)} />
                         <strong>{i.name || i.id}</strong>
@@ -257,7 +269,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                         <span className={`oc-dot ${st.tone}`} />
                         <span className="grow">{st.text}</span>
                         <Rate m={rates(i.id)} full />
-                        <span className="vs-res">{detected(st.info) || '—'}</span>
+                        <span className="vs-res">{i.kind === 'tracking' ? (st.info?.fps ? `OpenTrackIO · ${fpsText(st.info.fps)} Hz` : 'OpenTrackIO') : detected(st.info) || '—'}</span>
                       </span>
                     </div>
                   );
@@ -326,15 +338,16 @@ function Inspector({
       <div className={`oc-state ${state.tone}`}>
         <span className={`oc-dot ${state.tone}`} />
         <span className="grow">{state.text}</span>
-        {!!state.info?.frames && <span className="vs-res">{tn(state.info.frames, '{n} frame', '{n} frames')}</span>}
+        {!!state.info?.frames && i.kind !== 'tracking' && <span className="vs-res">{tn(state.info.frames, '{n} frame', '{n} frames')}</span>}
       </div>
+      {i.kind === 'tracking' && <TrackValues id={i.id} />}
       {state.live && detected(state.info) && (
         <div className="vs-detected">
           <small>{t('Detected')}</small>
           <strong>{detected(state.info)}</strong>
         </div>
       )}
-      {rates && (
+      {rates && i.kind !== 'tracking' && (
         <div className="vs-perf">
           <div>
             <small>{t('Received')}</small>
@@ -463,6 +476,35 @@ function Inspector({
         </>
       )}
 
+      {i.kind === 'tracking' && (
+        <>
+          <Group label={t('Reception')}>
+            <div className="seg vs-seg">
+              {[true, false].map((m) => (
+                <button key={String(m)} type="button" className={(i.multicast ?? true) === m ? 'on' : ''} onClick={() => editInput((x) => void (x.multicast = m))}>
+                  {m ? 'Multicast' : 'Unicast'}
+                </button>
+              ))}
+            </div>
+          </Group>
+          <Group label={t('Source number')}>
+            <NumberField value={i.source ?? 1} min={0} max={255} title={(i.multicast ?? true) ? `239.135.1.${i.source ?? 1}` : undefined} onChange={(v) => editInput((x) => void (x.source = Math.max(0, Math.min(255, Math.round(v) || 0))))} />
+          </Group>
+          <Group label={t('Port')}>
+            <NumberField value={i.port || 55555} min={1} max={65535} onChange={(v) => editInput((x) => void (x.port = Math.max(1, Math.min(65535, Math.round(v) || 0))))} />
+          </Group>
+          <Field label={tc('camera', 'Delay')}>
+            <Dropdown
+              value={String(i.delay ?? 0)}
+              title={tc('camera', 'Delay')}
+              options={[...(DELAYS.includes(i.delay ?? 0) ? [] : [i.delay ?? 0]), ...DELAYS].map((d) => ({ value: String(d), label: tn(d, '{n} frame', '{n} frames') }))}
+              onChange={(v) => editInput((x) => void (x.delay = Number(v)))}
+            />
+          </Field>
+        </>
+      )}
+
+      {i.kind !== 'tracking' && (
       <Field label={t('Jitter buffer')}>
         <Dropdown
           value={String(i.buffer ?? 2)}
@@ -475,6 +517,7 @@ function Inspector({
           onChange={(v) => editInput((x) => void (x.buffer = Number(v)))}
         />
       </Field>
+      )}
 
       {isStream(i.kind) && (
         <Group label={t('Decoding: GPU / CPU')}>
@@ -491,6 +534,54 @@ function Inspector({
       <button className="btn small danger" onClick={remove}>
         <Trash2 size={13} /> {t('Remove the input')}
       </button>
+    </>
+  );
+}
+
+const deg = (v: number) => `${num(v, 1)}°`;
+
+/** A camera's values on its tile. */
+function TrackView({ id }: { id: string }) {
+  const s = useCameras((x) => x.samples[id]);
+  const cells: [string, string][] = [
+    ['Pan', s ? deg(s.pan) : '—'],
+    ['Tilt', s ? deg(s.tilt) : '—'],
+    [t('Focal length'), s?.focal ? `${num(s.focal, 1)} mm` : '—'],
+    [t('Focus'), s?.focus ? `${num(s.focus, 2)} m` : '—'],
+  ];
+  return (
+    <span className="vs-preview vs-track">
+      {cells.map(([k, v]) => (
+        <span key={k}>
+          <small>{k}</small>
+          <strong>{v}</strong>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** A camera's values in the inspector. */
+function TrackValues({ id }: { id: string }) {
+  const s = useCameras((x) => x.samples[id]);
+  const cell = (k: string, v: string) => (
+    <div>
+      <small>{k}</small>
+      <strong>{v}</strong>
+    </div>
+  );
+  return (
+    <>
+      <div className="vs-perf">
+        {cell('Pan', s ? deg(s.pan) : '—')}
+        {cell('Tilt', s ? deg(s.tilt) : '—')}
+        {cell('Roll', s ? deg(s.roll) : '—')}
+      </div>
+      <div className="vs-perf">
+        {cell(t('Focal length'), s?.focal ? `${num(s.focal, 1)} mm` : '—')}
+        {cell(t('Focus'), s?.focus ? `${num(s.focus, 2)} m` : '—')}
+        {cell(t('Iris'), s?.iris ? `f/${num(s.iris, 1)}` : '—')}
+      </div>
     </>
   );
 }

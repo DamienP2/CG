@@ -409,7 +409,8 @@ export function Outputs({ mode }: { mode: Mode }) {
   const hw = hardwareOf(cfg);
   const usedHw = usedHardware(cfg);
   // Live inputs placed as sources (a column between the program and the formats).
-  const inputs = cfg.inputs ?? [];
+  // (Not the camera tracking inputs: no picture.)
+  const inputs = (cfg.inputs ?? []).filter((i) => i.kind !== 'tracking');
   const srcIds = ch ? (ch.sources ?? []).filter((id) => inputs.some((i) => i.id === id)) : [];
   const inputOf = (id: string) => inputs.find((i) => i.id === id);
   const shift = srcIds.length ? NODE_W + 80 : 0;
@@ -679,7 +680,7 @@ export function Outputs({ mode }: { mode: Mode }) {
       if (inputs.some((i) => familyOf(i.kind) === fam)) return toast(t('Every input of this kind is already a source of this channel'), 'info');
       return toast(fam === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware'), 'info');
     }
-    const ids = new Set(inputs.map((i) => i.id));
+    const ids = new Set((cfg.inputs ?? []).map((i) => i.id));
     let n = 1;
     while (ids.has(`input-${n}`)) n++;
     const id = `input-${n}`;

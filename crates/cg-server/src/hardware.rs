@@ -54,6 +54,9 @@ pub struct NetworkRoles {
     /// The MOS ports listen on this one only ("" = every interface).
     #[serde(default)]
     pub mos: String,
+    /// Camera tracking multicast is joined on this one ("" = as the system chooses).
+    #[serde(default)]
+    pub tracking: String,
 }
 
 /// What the channel clocks follow.

@@ -4081,6 +4081,7 @@ mod conv {
 
     fn mk(id: &str, name: &str, parent: Option<&str>, kind: LayerKind) -> Layer {
         Layer {
+            anchor: None,
             id: id.to_string(),
             name: name.to_string(),
             parent: parent.map(str::to_string),

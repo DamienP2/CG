@@ -399,6 +399,9 @@ struct Ctx<'a> {
     /// hashed (`item_key`), for the sprites.
     item_index: usize,
     item_key: u64,
+    /// Where the template's tracked camera looks, and the picture its
+    /// layers are laid out in (anchored layers follow it).
+    camera: Option<(cg_core::tracking::CameraSample, f64, f64)>,
 }
 
 impl<'a> Ctx<'a> {
@@ -415,6 +418,7 @@ impl<'a> Ctx<'a> {
             lang: self.lang,
             item_index: self.item_index,
             item_key: self.item_key,
+            camera: self.camera,
         }
     }
 
@@ -912,6 +916,11 @@ impl Renderer {
                     lang: &project.language,
                     item_index: $i,
                     item_key: *a.key.get_or_init(|| item_key(a.item)),
+                    camera: t
+                        .camera
+                        .as_ref()
+                        .and_then(|c| state.cameras.get(c))
+                        .map(|c| (*c, dw as f64, dh as f64)),
                 }
             }};
         }
@@ -1317,6 +1326,7 @@ impl Renderer {
                 k.add(&template.id).add(data);
                 k.finish()
             },
+            camera: None,
         };
         // As on air: only what is inside the template's zone.
         let zone_mask = project
@@ -1452,6 +1462,12 @@ impl Renderer {
             if let Some(m) = &layer.motion {
                 let age = ctx.time_for(layer).age_secs;
                 cg_core::anim::apply_motion(&mut r.values, m, ctx.frame, ctx.fps, age);
+            }
+            // Anchored to the scene: where the camera sees it now.
+            if let (Some(track), Some((cam, w, h)), None) =
+                (&layer.anchor, ctx.camera, &layer.parent)
+            {
+                cg_core::anim::apply_track(&mut r.values, track, &cam, w, h);
             }
             let opacity = parent_opacity * r.num(Prop::Opacity).clamp(0.0, 1.0) as f32;
             if opacity <= 0.0 {
@@ -3222,12 +3238,13 @@ fn load_svg(path: &Path) -> Option<Pixmap> {
     Some(pm)
 }
 
-/// The layer or one of its parents repeats a movement (`Layer::motion`).
+/// The layer or one of its parents repeats a movement (`Layer::motion`),
+/// or follows the camera (`Layer::anchor`).
 fn loops(t: &Template, layer: &cg_core::Layer) -> bool {
     let mut at = Some(layer);
     for _ in 0..64 {
         let Some(l) = at else { break };
-        if l.motion.is_some() {
+        if l.motion.is_some() || (l.anchor.is_some() && t.camera.is_some()) {
             return true;
         }
         at = l

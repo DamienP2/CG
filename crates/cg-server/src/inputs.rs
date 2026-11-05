@@ -40,6 +40,8 @@ pub enum InputKind {
     Sdi,
     /// An ST 2110 flow of the Hardware settings (not received yet).
     St2110,
+    /// Camera tracking (OpenTrackIO), no picture: see `crate::tracking`.
+    Tracking,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -89,6 +91,19 @@ pub struct InputConfig {
     /// to the processor).
     #[serde(default)]
     pub hw_decode: bool,
+    /// Tracking: joins the group 239.135.1.<source> (else unicast, on `port`).
+    #[serde(default = "cg_output::on")]
+    pub multicast: bool,
+    /// Tracking: the camera's source number (its samples only).
+    #[serde(default = "default_source")]
+    pub source: u8,
+    /// Tracking: frames the samples are held, to meet the video.
+    #[serde(default)]
+    pub delay: u32,
+}
+
+fn default_source() -> u8 {
+    1
 }
 
 fn default_buffer() -> u32 {
@@ -182,7 +197,7 @@ impl InputConfig {
                 a.extend(["-rtsp_transport", "tcp"].map(String::from));
             }
             InputKind::Url => {}
-            InputKind::Ndi | InputKind::Sdi | InputKind::St2110 => {
+            InputKind::Ndi | InputKind::Sdi | InputKind::St2110 | InputKind::Tracking => {
                 return Err("not a stream".into())
             }
         }
@@ -381,8 +396,11 @@ impl Inputs {
     /// Runs the configured inputs: new and changed ones start, removed ones stop.
     pub fn apply(&self, configs: &[InputConfig]) {
         let mut map = self.live.write().unwrap_or_else(|p| p.into_inner());
-        // Switched off: stopped like removed ones.
-        let configs: Vec<&InputConfig> = configs.iter().filter(|c| c.enabled).collect();
+        // Switched off: stopped like removed ones. Tracking: no picture (crate::tracking).
+        let configs: Vec<&InputConfig> = configs
+            .iter()
+            .filter(|c| c.enabled && c.kind != InputKind::Tracking)
+            .collect();
         map.retain(|id, l| {
             let keep = configs.iter().any(|c| &c.id == id && **c == l.config);
             if !keep {
@@ -561,7 +579,8 @@ pub async fn list(
     MaybeUser(me): MaybeUser,
 ) -> ApiResult<Json<Vec<InputInfo>>> {
     require(me.is_some() || s.config.public_outputs)?;
-    let status = s.inputs.status();
+    let mut status = s.inputs.status();
+    status.extend(s.tracking.status());
     Ok(Json(
         s.config
             .inputs
@@ -1209,6 +1228,9 @@ mod tests {
             enabled: true,
             port: 0,
             latency: 120,
+            multicast: true,
+            source: 1,
+            delay: 0,
         }
     }
 

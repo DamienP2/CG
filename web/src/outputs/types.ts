@@ -81,7 +81,7 @@ export interface OutputsConfig {
   streams?: StreamOutput[];
 }
 
-export type InputKind = 'srt' | 'udp' | 'rtmp' | 'hls' | 'rtsp' | 'url' | 'ndi' | 'sdi' | 'st2110';
+export type InputKind = 'srt' | 'udp' | 'rtmp' | 'hls' | 'rtsp' | 'url' | 'ndi' | 'sdi' | 'st2110' | 'tracking';
 
 /** A live video input (crates/cg-server/src/inputs.rs). */
 export interface InputConfig {
@@ -111,6 +111,12 @@ export interface InputConfig {
   buffer: number;
   /** Streams: decode on the GPU when the machine has a decoder (ffmpeg falls back to the processor). */
   hwDecode: boolean;
+  /** Tracking: joins 239.135.1.<source> (true when missing), else unicast on `port` (55555 when 0). */
+  multicast?: boolean;
+  /** Tracking: the camera's source number (1 when missing). */
+  source?: number;
+  /** Tracking: frames the samples are held, to meet the video. */
+  delay?: number;
 }
 
 /** `GET /api/inputs`. */
@@ -348,6 +354,8 @@ export interface NetworkRoles {
   ptp: string;
   /** The MOS ports listen on this one only ("" = every interface). */
   mos?: string;
+  /** Camera tracking multicast is joined on this one ("" = as the system chooses). */
+  tracking?: string;
 }
 
 export type ClockReference = 'auto' | 'free' | 'ptp' | 'decklink';
@@ -391,7 +399,7 @@ export interface HardwareConfig {
   sync?: SyncConfig;
 }
 
-export const emptyNetwork = (): NetworkRoles => ({ control: '', ndi: '', ndiDiscovery: '', mediaRed: '', mediaBlue: '', ptp: '', mos: '' });
+export const emptyNetwork = (): NetworkRoles => ({ control: '', ndi: '', ndiDiscovery: '', mediaRed: '', mediaBlue: '', ptp: '', mos: '', tracking: '' });
 export const emptySync = (): SyncConfig => ({ reference: 'auto', ptpDomain: 127, taiOffset: 37, version: 1 });
 
 /** NTP / PTP status (crates/cg-server/src/sync.rs). */

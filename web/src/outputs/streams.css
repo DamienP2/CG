@@ -748,3 +748,26 @@
   padding: 0 10px;
   font-size: 13px;
 }
+
+/* ---- camera tracking: its values instead of a picture ---- */
+.vs-track {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: center;
+  gap: 10px;
+  padding: 0 18px;
+  background: var(--panel-2);
+}
+.vs-track > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vs-track small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.vs-track strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}

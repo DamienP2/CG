@@ -1546,6 +1546,7 @@ mod tests {
 
     pub(super) fn layer(c: Config) -> Layer {
         Layer {
+            anchor: None,
             id: "c".into(),
             name: "Chart".into(),
             parent: None,

@@ -1,7 +1,7 @@
 import { widgetOf } from '../widgets';
 import { HexColorField, NumberField } from '../ui/fields';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X, } from 'lucide-react';
+import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Video, Wand2, X, } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
 import { holdFrame, interpolateText, newId, parseHex, resolveLayer, toHex } from '../engine/evaluate';
@@ -18,7 +18,7 @@ import { unexposeRows } from '../widgets/table-rows';
 import { Dropdown } from '../ui/Dropdown';
 import { getPath, setPath } from '../widgets/kit';
 import { fieldUsed, forgetKeys, formatSetting, settingKind } from '../engine/settings';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
 
 /*
  * Data canvas. The data goes through as tables:
@@ -444,7 +444,9 @@ export function useDataLayer(o: DataLayerOpts) {
   const projectId = useApp((s) => s.project?.id);
   // Lookups by id: every source; the palette: this project's and the shared ones.
   const sources = useSources();
-  const offered = useProjectSources(projectId);
+  // The cameras (tracking) after the others.
+  const sourcesOffered = useProjectSources(projectId);
+  const offered = useMemo(() => [...sourcesOffered.filter((s) => s.type !== 'tracking'), ...sourcesOffered.filter((s) => s.type === 'tracking')], [sourcesOffered]);
   const bound = useBoundData(template, previewData);
   const values = useMemo(() => withOutputs(template, frame, { ...previewData, ...bound }, holdFrame(template), resolveLayer), [template, frame, previewData, bound]);
   const cv = o.cv;
@@ -1049,7 +1051,7 @@ export function useDataLayer(o: DataLayerOpts) {
           <div className="dc-pal-title">{t('Data sources')}</div>
           {offered.map((s, i) => (
             <span key={s.id} style={{ display: 'contents' }}>
-              {!s.project && (i === 0 || offered[i - 1].project) && <div className="dc-pal-sub">{t('Shared')}</div>}
+              {s.type === 'tracking' ? offered[i - 1]?.type !== 'tracking' && <div className="dc-pal-sub">{t('Cameras')}</div> : !s.project && (i === 0 || offered[i - 1].project) && <div className="dc-pal-sub">{t('Shared')}</div>}
               <button
                 className="kind-source"
                 onPointerDown={(e) => {
@@ -1058,10 +1060,10 @@ export function useDataLayer(o: DataLayerOpts) {
                   fromPalette(e, s.name, addSource(s.id), W.source, there && (() => focusNode(there.id)));
                 }}
               >
-                <Database size={14} />
+                {s.type === 'tracking' ? <Video size={14} /> : <Database size={14} />}
                 <span>
                   <strong>{s.name}</strong>
-                  <em>{s.type === 'push' ? t('Push (API / file)') : s.type.toUpperCase()}</em>
+                  <em>{s.type === 'tracking' ? tc('camera', 'Tracking') : s.type === 'push' ? t('Push (API / file)') : s.type.toUpperCase()}</em>
                 </span>
               </button>
             </span>

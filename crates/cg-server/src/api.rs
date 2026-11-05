@@ -2774,7 +2774,11 @@ async fn channel_preview(
         Some(pid) => s.project(&pid).await,
         None => None,
     };
-    let state = ch.state.read().await.clone();
+    let mut state = ch.state.read().await.clone();
+    // Its anchored graphics where the cameras see them.
+    if let Some(p) = &project {
+        state.cameras = s.tracking.for_project(p);
+    }
     let wanted = q.rendition.as_deref().unwrap_or("main");
     let slate = ch
         .config
@@ -3555,6 +3559,9 @@ fn may_edit_source(me: &crate::auth::User, project: &Option<String>) -> ApiResul
 }
 
 fn check_source(src: &mut Source) -> ApiResult<()> {
+    if matches!(src.kind, crate::datasources::Kind::Tracking) {
+        return Err(bad("a camera's values come from its tracking input"));
+    }
     src.name = src.name.trim().to_string();
     if src.name.is_empty() {
         return Err(bad("a data source needs a name"));
@@ -3599,6 +3606,9 @@ async fn put_source(
 ) -> ApiResult<StatusCode> {
     let old = s.data.get(&id).ok_or_else(|| not_found("data source"))?;
     may_edit_source(&me, &old.project)?;
+    if matches!(old.kind, crate::datasources::Kind::Tracking) {
+        return Err(bad("a camera's values come from its tracking input"));
+    }
     check_source(&mut src)?;
     // It stays where it was (shared, or its project's).
     src.project = old.project;
@@ -4182,6 +4192,9 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
     }
 
     let mut ended = s.auth.ended();
+    // Where the tracked cameras look (the newest only: a slow client skips).
+    let mut cameras = s.tracking.watch();
+    cameras.mark_changed();
     let mut users_changed = s.auth.users_changed();
     let mut stations_removed = s.stations.removals();
     loop {
@@ -4194,6 +4207,12 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
             },
             // Engine restart / shutdown: close so the client reconnects.
             _ = &mut closing => break,
+            r = cameras.changed() => {
+                if r.is_err() { break }
+                let shown = cameras.borrow_and_update().clone();
+                let msg = serde_json::json!({ "type": "cameras", "cameras": &*shown });
+                if tx.send(Message::Text(msg.to_string().into())).await.is_err() { break }
+            },
             // Its user changed (role, scope) or can no longer sign in: closed,
             // the page reconnects with what it is allowed now (or signs in).
             id = users_changed.recv() => {

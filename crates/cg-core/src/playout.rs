@@ -1255,6 +1255,10 @@ pub struct ChannelState {
     /// The sounds the Logics asked for, taken by the server after each tick.
     #[serde(skip)]
     pub sounds: Scratch<Vec<SoundAsk>>,
+    /// Where the tracked cameras look as the frame is drawn, by tracking
+    /// input (set by the server for the renderer, never sent).
+    #[serde(skip)]
+    pub cameras: std::collections::BTreeMap<String, crate::tracking::CameraSample>,
 }
 
 /// What a playlist last took: its row, and how many rows so far (a change
@@ -3136,6 +3140,7 @@ mod tests {
             height: 1080,
             frame_rate: FrameRate::default(),
             templates: vec![Template {
+                camera: None,
                 logic: Default::default(),
                 triggers: Default::default(),
                 dataflow: None,

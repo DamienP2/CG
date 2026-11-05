@@ -22,7 +22,8 @@ import { errorProps } from '../ui/serverError';
 type Pick = { source: string } | { draft: DataSource } | { social: SocialPick } | null;
 
 export function DataHome() {
-  const sources = useSources().filter((s) => !s.project);
+  // The cameras' sources are set in Video inputs.
+  const sources = useSources().filter((s) => !s.project && s.type !== 'tracking');
   const socials = useSocialSources();
   const edit = can.design(useApp((s) => s.auth?.user));
   const [pick, setPick] = useState<Pick>(null);
@@ -89,6 +90,7 @@ function SourceFields({ s, isNew, editable, patch }: { s: DataSource; isNew?: bo
   const me = useApp((st) => st.auth?.user);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pushKey, setPushKey] = useState('');
+  if (s.type === 'tracking') return null;
   if (s.type !== 'push') {
     return (
       <>

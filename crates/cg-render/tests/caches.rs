@@ -180,3 +180,65 @@ fn a_scaled_picture_is_the_same_kept() {
     let f = Renderer::new(&dir).render_channel_at(&p, &frames[23].0, OUT, "UTC", frames[23].1);
     assert!(f.data.chunks(4).filter(|px| px[3] == 255).count() > 10_000);
 }
+
+/// A layer anchored to the scene follows the camera: drawn where the
+/// camera sees it, kept or not, and on the other side when it pans.
+#[test]
+fn an_anchored_layer_follows_the_camera() {
+    let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+        "id": "tag", "name": "Tag", "duration": 10.0, "zone": "", "fields": [],
+        "markers": [], "camera": "fr7",
+        "layers": [{
+            "id": "box", "name": "Box", "type": "rect",
+            "anchor": {"pan": 0.0, "tilt": 0.0, "focal": 35.0, "sensor": 35.6},
+            "props": {"x": 900.0, "y": 500.0, "width": 120.0, "height": 80.0, "fill": [0.9, 0.3, 0.2, 1.0]}
+        }]
+    }))
+    .unwrap();
+    let mut p = sample::demo_project();
+    p.templates.push(t);
+    let p = Arc::new(p);
+    let mut st = ChannelState::default();
+    take_in(&mut st, &p, "tag", None, Some("full-screen"));
+    for _ in 0..12 {
+        st.tick(1.0);
+    }
+    let mut frames = Vec::new();
+    let mut ms = 1_800_000_000_000.0;
+    for i in 0..12 {
+        let mut s = st.clone();
+        let cam = cg_core::tracking::CameraSample {
+            pan: i as f64 * 0.5,
+            focal: 35.0,
+            sensor: 35.6,
+            ..Default::default()
+        };
+        s.cameras.insert("fr7".into(), cam);
+        frames.push((s, ms));
+        ms += 20.0;
+    }
+    same_everywhere(&p, &frames);
+    // Where the red box is: its middle, in output pixels.
+    let middle = |st: &ChannelState| {
+        let f = Renderer::new(assets()).render_channel_at(&p, st, OUT, "UTC", ms);
+        let xs: Vec<usize> = f
+            .data
+            .chunks(4)
+            .enumerate()
+            .filter(|(_, px)| px[0] > 180 && px[1] < 120 && px[3] == 255)
+            .map(|(i, _)| i % OUT.width as usize)
+            .collect();
+        assert!(!xs.is_empty(), "the box is drawn");
+        xs.iter().sum::<usize>() as f64 / xs.len() as f64
+    };
+    let still = middle(&frames[0].0);
+    let panned = middle(&frames[10].0);
+    // Pan 5° to the left: the scene, and the box, go right (1/3 scale).
+    let f = 35.0 / 35.6 * 1920.0;
+    let want = f * 5f64.to_radians().tan() / 3.0;
+    assert!(
+        (panned - still - want).abs() < 2.0,
+        "{} vs {want}",
+        panned - still
+    );
+}

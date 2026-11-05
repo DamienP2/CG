@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
+import { useCameras } from './engine/tracking';
 import { lang, pickedByHand, setLang, t } from './i18n';
 import { setTheme } from './theme';
 import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
 import { setDefaultTz } from './engine/expr';
-import { designView, type ChannelInfo, type ChannelState, type Command, type DataStatus, type Project, type ProjectSummary, type RundownItem, type Template, type User, type Zone } from './engine/types';
+import { designView, type CameraSample, type ChannelInfo, type ChannelState, type Command, type DataStatus, type Project, type ProjectSummary, type RundownItem, type Template, type User, type Zone } from './engine/types';
 
 type ServerEvent =
   | { type: 'hello'; user: User | null; serverName: string; serverTime: number; timezone: string; channels: ChannelInfo[]; projects: ProjectSummary[] }
@@ -22,7 +23,8 @@ type ServerEvent =
   | { type: 'presence'; present: Present[] }
   | { type: 'zoneLocks'; channelId: string; locks: ZoneLock[]; takenFrom: string | null }
   | { type: 'error'; message: string }
-  | { type: 'sessionEnded' };
+  | { type: 'sessionEnded' }
+  | { type: 'cameras'; cameras: Record<string, CameraSample> };
 
 /** Someone with the Operator open on a channel. */
 export interface Present {
@@ -393,6 +395,9 @@ export const useApp = create<AppStore>((set, get) => {
               break;
             case 'error':
               get().toast(msg.message, 'error');
+              break;
+            case 'cameras':
+              useCameras.setState({ samples: msg.cameras });
               break;
             case 'sessionEnded': {
               // The same user signed in on another computer: back to the sign-in, saying why.

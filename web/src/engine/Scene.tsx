@@ -16,6 +16,7 @@ import { applyLogic, clockAt, targeted, logicUsesTime, measureLayer, patchedLaye
 import type { Clock } from './expr';
 import { fitText, type Fitted } from './textFit';
 import { applyMotion } from './motion';
+import { applyTrack, TemplateCamera, useTrackedCamera } from './tracking';
 import { useFonts } from './fonts';
 import { widgetOf } from '../widgets';
 import { shownText } from '../widgets/text';
@@ -386,7 +387,10 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
   const logic0 = useContext(LogicContext).get(layer.id);
   // A repeated movement (Layer.motion): follows the layer's age, also while it holds on air (the rest stands still).
   const lt = useLayerTime(layer.motion ? 'wall' : false);
-  const logic = layer.motion ? applyMotion(logic0 ?? resolveLayer(layer, frame, data, hold), layer.motion, frame, lt.fps ?? 50, lt.layerAge ? lt.layerAge(layer) : lt.ageSecs) : logic0;
+  const moved = layer.motion ? applyMotion(logic0 ?? resolveLayer(layer, frame, data, hold), layer.motion, frame, lt.fps ?? 50, lt.layerAge ? lt.layerAge(layer) : lt.ageSecs) : logic0;
+  // Anchored to the scene: where its camera sees it now (redrawn on each sample).
+  const tracked = useTrackedCamera(layer);
+  const logic = tracked ? applyTrack(moved ?? resolveLayer(layer, frame, data, hold), layer.anchor!, tracked.cam, tracked.w, tracked.h) : moved;
   const framed = useContext(FramedContext);
   const logics = useContext(LogicContext);
   const motion = useContext(ValueMotionContext);
@@ -617,10 +621,12 @@ function SceneBody({ template, frame, data, interactive, clock, tweaks }: SceneP
       <SceneLayers.Provider value={template.layers}>
       <LogicContext.Provider value={logic}>
       <FramedContext.Provider value={framed}>
+      <TemplateCamera.Provider value={template.camera}>
         {(childrenOf.get(null) ?? []).map((l) => (
           // A layer that does not change with the playhead (nor anything inside it) is drawn once, not on each frame of the timeline.
           <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={framed.has(l.id) ? frame : hold} data={data} hold={hold} interactive={interactive} />
         ))}
+      </TemplateCamera.Provider>
       </FramedContext.Provider>
       </LogicContext.Provider>
       </SceneLayers.Provider>

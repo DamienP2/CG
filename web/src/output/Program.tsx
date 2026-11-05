@@ -10,6 +10,7 @@ import { areaClip, zoneArea } from '../engine/zones';
 import type { Layer, PlayoutItem, Project, Template } from '../engine/types';
 import type { Live } from '../store';
 import { busItems } from '../engine/buses';
+import { TrackContext } from '../engine/tracking';
 
 /**
  * Composites every playout layer of a channel into a `width` × `height`
@@ -65,7 +66,9 @@ export const Program = memo(function Program({ project, live, width, height, max
     const z = project.zones.find((x) => x.layer === layer);
     return z && zoneArea(z, format.id, format.height > format.width);
   };
+  const stage = useMemo(() => ({ w: format.width, h: format.height }), [format.width, format.height]);
   return (
+    <TrackContext.Provider value={stage}>
     <div
       style={{
         position: 'absolute',
@@ -148,6 +151,7 @@ export const Program = memo(function Program({ project, live, width, height, max
         );
       })}
     </div>
+    </TrackContext.Provider>
   );
 });
 

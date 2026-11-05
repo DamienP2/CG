@@ -25,6 +25,7 @@ fn layer(
     props: &[(Prop, Value)],
 ) -> Layer {
     Layer {
+        anchor: None,
         id: id.into(),
         name: name.into(),
         parent: parent.map(Into::into),
@@ -213,6 +214,7 @@ pub fn lower_third() -> Template {
     );
 
     Template {
+        camera: None,
         logic: Default::default(),
         triggers: Default::default(),
         dataflow: None,
@@ -353,6 +355,7 @@ pub fn score_bug() -> Template {
     );
     score.props.insert(AnchorX, n(0.5));
     Template {
+        camera: None,
         logic: Default::default(),
         triggers: Default::default(),
         dataflow: None,
@@ -501,6 +504,7 @@ pub fn clock() -> Template {
     );
     fade(&mut time, 4.0, 30.0);
     Template {
+        camera: None,
         logic: Default::default(),
         triggers: Default::default(),
         dataflow: None,
@@ -617,6 +621,7 @@ pub fn ticker() -> Template {
     );
     crawl.tracks.insert(Y, bar.tracks[&Y].clone());
     Template {
+        camera: None,
         logic: Default::default(),
         triggers: Default::default(),
         dataflow: None,
@@ -680,6 +685,7 @@ pub fn credits() -> Template {
     );
     fade(&mut roll, 0.0, 60.0);
     Template {
+        camera: None,
         logic: Default::default(),
         triggers: Default::default(),
         dataflow: None,
@@ -712,6 +718,7 @@ pub fn credits() -> Template {
 
 fn simple(id: &str, name: &str, duration: f64, fields: Vec<Field>, layers: Vec<Layer>) -> Template {
     Template {
+        camera: None,
         logic: Default::default(),
         triggers: Default::default(),
         dataflow: None,

@@ -45,6 +45,7 @@ mod timecode;
 mod timectl;
 mod tls;
 mod tpllib;
+mod tracking;
 mod update;
 mod web;
 mod webimages;
@@ -453,6 +454,7 @@ pub async fn serve(
     let output_status = Arc::new(state::OutputStatus::default());
     // Live inputs keep running across engine restarts.
     let inputs = Arc::new(inputs::Inputs::default());
+    let tracking = Arc::new(tracking::Tracking::default());
     let perf = Arc::new(perf::Perf::default());
     perf::spawn_sampler(perf.clone(), inputs.clone());
     if auth.needs_setup() {
@@ -579,6 +581,7 @@ pub async fn serve(
             edits: Default::default(),
             output_status: output_status.clone(),
             inputs: inputs.clone(),
+            tracking: tracking.clone(),
             perf: perf.clone(),
             config,
             bind,
@@ -589,6 +592,11 @@ pub async fn serve(
             schedule: schedule::Schedule::load(&data_dir),
         });
         shared.inputs.apply(&shared.config.inputs);
+        shared.tracking.apply(
+            &shared.config.inputs,
+            hardware::interface_ip(&shared.config.hardware.network.tracking),
+        );
+        shared.data.set_cameras(&shared.config.inputs);
         shared
             .renderer
             .lock()
@@ -600,6 +608,8 @@ pub async fn serve(
             // The state of the newsroom's items, sent back to it.
             tokio::spawn(mos::report(shared.clone())),
             tokio::spawn(datasources::run(shared.clone())),
+            // The cameras' values in their data sources.
+            tokio::spawn(tracking::to_data(shared.clone())),
             tokio::spawn(social::run::run(shared.clone())),
             tokio::spawn(social::moderation::run(shared.clone())),
             // OSC and TCP control (Bitfocus Buttons…), when enabled.
@@ -761,6 +771,7 @@ pub async fn serve(
     }
     // Their ffmpeg stops with them (the load sampler still holds them).
     inputs.stop();
+    tracking.stop();
     tracing::info!("stopped");
     health::stopped();
     Ok(())

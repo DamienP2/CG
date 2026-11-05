@@ -109,6 +109,8 @@ export type Layer = LayerKind & {
   span?: { from: number; to: number };
   /** A movement repeated while the layer is on air (Designer › Animations › Loop); runs on the layer's age, also once the template holds. */
   motion?: Motion;
+  /** Anchored to the scene: follows the camera of its template (Template.camera); top-level layers only. */
+  anchor?: Track;
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
@@ -317,7 +319,7 @@ export type DataFilter =
   | { type: 'default'; text: string }
   | { type: 'map'; when: string; then: string };
 
-export type DataSourceKind = { type: 'json'; url: string; headers?: Record<string, string> } | { type: 'csv'; url: string; header?: boolean } | { type: 'rss'; url: string } | { type: 'xml'; url: string; headers?: Record<string, string> } | { type: 'push'; format?: 'json' | 'csv' | 'xml' };
+export type DataSourceKind = { type: 'json'; url: string; headers?: Record<string, string> } | { type: 'csv'; url: string; header?: boolean } | { type: 'rss'; url: string } | { type: 'xml'; url: string; headers?: Record<string, string> } | { type: 'push'; format?: 'json' | 'csv' | 'xml' } | { type: 'tracking' };
 
 export type DataSource = DataSourceKind & {
   id: string;
@@ -358,6 +360,35 @@ export interface Template {
   revision?: number;
   /** Marker model (MARKER_MODEL); older templates are converted by the server. */
   markerModel?: number;
+  /** The tracking input whose camera its anchored layers follow. */
+  camera?: string;
+}
+
+/** Where a tracked camera looks (mirror of cg_core::tracking::CameraSample; OpenTrackIO: degrees, mm, m). */
+export interface CameraSample {
+  pan: number;
+  tilt: number;
+  roll: number;
+  /** Focal length, mm (0: unknown). */
+  focal: number;
+  /** Width of the sensor's active area, mm (0: unknown). */
+  sensor: number;
+  focus?: number;
+  iris?: number;
+  x?: number;
+  y?: number;
+  z?: number;
+}
+
+/** A layer anchored to the scene: the camera as it was when anchored (mirror of cg_core::tracking::Track). */
+export interface Track {
+  pan: number;
+  tilt: number;
+  roll?: number;
+  focal?: number;
+  sensor?: number;
+  /** Its size follows the zoom. */
+  zoom?: boolean;
 }
 
 export type TextMetric = 'width' | 'height' | 'lines' | 'chars';

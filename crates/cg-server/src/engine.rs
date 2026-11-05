@@ -751,6 +751,11 @@ fn clock(
             p.dispatch(n, at);
         }
         let (project, snapshot) = rt.block_on(advance(state, ch, &mut saved_at));
+        // Where the cameras its graphics follow look (late by their delay).
+        let cameras = project
+            .as_ref()
+            .map(|p| state.tracking.for_project(p))
+            .unwrap_or_default();
         for p in &pictures {
             // Shown `ahead` ticks from now.
             let shown = at + period * p.ahead as u32;
@@ -758,11 +763,12 @@ fn clock(
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0.0, |d| d.as_secs_f64() * 1000.0);
             // Its output's graphics only (the antenne's when none is sent elsewhere).
-            let shown_state = if p.bus == 0 && !snapshot.routed() {
+            let mut shown_state = if p.bus == 0 && !snapshot.routed() {
                 snapshot.clone()
             } else {
                 snapshot.bus(p.bus)
             };
+            shown_state.cameras.clone_from(&cameras);
             p.request((n, project.clone(), shown_state, shown_ms));
         }
     }

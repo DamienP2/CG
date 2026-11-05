@@ -74,6 +74,9 @@ pub enum Kind {
         #[serde(default)]
         format: PushFormat,
     },
+    /// Where a tracked camera looks (`crate::tracking`): made from the
+    /// tracking inputs, never saved.
+    Tracking,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,7 +104,7 @@ impl Kind {
             | Kind::Csv { url, .. }
             | Kind::Rss { url }
             | Kind::Xml { url, .. } => Some(url),
-            Kind::Push { .. } => None,
+            Kind::Push { .. } | Kind::Tracking => None,
         }
     }
 }
@@ -135,6 +138,8 @@ pub struct SourceInfo {
 pub struct Hub {
     dir: PathBuf,
     sources: RwLock<Vec<Source>>,
+    /// The tracked cameras' sources (`Kind::Tracking`).
+    cameras: RwLock<Vec<Source>>,
     status: RwLock<HashMap<String, Status>>,
     pub wake: tokio::sync::Notify,
 }
@@ -173,6 +178,7 @@ impl Hub {
         Self {
             dir,
             sources: RwLock::new(sources),
+            cameras: Default::default(),
             status: RwLock::new(status),
             wake: tokio::sync::Notify::new(),
         }
@@ -180,10 +186,12 @@ impl Hub {
 
     pub fn list(&self) -> Vec<SourceInfo> {
         let status = self.status.read().unwrap_or_else(|e| e.into_inner());
+        let cameras = self.cameras.read().unwrap_or_else(|e| e.into_inner());
         self.sources
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .iter()
+            .chain(cameras.iter())
             .map(|s| SourceInfo {
                 source: s.clone(),
                 status: status.get(&s.id).cloned().unwrap_or_default(),
@@ -196,8 +204,63 @@ impl Hub {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .iter()
+            .chain(
+                self.cameras
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .iter(),
+            )
             .find(|s| s.id == id)
             .cloned()
+    }
+
+    /// A source of each tracking input (shared), named like it.
+    pub fn set_cameras(&self, inputs: &[crate::inputs::InputConfig]) {
+        let list: Vec<Source> = inputs
+            .iter()
+            .filter(|c| c.kind == crate::inputs::InputKind::Tracking && !c.id.is_empty())
+            .map(|c| Source {
+                id: crate::tracking::source_id(&c.id),
+                name: c.name.clone(),
+                project: None,
+                kind: Kind::Tracking,
+                interval: default_interval(),
+                enabled: c.enabled,
+                rules: Vec::new(),
+            })
+            .collect();
+        let mut cameras = self.cameras.write().unwrap_or_else(|e| e.into_inner());
+        let mut status = self.status.write().unwrap_or_else(|e| e.into_inner());
+        for gone in cameras
+            .iter()
+            .filter(|c| !list.iter().any(|x| x.id == c.id))
+        {
+            status.remove(&gone.id);
+        }
+        *cameras = list;
+    }
+
+    /// A camera's values (kept in memory only). Returns true when they changed.
+    pub fn live(&self, id: &str, v: Json) -> bool {
+        if !self
+            .cameras
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|c| c.id == id)
+        {
+            return false;
+        }
+        let mut all = self.status.write().unwrap_or_else(|e| e.into_inner());
+        let st = all.entry(id.to_string()).or_default();
+        let now = now_ms();
+        st.checked_at = Some(now);
+        if st.value.as_ref() == Some(&v) {
+            return false;
+        }
+        st.value = Some(v);
+        st.updated_at = Some(now);
+        true
     }
 
     pub fn value(&self, id: &str) -> Option<Json> {
@@ -487,7 +550,7 @@ pub fn fetch(s: &Source) -> Result<(Json, usize), String> {
         Kind::Csv { header, .. } => csv_json(&text, *header),
         Kind::Rss { .. } => rss_json(&text)?,
         Kind::Xml { .. } => xml_json(&text)?,
-        Kind::Push { .. } => unreachable!(),
+        Kind::Push { .. } | Kind::Tracking => unreachable!(),
     };
     Ok((v, n))
 }

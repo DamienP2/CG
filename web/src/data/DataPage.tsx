@@ -50,7 +50,7 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
 function ProjectData({ projectId }: { projectId: string }) {
   const all = useSources();
   const sources = all.filter((s) => s.project === projectId);
-  const shared = all.filter((s) => !s.project);
+  const shared = all.filter((s) => !s.project && s.type !== 'tracking');
   const user = useApp((s) => s.auth?.user);
   const edit = can.design(user);
   const [sel, setSel] = useState<string | null>(null);

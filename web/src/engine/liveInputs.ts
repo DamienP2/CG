@@ -31,6 +31,12 @@ export function inputMessage(m: string): string {
   if (x) return t('Waiting for a signal ({format})…', { format: x[1] });
   x = /^Connecting to (.+)…$/.exec(m);
   if (x) return t('Connecting to {source}…', { source: x[1] });
+  x = /^Cannot listen: (.*)$/.exec(m);
+  if (x) return t('Cannot listen: {reason}', { reason: x[1] });
+  x = /^Cannot receive: (.*)$/.exec(m);
+  if (x) return t('Cannot receive: {reason}', { reason: x[1] });
+  x = /^Unreadable sample: (.*)$/.exec(m);
+  if (x) return t('Unreadable sample: {reason}', { reason: x[1] });
   x = /^Stopped: (.*) — trying again$/.exec(m);
   if (x) return t('Stopped: {reason} — trying again', { reason: x[1] });
   switch (m) {
@@ -38,6 +44,10 @@ export function inputMessage(m: string): string {
       return t('Starting…');
     case 'Waiting for the sender…':
       return t('Waiting for the sender…');
+    case 'Waiting for the camera…':
+      return t('Waiting for the camera…');
+    case 'Receiving':
+      return t('Receiving');
     case 'Connecting…':
       return t('Connecting…');
     case 'Not started (save the settings)':
@@ -67,7 +77,8 @@ async function fetchList() {
     const text = await r.text();
     if (text === listText) return;
     listText = text;
-    list = JSON.parse(text) as InputInfo[];
+    // Pictures only (not the camera tracking inputs).
+    list = (JSON.parse(text) as InputInfo[]).filter((i) => i.kind !== 'tracking');
     listSubs.forEach((f) => f());
   } catch {
     /* offline */

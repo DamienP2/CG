@@ -2153,6 +2153,7 @@ fn blend_name(k: &[u8; 4]) -> Option<&'static str> {
 
 fn layer(name: &str, kind: LayerKind) -> Layer {
     Layer {
+        anchor: None,
         id: new_id(),
         name: name.to_string(),
         parent: None,

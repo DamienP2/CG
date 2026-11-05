@@ -826,6 +826,10 @@ pub struct Layer {
     /// Loop): it runs on the layer's age, also once the template holds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub motion: Option<Motion>,
+    /// Anchored to the scene: follows the camera of its template
+    /// ([`Template::camera`]); top-level layers only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<crate::tracking::Track>,
 }
 
 /// A movement a layer repeats (see [`crate::anim::apply_motion`]).
@@ -1503,6 +1507,10 @@ pub struct Template {
     /// templates are converted by [`Template::normalize_markers`].
     #[serde(default)]
     pub marker_model: u8,
+    /// The tracking input (an input of kind `tracking`) whose camera its
+    /// anchored layers follow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<String>,
 }
 
 /// The widget a scrolling Text of older projects becomes: horizontal, the
@@ -1551,6 +1559,7 @@ impl Template {
     pub fn blank_secs(name: &str, zone: &str, fps: f64, secs: f64) -> Self {
         let len = (fps * secs.clamp(0.1, 600.0)).round().max(2.0);
         Template {
+            camera: None,
             id: new_id(),
             name: name.into(),
             duration: len,

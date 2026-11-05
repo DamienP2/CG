@@ -23,6 +23,7 @@ import { WidgetRunButtons } from './WidgetRun';
 import { AreaInspector, useGuidesView } from './Guides';
 import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
+import { LayerAnchor, TemplateTracking } from './Tracking';
 import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
 import { Bound, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, SliderNum, Toggle, Warnings, wiredKeys } from '../widgets/kit';
@@ -1082,7 +1083,7 @@ function RowStep({ ds }: { ds: DataSet }) {
 }
 
 function LayerInspector({ layer }: { layer: Layer }) {
-  const { update } = useDesigner(useShallow((s) => ({ update: s.update })));
+  const { update, template } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template })));
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const textLike = TEXT_LIKE.has(layer.type);
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
@@ -1115,6 +1116,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
         )
       )}
       {layer.type !== 'text' && layer.type !== 'group' && <EffectsGroup layer={layer} />}
+      {template && <LayerAnchor layer={layer} template={template} />}
       <Group id={folder ? 'folder-properties' : 'properties'} title={t('Properties')} defaultOpen={folder}>
         <Group id="transform" title={tc('section', 'Transform')} level={2}>
           {TRANSFORM_ROWS.map((r) => (
@@ -1443,6 +1445,7 @@ function TemplateInspector({ template }: { template: Template }) {
             {!zones.length && <span className="muted small">{t('No zone yet')}</span>}
           </div>
         </div>
+        <TemplateTracking template={template} />
       </div>
     </>
   );

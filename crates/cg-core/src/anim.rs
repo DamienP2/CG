@@ -417,6 +417,37 @@ pub fn apply_motion(
     }
 }
 
+/// Moves a layer anchored to the scene where the camera sees its anchor
+/// point now (mirror of web/src/engine/tracking.ts); hidden when the camera
+/// looks away. `w` × `h`: the picture it is laid out in.
+pub fn apply_track(
+    values: &mut BTreeMap<Prop, Value>,
+    track: &crate::tracking::Track,
+    cam: &crate::tracking::CameraSample,
+    w: f64,
+    h: f64,
+) {
+    let num = |v: &BTreeMap<Prop, Value>, p: Prop| {
+        v.get(&p)
+            .and_then(Value::as_number)
+            .unwrap_or_else(|| default_value(p).as_number().unwrap_or(0.0))
+    };
+    let px = num(values, Prop::X) + num(values, Prop::AnchorX) * num(values, Prop::Width);
+    let py = num(values, Prop::Y) + num(values, Prop::AnchorY) * num(values, Prop::Height);
+    let Some((dx, dy, k)) = crate::tracking::follow(track, cam, w, h, px, py) else {
+        values.insert(Prop::Opacity, Value::Number(0.0));
+        return;
+    };
+    for (p, d) in [(Prop::X, dx), (Prop::Y, dy)] {
+        let v = num(values, p) + d;
+        values.insert(p, Value::Number(v));
+    }
+    for p in [Prop::ScaleX, Prop::ScaleY] {
+        let v = num(values, p) * k;
+        values.insert(p, Value::Number(v));
+    }
+}
+
 #[cfg(test)]
 mod motion_tests {
     use super::*;
