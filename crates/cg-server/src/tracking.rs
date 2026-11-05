@@ -9,16 +9,19 @@
 //! port 55555, by default.
 //!
 //! Each tracking input (an input of kind `tracking`) has a receiving
-//! thread. Its samples are kept for two seconds: the graphics take them
-//! `delay` frames late, to meet the video they are keyed over.
+//! thread. Its samples are kept for two seconds, stamped on a steady clock
+//! locked to their arrivals (the network delivers them unevenly). A frame
+//! takes where the camera looked `delay` frames before the frame is shown,
+//! to meet the video it is keyed over: between the two samples around that
+//! time, or on from the last at the same pace for a few samples.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
-use cg_core::tracking::CameraSample;
+use cg_core::tracking::{mix, CameraSample};
 use serde_json::Value as Json;
 
 use crate::inputs::{InputConfig, InputKind, InputStatus};
@@ -29,8 +32,81 @@ const HEADER: usize = 16;
 /// Samples kept for the delay.
 const KEPT: Duration = Duration::from_secs(2);
 
-/// Where the cameras look, by tracking input (the latest of each, late by its delay).
-pub type Shown = Arc<BTreeMap<String, CameraSample>>;
+/// Samples sent to the clients by camera (they interpolate between them).
+const SENT: usize = 6;
+/// How far past the last sample a camera goes on at the same pace, in samples.
+const AHEAD: f64 = 3.0;
+
+/// A sample for the clients: when it is to be shown (server clock, ms since
+/// 1970, its delay added) and where the camera looked.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct Timed {
+    pub t: f64,
+    #[serde(flatten)]
+    pub s: CameraSample,
+}
+
+/// The cameras' last samples, by tracking input, oldest first.
+pub type Shown = Arc<BTreeMap<String, Vec<Timed>>>;
+
+/// `t` on the steady clock.
+fn instant_of(t: SystemTime) -> Instant {
+    let (now, wall) = (Instant::now(), SystemTime::now());
+    match t.duration_since(wall) {
+        Ok(d) => now + d,
+        Err(e) => now.checked_sub(e.duration()).unwrap_or(now),
+    }
+}
+
+/// `t` on the wall clock, ms since 1970.
+fn wall_ms(t: Instant) -> f64 {
+    let (now, wall) = (Instant::now(), SystemTime::now());
+    let w = if t >= now {
+        wall + (t - now)
+    } else {
+        wall - (now - t)
+    };
+    w.duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64() * 1000.0)
+}
+
+/// Stamps samples on a steady clock: one period after the last, drawn
+/// slowly towards when they arrive (a lost sample skips a period; a long
+/// gap starts again from the arrival).
+#[derive(Default)]
+struct Steady {
+    last: Option<Instant>,
+}
+
+impl Steady {
+    fn stamp(&mut self, arrived: Instant, period: f64) -> Instant {
+        let at = match self.last {
+            None => arrived,
+            Some(last) => {
+                let predicted = last + Duration::from_secs_f64(period);
+                let err = if arrived >= predicted {
+                    (arrived - predicted).as_secs_f64()
+                } else {
+                    -(predicted - arrived).as_secs_f64()
+                };
+                let lost = (err / period).round().max(0.0);
+                if lost > 4.0 || err < -4.0 * period {
+                    arrived
+                } else {
+                    let err = err - lost * period;
+                    let at = predicted + Duration::from_secs_f64(lost * period);
+                    if err >= 0.0 {
+                        at + Duration::from_secs_f64(err * 0.1)
+                    } else {
+                        at - Duration::from_secs_f64(-err * 0.1)
+                    }
+                }
+            }
+        };
+        self.last = Some(at);
+        at
+    }
+}
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
@@ -84,18 +160,53 @@ impl Cam {
             .is_some_and(|(t, _)| t.elapsed() < Duration::from_secs(2))
     }
 
-    /// The sample `delay` frames before now (the oldest kept when none is that old).
-    fn delayed(&self) -> Option<CameraSample> {
+    /// Seconds between two samples.
+    fn period(&self) -> f64 {
+        1.0 / lock(&self.rate).unwrap_or(50.0).max(1.0)
+    }
+
+    /// The delay, as a duration.
+    fn late(&self) -> Duration {
+        Duration::from_secs_f64(self.delay as f64 * self.period())
+    }
+
+    /// Where the camera looked `delay` frames before `t`: between the two
+    /// samples around then, on from the last at the same pace a little
+    /// while, the oldest kept before them all.
+    fn at(&self, t: Instant) -> Option<CameraSample> {
         let samples = lock(&self.samples);
-        let fps = lock(&self.rate).unwrap_or(50.0).max(1.0);
-        let late = Duration::from_secs_f64(self.delay as f64 / fps);
-        let due = Instant::now().checked_sub(late)?;
+        let due = t.checked_sub(self.late())?;
+        let after = samples.iter().position(|(at, _)| *at > due);
+        let (a, b) = match after {
+            Some(0) => return samples.front().map(|(_, s)| *s),
+            Some(i) => (samples[i - 1], samples[i]),
+            None if samples.len() >= 2 => (samples[samples.len() - 2], samples[samples.len() - 1]),
+            None => return samples.back().map(|(_, s)| *s),
+        };
+        let span = (b.0 - a.0).as_secs_f64();
+        if span <= 0.0 {
+            return Some(b.1);
+        }
+        let k = if due >= a.0 {
+            (due - a.0).as_secs_f64() / span
+        } else {
+            0.0
+        };
+        Some(mix(&a.1, &b.1, k.min(1.0 + AHEAD * self.period() / span)))
+    }
+
+    /// The last samples for the clients.
+    fn sent(&self) -> Vec<Timed> {
+        let late = self.late();
+        let samples = lock(&self.samples);
         samples
             .iter()
-            .rev()
-            .find(|(t, _)| *t <= due)
-            .or(samples.front())
-            .map(|(_, s)| *s)
+            .skip(samples.len().saturating_sub(SENT))
+            .map(|(at, s)| Timed {
+                t: wall_ms(*at + late),
+                s: *s,
+            })
+            .collect()
     }
 }
 
@@ -157,18 +268,25 @@ impl Tracking {
         });
     }
 
-    /// Where camera `id` looks for the graphics (late by its delay).
+    /// Where camera `id` looks for graphics shown now (late by its delay).
+    #[cfg(test)]
     pub fn sample(&self, id: &str) -> Option<CameraSample> {
-        lock(&self.running).get(id)?.cam.delayed()
+        lock(&self.running).get(id)?.cam.at(Instant::now())
     }
 
-    /// The cameras the templates of a project follow, for a frame.
-    pub fn for_project(&self, p: &cg_core::Project) -> BTreeMap<String, CameraSample> {
+    /// The cameras the templates of a project follow, for a frame shown at `shown`.
+    pub fn for_project(
+        &self,
+        p: &cg_core::Project,
+        shown: SystemTime,
+    ) -> BTreeMap<String, CameraSample> {
+        let at = instant_of(shown);
+        let running = lock(&self.running);
         let mut out = BTreeMap::new();
         for t in &p.templates {
             if let Some(id) = &t.camera {
                 if !out.contains_key(id) {
-                    if let Some(s) = self.sample(id) {
+                    if let Some(s) = running.get(id).and_then(|r| r.cam.at(at)) {
                         out.insert(id.clone(), s);
                     }
                 }
@@ -187,7 +305,7 @@ impl Tracking {
         lock(&self.running)
             .iter()
             .filter(|(_, r)| r.cam.live())
-            .filter_map(|(id, r)| r.cam.delayed().map(|s| (id.clone(), s)))
+            .filter_map(|(id, r)| r.cam.at(Instant::now()).map(|s| (id.clone(), s)))
             .collect()
     }
 
@@ -256,7 +374,7 @@ fn receive(
     cam.say("Waiting for the camera…");
     let mut buf = vec![0u8; 65_536];
     let mut parts = Segments::default();
-    let mut published = Instant::now();
+    let mut steady = Steady::default();
     while !cam.stop.load(Ordering::Relaxed) {
         match sock.recv(&mut buf) {
             Ok(n) => {
@@ -295,16 +413,25 @@ fn receive(
                     *lock(&cam.rate) = Some(r);
                 }
                 let now = Instant::now();
+                let at = steady.stamp(now, cam.period());
                 {
                     let mut kept = lock(&cam.samples);
-                    kept.push_back((now, s));
-                    while kept.front().is_some_and(|(t, _)| now - *t > KEPT) {
+                    kept.push_back((at, s));
+                    while kept
+                        .front()
+                        .is_some_and(|(t, _)| now.saturating_duration_since(*t) > KEPT)
+                    {
                         kept.pop_front();
                     }
                 }
                 if cam.received.fetch_add(1, Ordering::Relaxed) == 0 {
                     cam.say("Receiving");
                 }
+                // To the clients: each sample, with the ones before it.
+                let sent = cam.sent();
+                shown.send_modify(|m| {
+                    Arc::make_mut(m).insert(cam.id.clone(), sent);
+                });
             }
             Err(e)
                 if matches!(
@@ -314,19 +441,6 @@ fn receive(
             Err(e) => {
                 cam.say(format!("Cannot receive: {e}"));
                 std::thread::sleep(Duration::from_secs(1));
-            }
-        }
-        // To the clients, at most fifty times a second.
-        if published.elapsed() >= Duration::from_millis(20) {
-            published = Instant::now();
-            if let Some(s) = cam.delayed() {
-                shown.send_if_modified(|m| {
-                    if m.get(&cam.id) == Some(&s) {
-                        return false;
-                    }
-                    Arc::make_mut(m).insert(cam.id.clone(), s);
-                    true
-                });
             }
         }
     }
@@ -708,6 +822,71 @@ mod tests {
         assert_eq!(v, serde_json::json!({"x": [1, 2]}));
     }
 
+    fn cam(delay: u32) -> Cam {
+        Cam {
+            id: "c".into(),
+            delay,
+            source: 1,
+            stop: AtomicBool::new(false),
+            samples: Default::default(),
+            rate: Mutex::new(Some(50.0)),
+            received: AtomicU64::new(0),
+            message: Default::default(),
+            sensor: Mutex::new(0.0),
+        }
+    }
+
+    fn pan(p: f64) -> CameraSample {
+        CameraSample {
+            pan: p,
+            focal: 35.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn uneven_arrivals_are_stamped_evenly() {
+        let t0 = Instant::now();
+        let mut steady = Steady::default();
+        // 50 a second, each arriving up to 6 ms late, one lost.
+        let jitter = [0, 6, 1, 5, 0, 3, 6, 2, 0, 4];
+        let mut stamps = Vec::new();
+        for (i, j) in (0..40u64).zip(jitter.iter().cycle()) {
+            if i == 20 {
+                continue;
+            }
+            let arrived = t0 + Duration::from_millis(i * 20 + j);
+            stamps.push((i, steady.stamp(arrived, 0.02)));
+        }
+        // Once locked: one period apart (two over the lost one), within 1 ms.
+        for w in stamps[10..].windows(2) {
+            let ((i, a), (k, b)) = (w[0], w[1]);
+            let gap = (b - a).as_secs_f64() * 1000.0;
+            assert!(
+                (gap - 20.0 * (k - i) as f64).abs() < 1.0,
+                "{gap} ms between {i} and {k}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_takes_the_camera_between_samples() {
+        let c = cam(0);
+        let t0 = Instant::now();
+        lock(&c.samples).extend([(t0, pan(0.0)), (t0 + Duration::from_millis(20), pan(2.0))]);
+        let at = |ms: u64| c.at(t0 + Duration::from_millis(ms)).unwrap().pan;
+        assert!((at(10) - 1.0).abs() < 1e-9);
+        // On at the same pace a little past the last sample, then held.
+        assert!((at(30) - 3.0).abs() < 1e-9);
+        assert!((at(500) - 8.0).abs() < 1e-9);
+        // Before them all: the oldest.
+        assert_eq!(c.at(t0).unwrap().pan, 0.0);
+        // Late by its delay: two frames before.
+        let late = cam(2);
+        lock(&late.samples).extend([(t0, pan(0.0)), (t0 + Duration::from_millis(20), pan(2.0))]);
+        assert!((late.at(t0 + Duration::from_millis(50)).unwrap().pan - 1.0).abs() < 1e-9);
+    }
+
     #[test]
     fn a_camera_is_received_and_delayed() {
         let port = {
@@ -737,7 +916,7 @@ mod tests {
             tx.send_to(&packet(1, SAMPLE.as_bytes()), ("127.0.0.1", port))
                 .unwrap();
             std::thread::sleep(Duration::from_millis(20));
-            // Received, and passed on to the clients (at most every 20 ms).
+            // Received, and passed on to the clients.
             if t.sample("fr7").is_some() && rx.has_changed().unwrap_or(false) {
                 break;
             }
@@ -746,7 +925,13 @@ mod tests {
         assert_eq!(s.pan, 12.5);
         assert!(t.status()[0].live);
         assert!(rx.has_changed().unwrap_or(false));
-        assert_eq!(rx.borrow_and_update().get("fr7").map(|s| s.pan), Some(12.5));
+        assert_eq!(
+            rx.borrow_and_update()
+                .get("fr7")
+                .and_then(|l| l.last())
+                .map(|x| x.s.pan),
+            Some(12.5)
+        );
         // Removed: stopped, no longer shown.
         t.apply(&[], None);
         assert!(t.sample("fr7").is_none());

@@ -2777,7 +2777,7 @@ async fn channel_preview(
     let mut state = ch.state.read().await.clone();
     // Its anchored graphics where the cameras see them.
     if let Some(p) = &project {
-        state.cameras = s.tracking.for_project(p);
+        state.cameras = s.tracking.for_project(p, std::time::SystemTime::now());
     }
     let wanted = q.rendition.as_deref().unwrap_or("main");
     let slate = ch
@@ -4192,7 +4192,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
     }
 
     let mut ended = s.auth.ended();
-    // Where the tracked cameras look (the newest only: a slow client skips).
+    // Where the tracked cameras look: their last samples (a slow client skips some).
     let mut cameras = s.tracking.watch();
     cameras.mark_changed();
     let mut users_changed = s.auth.users_changed();
@@ -4210,7 +4210,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
             r = cameras.changed() => {
                 if r.is_err() { break }
                 let shown = cameras.borrow_and_update().clone();
-                let msg = serde_json::json!({ "type": "cameras", "cameras": &*shown });
+                let msg = serde_json::json!({ "type": "cameras", "cameras": &*shown, "serverTime": now_ms() });
                 if tx.send(Message::Text(msg.to_string().into())).await.is_err() { break }
             },
             // Its user changed (role, scope) or can no longer sign in: closed,

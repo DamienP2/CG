@@ -751,14 +751,14 @@ fn clock(
             p.dispatch(n, at);
         }
         let (project, snapshot) = rt.block_on(advance(state, ch, &mut saved_at));
-        // Where the cameras its graphics follow look (late by their delay).
-        let cameras = project
-            .as_ref()
-            .map(|p| state.tracking.for_project(p))
-            .unwrap_or_default();
         for p in &pictures {
             // Shown `ahead` ticks from now.
             let shown = at + period * p.ahead as u32;
+            // Where the cameras its graphics follow look then (late by their delay).
+            let cameras = project
+                .as_ref()
+                .map(|pr| state.tracking.for_project(pr, shown))
+                .unwrap_or_default();
             let shown_ms = shown
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0.0, |d| d.as_secs_f64() * 1000.0);
@@ -768,7 +768,7 @@ fn clock(
             } else {
                 snapshot.bus(p.bus)
             };
-            shown_state.cameras.clone_from(&cameras);
+            shown_state.cameras = cameras;
             p.request((n, project.clone(), shown_state, shown_ms));
         }
     }

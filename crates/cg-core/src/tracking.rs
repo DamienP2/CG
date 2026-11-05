@@ -62,6 +62,25 @@ pub struct Track {
     pub zoom: bool,
 }
 
+/// The camera `k` of the way from `a` to `b` (beyond 1: on past `b` at the
+/// same pace); angles the short way round.
+pub fn mix(a: &CameraSample, b: &CameraSample, k: f64) -> CameraSample {
+    let lin = |x: f64, y: f64| x + (y - x) * k;
+    let ang = |x: f64, y: f64| x + ((y - x + 540.0).rem_euclid(360.0) - 180.0) * k;
+    CameraSample {
+        pan: ang(a.pan, b.pan),
+        tilt: ang(a.tilt, b.tilt),
+        roll: ang(a.roll, b.roll),
+        focal: lin(a.focal, b.focal),
+        sensor: b.sensor,
+        focus: lin(a.focus, b.focus),
+        iris: lin(a.iris, b.iris),
+        x: lin(a.x, b.x),
+        y: lin(a.y, b.y),
+        z: lin(a.z, b.z),
+    }
+}
+
 type M3 = [[f64; 3]; 3];
 
 fn mul(a: &M3, b: &M3) -> M3 {
@@ -224,6 +243,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s, 1.0);
+    }
+
+    #[test]
+    fn mixing_goes_the_short_way_round() {
+        let a = CameraSample {
+            pan: 170.0,
+            focal: 20.0,
+            ..Default::default()
+        };
+        let b = CameraSample {
+            pan: -170.0,
+            focal: 40.0,
+            ..Default::default()
+        };
+        let m = mix(&a, &b, 0.5);
+        assert!((m.pan.rem_euclid(360.0) - 180.0).abs() < 1e-9, "{}", m.pan);
+        assert!((m.focal - 30.0).abs() < 1e-9);
+        // On past the second at the same pace.
+        assert!((mix(&a, &b, 2.0).focal - 60.0).abs() < 1e-9);
     }
 
     #[test]
