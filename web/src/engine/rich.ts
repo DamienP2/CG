@@ -294,6 +294,12 @@ export const typedKeys = (t: Pick<Template, 'fields'> | null | undefined) => {
 /** The template's typed keys, for the texts drawn inside it (set by Scene). */
 export const RichKeys = createContext<(key: string) => boolean>(() => false);
 
+/** A typed text shown in a Paragraph (a Text on several lines): typed on several lines too. */
+export function paragraphField(t: Pick<Template, 'layers'>, key: string): boolean {
+  const token = `{{${key}}}`;
+  return t.layers.some((l) => l.type === 'text' && !!(l as { wrap?: boolean }).wrap && l.text.includes(token));
+}
+
 /** Whether the operator can style the value of `key` (typed, and only shown in Texts). */
 export function richField(t: Pick<Template, 'fields' | 'layers'>, key: string): boolean {
   const f = t.fields.find((x) => x.key === key);

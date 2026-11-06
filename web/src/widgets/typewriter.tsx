@@ -516,7 +516,7 @@ function TwBar(p: OpP) {
   const setOn = (v: AdvanceMode) => (designer ? b.set('nextOn', v) : act('advance', { on: v, seconds: ch.hold, trigger: ch.trigger, ...cur }));
   const setSecs = (v: number) => (designer ? b.set('hold', v) : act('advance', { seconds: v, ...cur }));
   const setTrigger = (v: string) => (designer ? b.set('nextTrigger', v) : act('advance', { on: 'trigger', trigger: v, ...cur }));
-  // Confirmations only on air (a key does as its button). Enter and Space stay the Operator's TAKE and CONTINUE.
+  // Confirmations only on air (a key does as its button). Space stays the Operator's CONTINUE.
   useKeys({
     s: () => act('start', cur),
     p: () => (running ? act('pause', cur) : play()),

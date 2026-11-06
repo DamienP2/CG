@@ -14,7 +14,7 @@ export const operator: Record<string, string> = {
   'Remove “{name}”?': 'Retirer « {name} » ?',
   'It leaves the playlist (the template stays).': 'Il quitte la playlist (le modèle reste).',
   'Empty playlist: add graphics from your templates with +.': 'Playlist vide : ajoutez des graphiques depuis vos modèles avec +.',
-  'F1 / Enter: takes {name}': 'F1 / Entrée : envoie {name} à l’antenne',
+  'F1: takes {name}': 'F1 : envoie {name} à l’antenne',
   'the next graphic': 'le graphique suivant',
   'F12: everything out at once': 'F12 : tout retirer de l’antenne d’un coup',
   'Clear all': 'Tout effacer',

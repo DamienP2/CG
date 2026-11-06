@@ -1,6 +1,6 @@
 import { withSettings } from '../engine/settings';
 import { RichInput } from '../ui/RichText';
-import { plain, richField } from '../engine/rich';
+import { paragraphField, plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Eraser, Share2, UserRound, Clock, Copy, CopyPlus, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal } from 'lucide-react';
 import { busItems, busOf } from '../engine/buses';
@@ -1078,7 +1078,7 @@ function NextButton({ project, live, target, disabled, onTake, cap }: { project:
   if (auto) {
     const done = auto.secs > 0 ? Math.min(1, Math.max(0, 1 - left / auto.secs)) : 1;
     return (
-      <button className="opx-btn big red opx-next-auto" disabled={disabled} onClick={onTake} title={t('F1 / Enter: takes {name}', { name: target?.name ?? t('the next graphic') })}>
+      <button className="opx-btn big red opx-next-auto" disabled={disabled} onClick={onTake} title={t('F1: takes {name}', { name: target?.name ?? t('the next graphic') })}>
         <span className="opx-next-fill" style={{ width: `${done * 100}%` }} />
         <span className="opx-next-top">
           <b className="opx-next-n">{Math.ceil(left - 1e-3)}</b>
@@ -1091,7 +1091,7 @@ function NextButton({ project, live, target, disabled, onTake, cap }: { project:
     );
   }
   return (
-    <button className="opx-btn big red" disabled={disabled} onClick={onTake} title={t('F1 / Enter: takes {name}', { name: target?.name ?? t('the next graphic') })}>
+    <button className="opx-btn big red" disabled={disabled} onClick={onTake} title={t('F1: takes {name}', { name: target?.name ?? t('the next graphic') })}>
       <SkipForward size={15} fill="currentColor" /> NEXT
       {target && <span className="opx-next-name">{target.name}</span>}
       {cap}
@@ -1344,7 +1344,7 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
  * fed by a data set show), then the properties exposed in the Designer, layer
  * by layer, with the Designer's controls and sections.
  */
-function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; /** A widget's only value: its layer's name, not the label set at import (often the text itself). */ names: Map<string, string>; exposed: ExposedLayer[]; fedLayers: Layer[]; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
+function ValuesPane({ template, fields: given, names, exposed, fedLayers, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; /** A widget's only value: its layer's name, not the label set at import (often the text itself). */ names: Map<string, string>; exposed: ExposedLayer[]; fedLayers: Layer[]; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
   // With what its Logic computes into texts ({{calc_…}}), as on air.
   const shownData = useMemo(() => {
     const hold = holdFrame(template);
@@ -1396,6 +1396,8 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
       label
     );
   // A value a data set gives (its column), unless typed by hand.
+  // A text shown in a Paragraph is typed on several lines (Enter: a new line).
+  const fields = given.map((f) => (f.kind === 'text' && paragraphField(template, f.key) ? { ...f, kind: 'multiline' as const } : f));
   const fieldKeys = new Set(fields.map((f) => f.key));
   const columnOf = (k: string) => usedDatasets(template).find((d) => k.startsWith(`${d.key}_`) && k[d.key.length + 1] !== '_');
   /** A value read from the data: read only, in the data's colour, the column or path it comes from, the pen to type it by hand. */

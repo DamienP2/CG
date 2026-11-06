@@ -49,7 +49,7 @@ export function actionLabel(id: string): string {
 
 /** The Broadcast profile: the keys of the Operator's buttons. */
 export const BROADCAST: Binding[] = [
-  { action: 'next', keys: ['F1', 'Enter'] },
+  { action: 'next', keys: ['F1'] },
   { action: 'take', keys: [] },
   { action: 'continue', keys: ['F2', 'Space'] },
   { action: 'continueAll', keys: [] },
@@ -136,6 +136,8 @@ export function capLabel(part: string): string {
 /** The bindings in force: the user's, else the Broadcast profile. */
 export const effective = (b: Binding[] | null): Binding[] => {
   if (!b) return BROADCAST;
+  // Enter no longer takes on air (it was the Broadcast profile's, saved with it): it is the fields' key.
+  if (b.some((x) => x.action === 'next' && x.keys.includes('Enter'))) b = b.map((x) => (x.action === 'next' ? { ...x, keys: x.keys.filter((k) => k !== 'Enter') } : x));
   // Update was on F5 (which also reloads the page): saved before it moved to F4, it follows.
   const upd = b.find((x) => x.action === 'update');
   if (upd?.keys.length !== 1 || upd.keys[0] !== 'F5' || b.some((x) => x.keys.includes('F4'))) return b;
@@ -253,7 +255,8 @@ export function useShortcuts(handlers: ShortcutHandlers) {
       const key = keyOf(e);
       if (!key) return;
       const field = inField(e);
-      if (capture !== (field && FUNCTION_KEY.test(key))) return;
+      // In a field, only F1…F12 are the Operator's (Enter, Space, arrows… are the field's).
+      if (field ? !(capture && FUNCTION_KEY.test(key)) : capture) return;
       const bindings = effective(useShortcutPrefs.getState().bindings);
       const action = actionsOf(bindings, key)[0];
       if (!action) return;
