@@ -9,7 +9,7 @@ import { withSettings } from './settings';
 import { ValueMotionContext, valueTransform } from './valueMotion';
 import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
 import { TimeContext, useLayerTime, type Motion } from './LiveTime';
-import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, tweakValue, type Resolved } from './evaluate';
+import { col, cssColor, holdFrame, interpolateText, keepingRatios, num, transformText, parseHex, resolveLayer, tweakValue, type Resolved } from './evaluate';
 import type { Data, FontStyle, GroupMask, Layer, LayerType, Template, TextAlign, Tweak, VerticalAlign } from './types';
 import * as W from './widgets';
 import { applyLogic, clockAt, targeted, logicUsesTime, measureLayer, patchedLayers, wiredLayers, withOutputs } from './logic';
@@ -602,7 +602,7 @@ function SceneBody({ template, frame, data, interactive, clock, tweaks }: SceneP
     const out = new Map<string, Resolved>();
     const values = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
     if (template.logic?.nodes.length) {
-      applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText), clock);
+      keepingRatios(template.layers, values, () => applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText), clock));
       for (const id of targeted(template.logic)) if (values.has(id)) out.set(id, values.get(id)!);
     }
     // Properties a Logic changed on air (« Animate a property »).

@@ -705,7 +705,22 @@ impl Renderer {
                 },
             }
         };
+        // The values the graph sets; a pair kept in proportion follows when one of it is set.
+        let locked: Vec<&cg_core::Layer> = t
+            .layers
+            .iter()
+            .filter(|l| cg_core::anim::locked_pairs(l).next().is_some())
+            .collect();
+        let before: Vec<_> = locked
+            .iter()
+            .filter_map(|l| values.get(&l.id).map(|v| (*l, v.clone())))
+            .collect();
         cg_core::logic::apply(&t.logic, &mut values, data, &mut measure, clock);
+        for (l, was) in &before {
+            if let Some(v) = values.get_mut(&l.id) {
+                cg_core::anim::keep_ratios(l, was, v);
+            }
+        }
         let logic = cg_core::logic::current(&t.logic);
         let targeted = cg_core::logic::targeted(&logic);
         values.retain(|k, _| targeted.contains(k.as_str()));

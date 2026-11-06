@@ -7,7 +7,7 @@ import { loadLottieAsset } from './lottie';
 import { fieldUsed } from '../engine/settings';
 import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Sparkles, Unlink } from 'lucide-react';
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
+import { applyEasing, col, holdFrame, interpolateText, keepingRatios, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, clockAt, drivenProps, measureLayer, withOutputs } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
 import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type GroupMask, type Layer, type LayerType, type Prop, type Template, type Value, type Data } from '../engine/types';
@@ -224,10 +224,31 @@ function LogicBadge({ layer, props }: { layer: Layer; props: Prop[] }) {
 }
 
 /** (•) at the end of a row: exposes the property to the Operator (a variable he sets), or stops. */
-export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) {
+/** The label of the one field a pair kept in proportion is exposed as. */
+const ONE_FIELD: Partial<Record<Prop, string>> = { scaleX: 'Scale', width: 'Width' };
+
+/**
+ * Lock or unlock the proportions of a pair (Scale, Size). Locked, the pair
+ * is exposed as one field (the first value; the other follows): a second
+ * field exposed before goes.
+ */
+export function setRatioLock(tpl: Template, layerId: string, lock: 'scaleLock' | 'lockRatio', on: boolean) {
+  const l = findLayer(tpl, layerId);
+  if (!l) return;
+  l[lock] = on || undefined;
+  const [a, b] = lock === 'scaleLock' ? (['scaleX', 'scaleY'] as const) : (['width', 'height'] as const);
+  if (on && l.bindings[a] && l.bindings[b]) {
+    const key = l.bindings[b];
+    delete l.bindings[b];
+    if (key && !fieldUsed(tpl, key)) tpl.fields = tpl.fields.filter((f) => f.key !== key);
+  }
+}
+
+export function ExposeButton({ layer, props: all, locked }: { layer: Layer; props: Prop[]; /** The pair keeps its proportions: one field, the other value follows. */ locked?: boolean }) {
   const { update, template } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template })));
   if (!template) return <span className="pp-op-space" />;
-  const bound = props.map((p) => layer.bindings[p]).filter((k): k is string => !!k);
+  const props = locked ? all.slice(0, 1) : all;
+  const bound = all.map((p) => layer.bindings[p]).filter((k): k is string => !!k);
   const on = bound.length > 0;
   const fields = template.fields.filter((f) => bound.includes(f.key));
   const expose = () =>
@@ -235,7 +256,7 @@ export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) 
       const l = findLayer(tpl, layer.id)!;
       for (const prop of props) {
         const isColor = prop === 'fill' || prop === 'stroke';
-        const name = PROP_LABELS[prop] ?? prop;
+        const name = (locked && ONE_FIELD[prop]) || PROP_LABELS[prop] || prop;
         // The key from the English name (an identifier), the label in the interface's language.
         const key = fieldKey(`${l.name} ${name}`, new Set(tpl.fields.map((f) => f.key)));
         // Default: what is seen on air.
@@ -247,7 +268,7 @@ export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) 
   const unbind = () =>
     update((t) => {
       const l = findLayer(t, layer.id)!;
-      for (const prop of props) {
+      for (const prop of all) {
         const key = l.bindings[prop];
         delete l.bindings[prop];
         // A field made for this binding and used nowhere else goes too.
@@ -281,7 +302,7 @@ function useDrivenValues(layer: Layer): Map<string, Value> {
     const data = { ...previewData, ...bound };
     const hold = holdFrame(template);
     const resolved = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
-    applyLogic(template.logic, resolved, data, measureLayer(template.layers, data, interpolateText));
+    keepingRatios(template.layers, resolved, () => applyLogic(template.logic, resolved, data, measureLayer(template.layers, data, interpolateText)));
     const r = resolved.get(layer.id);
     if (r) for (const p of driven) out.set(p, r[p]);
     return out;
@@ -379,17 +400,18 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
         <LogicBadge layer={layer} props={spec.props} />
       </span>
       <div className="pp-fields">
-        {spec.props.map((p, i) => (
-          <span key={p} className="pp-field">
+        {/* Locked: one field, the other value follows. */}
+        {(locked ? spec.props.slice(0, 1) : spec.props).map((p, i) => (
+          <span key={p} className={`pp-field ${locked && spec.props.length === 2 ? 'one' : ''}`}>
             {driven.has(p) ? (
-              <DrivenValue value={driven.get(p)!} label={spec.fields?.[i]} display={spec.display} suffix={spec.suffix} precision={spec.precision ?? (spec.display ? 0 : 1)} />
+              <DrivenValue value={driven.get(p)!} label={locked && spec.lock === 'scaleLock' ? undefined : spec.fields?.[i]} display={spec.display} suffix={spec.suffix} precision={spec.precision ?? (spec.display ? 0 : 1)} />
             ) : (
-              <NumberField label={spec.fields?.[i] && t(spec.fields[i])} value={num(propValue(layer, p, frame))} display={spec.display} suffix={spec.suffix} precision={spec.precision} min={spec.min} max={spec.max} onChange={(nv) => setValue(p, nv)} />
+              <NumberField label={spec.fields?.[i] && !(locked && spec.lock === 'scaleLock') ? t(spec.fields[i]) : undefined} value={num(propValue(layer, p, frame))} display={spec.display} suffix={spec.suffix} precision={spec.precision} min={spec.min} max={spec.max} onChange={(nv) => setValue(p, nv)} />
             )}
           </span>
         ))}
         {spec.lock && (
-          <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => update((t) => void (findLayer(t, layer.id)![spec.lock!] = !locked || undefined))}>
+          <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => update((t) => setRatioLock(t, layer.id, spec.lock!, !locked))}>
             {locked ? <LinkIcon size={12} /> : <Unlink size={12} />}
           </button>
         )}
@@ -399,7 +421,7 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
           </button>
         )}
       </div>
-      <ExposeButton layer={layer} props={spec.props} />
+      <ExposeButton layer={layer} props={spec.props} locked={locked} />
     </div>
   );
 }

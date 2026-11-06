@@ -9042,6 +9042,11 @@ body.cv-moving * {
   flex: 1;
   min-width: 0;
 }
+/* A pair kept in proportion: one field, as wide as the two. */
+.pp-field.one {
+  flex: 0 0 186px;
+  width: 186px;
+}
 .pp-field .num-field,
 .wk-ctl .pp-field .num-field {
   height: 28px;

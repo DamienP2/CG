@@ -236,7 +236,40 @@ export function resolveLayer(layer: Layer, frame: number, data: Data, hold = 0):
       out[p] = animated + bound - (typeof atHold === 'number' ? atHold : animated);
     } else out[p] = bound ?? animated ?? layer.props?.[p] ?? layerDefault(layer, p);
   }
+  // One value of a pair kept in proportion given by data: the other follows.
+  const isBound = (p: Prop) => !!layer.bindings?.[p] && data[layer.bindings[p]!] !== undefined;
+  if (lockedPairs(layer).some(([a, b]) => isBound(a) !== isBound(b))) {
+    const own = {} as Resolved;
+    for (const [a, b] of lockedPairs(layer)) for (const p of [a, b]) own[p] = propValue(layer, p, frame);
+    keepRatios(layer, own, out);
+  }
   return out;
+}
+
+/** Mirror of anim::locked_pairs: the values a layer keeps in proportion (scale, size). */
+export function lockedPairs(layer: Layer): [Prop, Prop][] {
+  const out: [Prop, Prop][] = [];
+  if (layer.scaleLock) out.push(['scaleX', 'scaleY']);
+  if (layer.lockRatio) out.push(['width', 'height']);
+  return out;
+}
+
+/** Mirror of anim::keep_ratios: one value of a locked pair changed from `before`, the other follows. */
+export function keepRatios(layer: Layer, before: Resolved, after: Resolved) {
+  for (const [a, b] of lockedPairs(layer)) {
+    const [a0, b0, a1, b1] = [before[a], before[b], after[a], after[b]];
+    if (typeof a0 !== 'number' || typeof b0 !== 'number' || typeof a1 !== 'number' || typeof b1 !== 'number') continue;
+    const moved = (x: number, y: number) => Math.abs(x - y) > 1e-9;
+    if (moved(a1, a0) && !moved(b1, b0) && Math.abs(a0) > 1e-9) after[b] = (b0 * a1) / a0;
+    else if (moved(b1, b0) && !moved(a1, a0) && Math.abs(b0) > 1e-9) after[a] = (a0 * b1) / b0;
+  }
+}
+
+/** Runs `set` (a Logic) over the layers' values; a locked pair follows when one of it is set. */
+export function keepingRatios(layers: Layer[], values: Map<string, Resolved>, set: () => void) {
+  const locked = layers.filter((l) => lockedPairs(l).length && values.has(l.id)).map((l) => [l, { ...values.get(l.id)! }] as const);
+  set();
+  for (const [l, was] of locked) keepRatios(l, was, values.get(l.id)!);
 }
 
 /** Static or animated value of a property, without bindings (for editors). */

@@ -204,7 +204,7 @@ pub fn resolve_layer<'a>(
     data: &Data,
     hold: f64,
 ) -> ResolvedLayer<'a> {
-    let values = Prop::ALL
+    let mut values: BTreeMap<Prop, Value> = Prop::ALL
         .iter()
         .map(|&p| {
             let bound = layer
@@ -233,6 +233,24 @@ pub fn resolve_layer<'a>(
             (p, v)
         })
         .collect();
+    // One value of a pair kept in proportion given by data: the other follows.
+    let bound = |p: Prop| layer.bindings.get(&p).is_some_and(|k| data.contains_key(k));
+    if locked_pairs(layer).any(|(a, b)| bound(a) != bound(b)) {
+        let own: BTreeMap<Prop, Value> = locked_pairs(layer)
+            .flat_map(|(a, b)| [a, b])
+            .map(|p| {
+                let v = layer
+                    .tracks
+                    .get(&p)
+                    .filter(|t| !t.is_empty())
+                    .and_then(|t| sample_track(t, frame))
+                    .or_else(|| layer.props.get(&p).copied())
+                    .unwrap_or_else(|| layer_default(layer, p));
+                (p, v)
+            })
+            .collect();
+        keep_ratios(layer, &own, &mut values);
+    }
     let (text, image_src) = match &layer.kind {
         LayerKind::Text {
             text,
@@ -266,6 +284,41 @@ pub fn resolve_layer<'a>(
     }
 }
 
+/// The pairs of values a layer keeps in proportion: its scale (`scale_lock`),
+/// its size (`lock_ratio`).
+pub fn locked_pairs(layer: &Layer) -> impl Iterator<Item = (Prop, Prop)> {
+    [
+        (layer.scale_lock, (Prop::ScaleX, Prop::ScaleY)),
+        (layer.lock_ratio, (Prop::Width, Prop::Height)),
+    ]
+    .into_iter()
+    .filter(|(on, _)| *on)
+    .map(|(_, pair)| pair)
+}
+
+/// One value of a pair kept in proportion changed from `before` (by data,
+/// by a Logic): the other follows, in proportion.
+pub fn keep_ratios(
+    layer: &Layer,
+    before: &BTreeMap<Prop, Value>,
+    after: &mut BTreeMap<Prop, Value>,
+) {
+    let n = |m: &BTreeMap<Prop, Value>, p: Prop| m.get(&p).and_then(Value::as_number);
+    for (a, b) in locked_pairs(layer) {
+        let (Some(a0), Some(b0), Some(a1), Some(b1)) =
+            (n(before, a), n(before, b), n(after, a), n(after, b))
+        else {
+            continue;
+        };
+        let moved = |x: f64, y: f64| (x - y).abs() > 1e-9;
+        if moved(a1, a0) && !moved(b1, b0) && a0.abs() > 1e-9 {
+            after.insert(b, Value::Number(b0 * a1 / a0));
+        } else if moved(b1, b0) && !moved(a1, a0) && b0.abs() > 1e-9 {
+            after.insert(a, Value::Number(a0 * b1 / b0));
+        }
+    }
+}
+
 /// Resolves all visible layers of a template, keeping paint order.
 pub fn resolve_template<'a>(
     template: &'a Template,
@@ -291,6 +344,52 @@ mod tests {
             value: Value::Number(v),
             easing,
         }
+    }
+
+    /// A rectangle 400 × 200 whose size keeps its proportions, its width given by `key`.
+    fn locked_box(key: &str) -> Layer {
+        serde_json::from_value(serde_json::json!({
+            "id": "box", "name": "Box", "type": "rect", "lockRatio": true,
+            "props": {"x": 0.0, "y": 0.0, "width": 400.0, "height": 200.0},
+            "bindings": {"width": key}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn one_field_of_a_locked_size_moves_both() {
+        let l = locked_box("w");
+        let data: Data = [("w".to_string(), "800".to_string())].into();
+        let r = resolve_layer(&l, 0.0, &data, 0.0);
+        assert_eq!(r.num(Prop::Width), 800.0);
+        assert_eq!(r.num(Prop::Height), 400.0);
+        // Not given: as drawn.
+        let r = resolve_layer(&l, 0.0, &Data::new(), 0.0);
+        assert_eq!((r.num(Prop::Width), r.num(Prop::Height)), (400.0, 200.0));
+        // Unlocked: the height stays.
+        let mut free = l.clone();
+        free.lock_ratio = false;
+        let r = resolve_layer(&free, 0.0, &data, 0.0);
+        assert_eq!(r.num(Prop::Height), 200.0);
+    }
+
+    #[test]
+    fn a_locked_pair_follows_the_one_value_a_logic_set() {
+        let l = locked_box("unused");
+        let before = resolve_layer(&l, 0.0, &Data::new(), 0.0).values;
+        let mut after = before.clone();
+        after.insert(Prop::Height, Value::Number(100.0));
+        keep_ratios(&l, &before, &mut after);
+        assert_eq!(after[&Prop::Width], Value::Number(200.0));
+        // Both set: as set.
+        let mut both = before.clone();
+        both.insert(Prop::Width, Value::Number(10.0));
+        both.insert(Prop::Height, Value::Number(30.0));
+        keep_ratios(&l, &before, &mut both);
+        assert_eq!(
+            (both[&Prop::Width], both[&Prop::Height]),
+            (Value::Number(10.0), Value::Number(30.0))
+        );
     }
 
     #[test]

@@ -50,7 +50,7 @@ import { NumberField, Segmented } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
 import { onTimeline, setOnTimeline } from '../engine/timelineProps';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
-import { PROP_LABELS } from './Inspector';
+import { PROP_LABELS, setRatioLock } from './Inspector';
 import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
 import { clearKeyframes, clearSelectedKeys, copyAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
@@ -667,7 +667,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             <X size={10} />
           </button>
           {g.lock && (
-            <button className={`tl-lock ${layer[g.lock] ? 'on' : ''}`} title={layer[g.lock] ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => st.update((t) => void (findLayer(t, layer.id)![g.lock!] = !layer[g.lock!] || undefined))}>
+            <button className={`tl-lock ${layer[g.lock] ? 'on' : ''}`} title={layer[g.lock] ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => st.update((t) => setRatioLock(t, layer.id, g.lock!, !layer[g.lock!]))}>
               {layer[g.lock] ? <LinkIcon size={11} /> : <Unlink size={11} />}
             </button>
           )}
