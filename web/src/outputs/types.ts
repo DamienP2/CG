@@ -1,4 +1,4 @@
-import type { FrameRate, Role } from '../engine/types';
+import type { FrameRate, Role, Track } from '../engine/types';
 import type { MosConfig } from '../mos/MosPage';
 
 /** Mirrors crates/cg-server/src/config.rs and crates/cg-output. */
@@ -138,12 +138,24 @@ export interface Cut {
   steady: number;
   /** Frames, −3 to 3. */
   shift: number;
-  zonesOn: boolean;
-  /** 0 to 1 from the top left corner. */
-  zones: { x: number; y: number; w: number; h: number }[];
+  /** What passes in front of the graphics: every person, or what was painted. */
+  foreground: 'all' | 'chosen';
+  /** What was painted, in order. */
+  strokes: Stroke[];
 }
 
-export const CUT_DEFAULTS: Cut = { processor: 'auto', contour: 0, edge: 40, steady: 60, shift: 0, zonesOn: true, zones: [] };
+/** A stroke of the brush (or the eraser) on the camera's picture. */
+export interface Stroke {
+  erase?: boolean;
+  /** Its width, a fraction of the picture's. */
+  size: number;
+  /** 0 to 1 from the top left corner. */
+  points: [number, number][];
+  /** The camera when it was painted: it stays on the set as the camera moves. */
+  anchor?: Track;
+}
+
+export const CUT_DEFAULTS: Cut = { processor: 'auto', contour: 0, edge: 40, steady: 60, shift: 0, foreground: 'all', strokes: [] };
 
 /** `GET /api/inputs`. */
 export interface InputInfo {
@@ -161,7 +173,15 @@ export interface InputInfo {
   /** A tracked camera with a picture: the people found in it. */
   /** A tracked camera: frames its picture is to be delayed at the mixer. */
   mixerDelay?: number;
-  people?: { running: boolean; ms?: number; delay: number; message?: string; device?: { kind: 'gpu' | 'cpu'; provider?: string; threads?: number; noGpu?: string } };
+  people?: {
+    running: boolean;
+    ms?: number;
+    delay: number;
+    message?: string;
+    device?: { kind: 'gpu' | 'cpu'; provider?: string; threads?: number; noGpu?: string };
+    /** What the strokes chose: a person or an object, and its strokes (their places). */
+    items?: { kind: 'person' | 'object'; strokes: number[] }[];
+  };
 }
 
 /** What a format shows while no project is loaded: a built-in design (drawn by the server) or its still picture. */

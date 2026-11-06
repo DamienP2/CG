@@ -87,7 +87,7 @@ pub fn apply(s: &Shared, cfg: &ServerConfig, inputs: bool, channels: &[String]) 
             &cfg.inputs,
             crate::hardware::interface_ip(&cfg.hardware.network.tracking),
         );
-        s.people.apply(&cfg.inputs, &s.inputs);
+        s.people.apply(&cfg.inputs, &s.inputs, &s.tracking);
         s.data.set_cameras(&cfg.inputs);
         tracing::info!("inputs applied");
     }

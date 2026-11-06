@@ -6,9 +6,15 @@
 //! segmenter (assets/models, Apache 2.0) run at 256 × 144 on the graphics
 //! card or the processor (`crate::people_net`), its edges then laid on those
 //! of the picture (guided filter at 480 × 270), steadied where they only
-//! flicker, then worked as the camera's `Cut` says (contour, edge, zones). It works while a
+//! flicker, then worked as the camera's `Cut` says (contour, edge). It works while a
 //! project of a channel has a graphic behind the people on that camera, or
 //! while its preview is looked at.
+//!
+//! What passes in front can also be chosen with a brush (`Foreground::Chosen`):
+//! the strokes stay on the set as the camera moves (each is re-projected
+//! from the camera it was painted with to the one of the picture). A person
+//! touched is kept, and followed from picture to picture once out of the
+//! paint; the rest of the paint is an object, its edges laid on the picture's.
 //!
 //! The mixer keys Strata's fill and key over the camera as before; finding
 //! the people takes time, so it delays the camera by `delay` frames, and
@@ -16,7 +22,7 @@
 //! `delay` frames before T. The camera's tracking is late as much (the
 //! anchored graphics stay on the delayed picture).
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
@@ -28,12 +34,13 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tiny_skia::{IntSize, Pixmap};
 
-use cg_core::tracking::People as Found;
+use cg_core::tracking::{follow, CameraSample, People as Found};
 
 use crate::auth::{CurrentUser, MaybeUser};
-use crate::inputs::{Cut, InputConfig, InputKind, Inputs};
+use crate::inputs::{Cut, Foreground, InputConfig, InputKind, Inputs, Stroke};
 use crate::people_net::{Device, Engine, Processor};
 use crate::state::Shared;
+use crate::tracking::Tracking;
 
 const MODEL: &[u8] = include_bytes!("../../../assets/models/people.onnx");
 /// The model's picture.
@@ -65,6 +72,24 @@ pub struct Status {
     pub device: Option<Device>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub message: String,
+    /// What the strokes chose (`Foreground::Chosen`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<Item>,
+}
+
+/// A person or an object chosen with the brush, and the strokes that chose it
+/// (their places in `Cut::strokes`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Item {
+    pub kind: Kind,
+    pub strokes: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Person,
+    Object,
 }
 
 /// The cameras whose people are found.
@@ -96,6 +121,8 @@ struct Cam {
     device: Mutex<Option<Device>>,
     /// The newest picture found, as cut: its number, the picture, its people.
     last: Mutex<Option<Shot>>,
+    /// What the strokes chose in the newest picture.
+    items: Mutex<Vec<Item>>,
 }
 
 /// A picture with its people, for the page.
@@ -121,6 +148,7 @@ impl Cam {
             cut: Mutex::new(cut),
             device: Mutex::new(None),
             last: Mutex::new(None),
+            items: Mutex::new(Vec::new()),
         }
     }
 
@@ -203,7 +231,7 @@ fn instant_of(t: SystemTime) -> Instant {
 impl People {
     /// Finds the people of the tracking inputs that have a picture: new
     /// and changed ones start, the others stop.
-    pub fn apply(&self, configs: &[InputConfig], inputs: &Arc<Inputs>) {
+    pub fn apply(&self, configs: &[InputConfig], inputs: &Arc<Inputs>, tracking: &Arc<Tracking>) {
         let wanted: BTreeMap<&str, (&str, &Cut)> = configs
             .iter()
             .filter(|c| c.enabled && c.kind == InputKind::Tracking && !c.image.is_empty())
@@ -225,10 +253,15 @@ impl People {
                 continue;
             }
             let cam = Arc::new(Cam::new(image, cut.clone()));
-            let (c, inputs) = (cam.clone(), inputs.clone());
+            let (c, inputs, tracking, name) = (
+                cam.clone(),
+                inputs.clone(),
+                tracking.clone(),
+                id.to_string(),
+            );
             let spawned = std::thread::Builder::new()
                 .name(format!("cg-people-{id}"))
-                .spawn(move || run(c, inputs));
+                .spawn(move || run(c, inputs, tracking, name));
             if let Err(e) = spawned {
                 cam.say(format!("cannot start: {e}"));
             }
@@ -297,7 +330,13 @@ impl People {
         let c = lock(&self.cams).get(id)?.clone();
         let message = lock(&c.message).clone();
         let device = lock(&c.device).clone();
+        let items = if lock(&c.cut).foreground == Foreground::Chosen {
+            lock(&c.items).clone()
+        } else {
+            Vec::new()
+        };
         Some(Status {
+            items,
             running: c.wanted(),
             ms: c.took().map(|(mid, _)| (mid * 10.0).round() / 10.0),
             delay: c.delay(),
@@ -421,12 +460,14 @@ struct Rough {
     started: Instant,
     picture: Vec<[f32; 3]>,
     people: Vec<f32>,
+    /// Where the camera looked when it was taken.
+    camera: Option<CameraSample>,
 }
 
 /// One camera's threads, while its people are wanted: one finds them
 /// roughly in each new picture, the other lays their edges on the
 /// picture's meanwhile (two pictures at a time: 50 a second on a processor).
-fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
+fn run(cam: Arc<Cam>, inputs: Arc<Inputs>, tracking: Arc<Tracking>, id: String) {
     let (send, edges) = std::sync::mpsc::sync_channel::<Rough>(1);
     let c = cam.clone();
     let spawned = std::thread::Builder::new()
@@ -492,6 +533,7 @@ fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
                     started,
                     picture,
                     people,
+                    camera: tracking.filmed(&id, at),
                 };
                 if send.send(r).is_err() {
                     break;
@@ -508,6 +550,7 @@ fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
 /// The second thread: each picture's people, their edges laid, kept for the frames.
 fn refine_all(cam: &Cam, pictures: std::sync::mpsc::Receiver<Rough>) {
     let mut prev: Option<(Instant, Vec<f32>)> = None;
+    let mut chosen = Chosen::default();
     for (n, r) in (1u64..).zip(pictures) {
         // Steadied with the picture before only when it came just before.
         let before = prev
@@ -515,8 +558,16 @@ fn refine_all(cam: &Cam, pictures: std::sync::mpsc::Receiver<Rough>) {
             .filter(|(at, _)| r.came.saturating_duration_since(*at) < Duration::from_millis(200))
             .map(|(_, m)| m.as_slice());
         let cut = lock(&cam.cut).clone();
-        let (found, mask) = refine(&r.picture, &r.people, before, &cut);
+        let (found, mask) = refine(
+            &r.picture,
+            &r.people,
+            before,
+            &cut,
+            r.camera.as_ref(),
+            &mut chosen,
+        );
         prev = Some((r.came, mask));
+        *lock(&cam.items) = chosen.items.clone();
         let found = Arc::new(found);
         *lock(&cam.last) = Some(Shot {
             n,
@@ -546,7 +597,14 @@ fn refine_all(cam: &Cam, pictures: std::sync::mpsc::Receiver<Rough>) {
 fn find(net: &mut Engine, pic: &Pixmap, prev: Option<&[f32]>) -> anyhow::Result<(Found, Vec<f32>)> {
     let picture = shrink(pic, W, H);
     let people = rough(net, &picture)?;
-    Ok(refine(&picture, &people, prev, &Cut::default()))
+    Ok(refine(
+        &picture,
+        &people,
+        prev,
+        &Cut::default(),
+        None,
+        &mut Chosen::default(),
+    ))
 }
 
 /// How much of a person each point of the model's picture is.
@@ -568,13 +626,17 @@ fn rough(net: &mut Engine, picture: &[[f32; 3]]) -> anyhow::Result<Vec<f32>> {
 }
 
 /// The people's edges laid on those of the picture, steadied where they
-/// only flicker since `prev` (where an edge moves, as found: no trail), then
-/// worked as `cut` says. The mask before that is given back for the next one.
+/// only flicker since `prev` (where an edge moves, as found: no trail), kept
+/// to what was painted when it is chosen (`camera`: where the picture was
+/// taken from), then worked as `cut` says. The mask before that is given
+/// back for the next one.
 fn refine(
     picture: &[[f32; 3]],
     people: &[f32],
     prev: Option<&[f32]>,
     cut: &Cut,
+    camera: Option<&CameraSample>,
+    chosen: &mut Chosen,
 ) -> (Found, Vec<f32>) {
     let guide: Vec<f32> = picture
         .iter()
@@ -592,7 +654,13 @@ fn refine(
             }
         }
     }
-    let worked = work(&mask, cut);
+    let worked = match cut.foreground {
+        Foreground::All => {
+            *chosen = Chosen::default();
+            work(&mask, cut)
+        }
+        Foreground::Chosen => work(&chosen.pick(&guide, &mask, &cut.strokes, camera), cut),
+    };
     let data = worked
         .iter()
         .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
@@ -608,7 +676,7 @@ fn refine(
 }
 
 /// The mask as the camera's settings say: its edge moved, made sharper or
-/// softer, kept in the zones.
+/// softer.
 fn work(mask: &[f32], cut: &Cut) -> Vec<f32> {
     let mut m: Vec<f32> = mask.iter().map(|v| v.clamp(0.0, 1.0)).collect();
     // Contour: points of a 1920-wide picture, at this size.
@@ -629,26 +697,358 @@ fn work(mask: &[f32], cut: &Cut) -> Vec<f32> {
             m = boxed(&m, W, H, r);
         }
     }
-    let zones: Vec<_> = cut
-        .zones
-        .iter()
-        .filter(|z| z.w > 0.0 && z.h > 0.0)
-        .collect();
-    if cut.zones_on && !zones.is_empty() {
-        for (i, v) in m.iter_mut().enumerate() {
-            let (u, t) = (
-                ((i % W) as f32 + 0.5) / W as f32,
-                ((i / W) as f32 + 0.5) / H as f32,
-            );
-            if !zones
-                .iter()
-                .any(|z| u >= z.x && u <= z.x + z.w && t >= z.y && t <= z.y + z.h)
+    m
+}
+
+/// What the strokes chose, from picture to picture.
+#[derive(Default)]
+struct Chosen {
+    /// Whether each stroke was painted on a person, by its print, as first seen.
+    on_person: HashMap<u64, bool>,
+    /// The people kept in the picture before, grown a little: which one each point is (0: none).
+    people: Vec<u32>,
+    /// The prints of the strokes that chose each of them.
+    chose: Vec<BTreeSet<u64>>,
+    /// For the page.
+    items: Vec<Item>,
+}
+
+/// How far the people kept are looked for in the next picture, points.
+const FOLLOWED: f32 = 6.0;
+/// How far around a person kept their soft edge is kept, points.
+const AROUND: f32 = 3.0;
+/// No stroke there.
+const NONE: u32 = u32::MAX;
+
+impl Chosen {
+    /// The mask kept to what the strokes chose (seen from `camera`): the
+    /// people they touch or touched, the objects painted, their edges laid
+    /// on those of the picture (`guide`).
+    fn pick(
+        &mut self,
+        guide: &[f32],
+        mask: &[f32],
+        strokes: &[Stroke],
+        camera: Option<&CameraSample>,
+    ) -> Vec<f32> {
+        let n = W * H;
+        let prints: Vec<u64> = strokes.iter().map(print).collect();
+        let covered: Vec<Vec<u32>> = strokes.iter().map(|s| raster(s, camera)).collect();
+        let person: Vec<bool> = mask.iter().map(|v| *v > 0.5).collect();
+        // What each stroke was painted on, as first seen.
+        self.on_person.retain(|p, _| prints.contains(p));
+        for ((s, p), c) in strokes.iter().zip(&prints).zip(&covered) {
+            if !s.erase && !c.is_empty() && !self.on_person.contains_key(p) {
+                let on = c.iter().filter(|i| person[**i as usize]).count();
+                self.on_person.insert(*p, on * 2 >= c.len());
+            }
+        }
+        let is_person: Vec<bool> = strokes
+            .iter()
+            .zip(&prints)
+            .map(|(s, p)| !s.erase && self.on_person.get(p) == Some(&true))
+            .collect();
+        // The stroke seen at each point (none where erased).
+        let mut top = vec![NONE; n];
+        for (k, (s, c)) in strokes.iter().zip(&covered).enumerate() {
+            let v = if s.erase { NONE } else { k as u32 };
+            for i in c {
+                top[*i as usize] = v;
+            }
+        }
+        let mut seen = vec![0usize; strokes.len()];
+        for k in top.iter().filter(|k| **k != NONE) {
+            seen[*k as usize] += 1;
+        }
+        // Rubbed out entirely (out of the picture is not).
+        let erased = |k: usize| !covered[k].is_empty() && seen[k] == 0;
+        let painted: BTreeSet<u64> = (0..strokes.len())
+            .filter(|k| is_person[*k] && !erased(*k))
+            .map(|k| prints[k])
+            .collect();
+
+        // The people: those a stroke on a person touches, and those kept
+        // before that they overlap.
+        let (part, count) = parts(&person, W, H);
+        let mut chose = vec![BTreeSet::<u64>::new(); count as usize + 1];
+        let mut was = BTreeSet::new();
+        for i in 0..n {
+            let c = part[i] as usize;
+            if c == 0 {
+                continue;
+            }
+            let k = top[i];
+            if k != NONE && is_person[k as usize] {
+                chose[c].insert(prints[k as usize]);
+            }
+            if let Some(b) = self.people.get(i).filter(|b| **b != 0) {
+                was.insert((c, *b as usize - 1));
+            }
+        }
+        for (c, b) in was {
+            if let Some(before) = self.chose.get(b) {
+                chose[c].extend(before.intersection(&painted).copied());
+            }
+        }
+        let mut kept = vec![0u32; count as usize + 1];
+        let mut sets = Vec::new();
+        for (c, set) in chose.into_iter().enumerate().skip(1) {
+            if !set.is_empty() {
+                sets.push(set);
+                kept[c] = sets.len() as u32;
+            }
+        }
+        let labels: Vec<f32> = part.iter().map(|c| kept[*c as usize] as f32).collect();
+        let member: Vec<f32> = labels.iter().map(|l| l.min(1.0)).collect();
+        let near = grown(&member, W, H, AROUND);
+        let mut out: Vec<f32> = mask.iter().zip(&near).map(|(m, k)| m * k).collect();
+        self.people = grown(&labels, W, H, FOLLOWED)
+            .iter()
+            .map(|l| l.round() as u32)
+            .collect();
+
+        // The objects: what is painted off the people, its edges laid on the picture's.
+        let mut objects = vec![0f32; n];
+        let mut any = false;
+        for (i, o) in objects.iter_mut().enumerate() {
+            let k = top[i];
+            if k != NONE && !is_person[k as usize] && !person[i] {
+                *o = 1.0;
+                any = true;
+            }
+        }
+        // The strokes of each person kept, and of each object found, go together.
+        let mut together: Vec<Vec<usize>> = sets
+            .iter()
+            .map(|set| {
+                (0..strokes.len())
+                    .filter(|k| set.contains(&prints[*k]))
+                    .collect()
+            })
+            .collect();
+        if any {
+            let laid = guided(guide, &objects, W, H, 16, 1e-3);
+            for (o, v) in objects.iter_mut().zip(laid) {
+                let s = ((v - 0.35) / 0.3).clamp(0.0, 1.0);
+                *o = s * s * (3.0 - 2.0 * s);
+            }
+            for (o, v) in out.iter_mut().zip(&objects) {
+                *o = o.max(*v);
+            }
+            let found: Vec<bool> = objects.iter().map(|v| *v > 0.5).collect();
+            let (part, count) = parts(&found, W, H);
+            let mut of = vec![Vec::new(); count as usize + 1];
+            for (k, c) in covered.iter().enumerate() {
+                if strokes[k].erase || is_person[k] {
+                    continue;
+                }
+                let mut most: HashMap<u32, usize> = HashMap::new();
+                for i in c.iter().filter(|i| top[**i as usize] == k as u32) {
+                    *most.entry(part[*i as usize]).or_default() += 1;
+                }
+                let best = most
+                    .into_iter()
+                    .filter(|(p, _)| *p != 0)
+                    .max_by_key(|(p, m)| (*m, std::cmp::Reverse(*p)));
+                if let Some((p, _)) = best {
+                    of[p as usize].push(k);
+                }
+            }
+            together.extend(of.into_iter().filter(|ks| ks.len() > 1));
+        }
+
+        self.items = items(strokes, &covered, &is_person, &together, &erased);
+        self.chose = sets;
+        out
+    }
+}
+
+/// What the page lists: the strokes that touch (of a kind), those `together`
+/// (on the same person or object), each eraser with the paint it rubs out most.
+fn items(
+    strokes: &[Stroke],
+    covered: &[Vec<u32>],
+    is_person: &[bool],
+    together: &[Vec<usize>],
+    erased: &dyn Fn(usize) -> bool,
+) -> Vec<Item> {
+    let mut up: Vec<usize> = (0..strokes.len()).collect();
+    fn root(up: &mut [usize], mut k: usize) -> usize {
+        while up[k] != k {
+            up[k] = up[up[k]];
+            k = up[k];
+        }
+        k
+    }
+    fn join(up: &mut [usize], a: usize, b: usize) {
+        let (a, b) = (root(up, a), root(up, b));
+        up[a.max(b)] = a.min(b);
+    }
+    let n = W * H;
+    let (mut first_person, mut first_object, mut last) =
+        (vec![NONE; n], vec![NONE; n], vec![NONE; n]);
+    for (k, (s, c)) in strokes.iter().zip(covered).enumerate() {
+        if s.erase {
+            let mut rubbed: HashMap<u32, usize> = HashMap::new();
+            for i in c {
+                let j = last[*i as usize];
+                if j != NONE {
+                    *rubbed.entry(j).or_default() += 1;
+                }
+            }
+            if let Some((j, _)) = rubbed
+                .into_iter()
+                .max_by_key(|(j, m)| (*m, std::cmp::Reverse(*j)))
             {
-                *v = 0.0;
+                join(&mut up, k, j as usize);
+            }
+            continue;
+        }
+        let first = if is_person[k] {
+            &mut first_person
+        } else {
+            &mut first_object
+        };
+        for i in c {
+            let i = *i as usize;
+            if first[i] == NONE {
+                first[i] = k as u32;
+            } else {
+                join(&mut up, k, first[i] as usize);
+            }
+            last[i] = k as u32;
+        }
+    }
+    for ks in together {
+        for w in ks.windows(2) {
+            join(&mut up, w[0], w[1]);
+        }
+    }
+    let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for k in 0..strokes.len() {
+        let r = root(&mut up, k);
+        groups.entry(r).or_default().push(k);
+    }
+    let mut out: Vec<Item> = groups
+        .into_values()
+        .filter(|g| g.iter().any(|k| !strokes[*k].erase && !erased(*k)))
+        .map(|g| Item {
+            kind: if g.iter().any(|k| is_person[*k]) {
+                Kind::Person
+            } else {
+                Kind::Object
+            },
+            strokes: g,
+        })
+        .collect();
+    out.sort_by_key(|i| (i.kind == Kind::Object, i.strokes[0]));
+    out
+}
+
+/// A stroke's print: the same stroke has the same, wherever it is in the list.
+fn print(s: &Stroke) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.erase.hash(&mut h);
+    s.size.to_bits().hash(&mut h);
+    for p in &s.points {
+        p[0].to_bits().hash(&mut h);
+        p[1].to_bits().hash(&mut h);
+    }
+    h.finish()
+}
+
+/// The points of the picture (`W` × `H`) a stroke covers, seen from
+/// `camera` (where its anchor is seen now; as painted without either).
+fn raster(s: &Stroke, camera: Option<&CameraSample>) -> Vec<u32> {
+    let (w, h) = (W as f64, H as f64);
+    let radius = s.size.max(0.0) as f64 * w / 2.0;
+    let at: Vec<[f64; 3]> = s
+        .points
+        .iter()
+        .filter_map(|p| {
+            let (x, y) = (p[0] as f64 * w, p[1] as f64 * h);
+            match (&s.anchor, camera) {
+                (Some(a), Some(c)) => {
+                    follow(a, c, w, h, x, y).map(|(dx, dy, k)| [x + dx, y + dy, radius * k])
+                }
+                _ => Some([x, y, radius]),
+            }
+        })
+        .collect();
+    let mut on = vec![false; W * H];
+    let mut out = Vec::new();
+    let mut segment = |a: [f64; 3], b: [f64; 3]| {
+        let r = a[2].max(b[2]).max(0.5);
+        let x0 = (a[0].min(b[0]) - r).floor().max(0.0) as usize;
+        let y0 = (a[1].min(b[1]) - r).floor().max(0.0) as usize;
+        let x1 = ((a[0].max(b[0]) + r).ceil().min(w - 1.0)).max(-1.0);
+        let y1 = ((a[1].max(b[1]) + r).ceil().min(h - 1.0)).max(-1.0);
+        if x1 < 0.0 || y1 < 0.0 {
+            return;
+        }
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let len = dx * dx + dy * dy;
+        for y in y0..=y1 as usize {
+            for x in x0..=x1 as usize {
+                let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
+                let t = if len > 0.0 {
+                    (((px - a[0]) * dx + (py - a[1]) * dy) / len).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let (cx, cy) = (a[0] + dx * t, a[1] + dy * t);
+                let rt = (a[2] + (b[2] - a[2]) * t).max(0.5);
+                let i = y * W + x;
+                if !on[i] && (px - cx).powi(2) + (py - cy).powi(2) <= rt * rt {
+                    on[i] = true;
+                    out.push(i as u32);
+                }
+            }
+        }
+    };
+    match at.as_slice() {
+        [] => {}
+        [p] => segment(*p, *p),
+        many => {
+            for pair in many.windows(2) {
+                segment(pair[0], pair[1]);
             }
         }
     }
-    m
+    out
+}
+
+/// The parts of `on` that touch (four ways): which one each point is (0:
+/// none), and how many there are.
+fn parts(on: &[bool], w: usize, h: usize) -> (Vec<u32>, u32) {
+    let mut label = vec![0u32; w * h];
+    let mut n = 0;
+    let mut stack = Vec::new();
+    for i in 0..w * h {
+        if !on[i] || label[i] != 0 {
+            continue;
+        }
+        n += 1;
+        label[i] = n;
+        stack.push(i);
+        while let Some(j) = stack.pop() {
+            let (x, y) = (j % w, j / w);
+            let near = [
+                (x > 0).then(|| j - 1),
+                (x + 1 < w).then(|| j + 1),
+                (y > 0).then(|| j - w),
+                (y + 1 < h).then(|| j + w),
+            ];
+            for k in near.into_iter().flatten() {
+                if on[k] && label[k] == 0 {
+                    label[k] = n;
+                    stack.push(k);
+                }
+            }
+        }
+    }
+    (label, n)
 }
 
 /// The mask grown (`by` > 0) or shrunk by `by` points: the largest (or
@@ -1009,5 +1409,190 @@ mod tests {
         lock(&cam.took).extend([2.0; 20]);
         cam.update_delay();
         assert_eq!(cam.delay(), 4);
+    }
+
+    fn stroke(points: &[[f32; 2]], size: f32) -> Stroke {
+        Stroke {
+            erase: false,
+            size,
+            points: points.to_vec(),
+            anchor: None,
+        }
+    }
+
+    /// The middle of the points a stroke covers.
+    fn middle(c: &[u32]) -> (f64, f64) {
+        let n = c.len() as f64;
+        let x = c
+            .iter()
+            .map(|i| (*i as usize % W) as f64 + 0.5)
+            .sum::<f64>()
+            / n;
+        let y = c
+            .iter()
+            .map(|i| (*i as usize / W) as f64 + 0.5)
+            .sum::<f64>()
+            / n;
+        (x, y)
+    }
+
+    /// People where `boxes` are (x0, y0, x1, y1 in points), the rest none.
+    fn people_in(boxes: &[(usize, usize, usize, usize)]) -> Vec<f32> {
+        let mut m = vec![0f32; W * H];
+        for &(x0, y0, x1, y1) in boxes {
+            for y in y0..y1 {
+                m[y * W + x0..y * W + x1].fill(1.0);
+            }
+        }
+        m
+    }
+
+    #[test]
+    fn a_stroke_stays_on_the_set_as_the_camera_pans() {
+        use cg_core::tracking::{Track, SENSOR_MM};
+        let anchor = Track {
+            pan: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+            focal: 35.0,
+            sensor: SENSOR_MM,
+            zoom: true,
+            distance: 0.0,
+            distortion: None,
+            behind: false,
+        };
+        let s = Stroke {
+            anchor: Some(anchor),
+            ..stroke(&[[0.5, 0.5]], 0.04)
+        };
+        // As painted: a disc of 0.04 × 480 = 19 points across, in the middle.
+        let here = raster(&s, None);
+        let (x, y) = middle(&here);
+        assert!(
+            (x - 240.0).abs() < 0.5 && (y - 135.0).abs() < 0.5,
+            "{x}, {y}"
+        );
+        assert!((here.len() as f64 - std::f64::consts::PI * 9.6 * 9.6).abs() < 20.0);
+        // The camera turned 5° to its left: the set, and the stroke, go right.
+        let cam = CameraSample {
+            pan: 5.0,
+            focal: 35.0,
+            sensor: SENSOR_MM,
+            ..Default::default()
+        };
+        let (x, y) = middle(&raster(&s, Some(&cam)));
+        let want = 240.0 + 35.0 / SENSOR_MM * 480.0 * 5f64.to_radians().tan();
+        assert!(
+            (x - want).abs() < 0.5 && (y - 135.0).abs() < 0.5,
+            "{x} for {want}"
+        );
+        // Painted without a camera: it stays where it was painted.
+        let (x, _) = middle(&raster(&stroke(&[[0.5, 0.5]], 0.04), Some(&cam)));
+        assert!((x - 240.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn a_person_touched_is_kept_and_followed() {
+        let guide = vec![0.5; W * H];
+        // Painted on the first one only.
+        let strokes = [stroke(&[[125.0 / 480.0, 0.5], [127.0 / 480.0, 0.55]], 0.03)];
+        let mut chosen = Chosen::default();
+        let mut out = Vec::new();
+        // She walks right, out of the paint; the other stays.
+        for step in 0..40 {
+            let x = 100 + 4 * step;
+            let mask = people_in(&[(x, 60, x + 50, 270), (380, 60, 430, 270)]);
+            out = chosen.pick(&guide, &mask, &strokes, None);
+            assert!(out[150 * W + x + 25] > 0.99, "picture {step}");
+            assert!(out[150 * W + 405] < 0.01, "picture {step}");
+            assert_eq!(
+                chosen.items,
+                [Item {
+                    kind: Kind::Person,
+                    strokes: vec![0]
+                }]
+            );
+        }
+        // Where she stood is not an object.
+        assert!(out[140 * W + 125] < 0.01);
+        // Rubbed out: nobody.
+        let mut rubbed = strokes.to_vec();
+        rubbed.push(Stroke {
+            erase: true,
+            ..stroke(&[[126.0 / 480.0, 0.52]], 0.1)
+        });
+        let mask = people_in(&[(256, 60, 306, 270)]);
+        let out = chosen.pick(&guide, &mask, &rubbed, None);
+        assert!(out[150 * W + 280] < 0.01);
+        assert!(chosen.items.is_empty());
+    }
+
+    #[test]
+    fn a_rough_stroke_finds_the_edges_of_its_object() {
+        // A light box (200..280 × 100..200) on a dark set; nobody.
+        let guide: Vec<f32> = (0..W * H)
+            .map(|i| {
+                let (x, y) = (i % W, i / W);
+                if (200..280).contains(&x) && (100..200).contains(&y) {
+                    0.8
+                } else {
+                    0.15
+                }
+            })
+            .collect();
+        // Painted over it roughly: 6 points over on the sides, rounded corners.
+        let (u, v) = (|x: f32| x / W as f32, |y: f32| y / H as f32);
+        let strokes: Vec<Stroke> = [110.0, 130.0, 150.0, 170.0, 190.0]
+            .iter()
+            .map(|y| stroke(&[[u(204.0), v(*y)], [u(276.0), v(*y)]], 20.0 / W as f32))
+            .collect();
+        let mut chosen = Chosen::default();
+        let out = chosen.pick(&guide, &vec![0.0; W * H], &strokes, None);
+        let at = |x: usize, y: usize| out[y * W + x];
+        assert!(at(240, 150) > 0.99);
+        // Its edges, not the paint's.
+        assert!(at(196, 150) < 0.1, "{}", at(196, 150));
+        assert!(at(201, 150) > 0.9, "{}", at(201, 150));
+        assert!(at(283, 150) < 0.1, "{}", at(283, 150));
+        assert!(at(278, 150) > 0.9, "{}", at(278, 150));
+        assert!(at(201, 101) > 0.5, "corner: {}", at(201, 101));
+        assert!(at(240, 205) < 0.1, "{}", at(240, 205));
+        assert_eq!(chosen.items.len(), 1);
+        assert_eq!(chosen.items[0].kind, Kind::Object);
+        assert_eq!(chosen.items[0].strokes, [0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn by_default_everyone_is_cut() {
+        // The zones of before are forgotten.
+        let old: Cut = serde_json::from_str(
+            r#"{"contour":0,"zonesOn":true,"zones":[{"x":0.1,"y":0,"w":0.3,"h":1}]}"#,
+        )
+        .unwrap();
+        assert_eq!(old, Cut::default());
+        assert_eq!(Cut::default().foreground, Foreground::All);
+        // Strokes kept but everyone chosen: both people cut, as painted or not.
+        let picture = vec![[0.5f32; 3]; W * H];
+        let people = vec![0f32; IN_W * IN_H];
+        let cut = Cut {
+            strokes: vec![stroke(&[[0.25, 0.5]], 0.03)],
+            ..Cut::default()
+        };
+        let (found, _) = refine(&picture, &people, None, &cut, None, &mut Chosen::default());
+        let (plain, _) = refine(
+            &picture,
+            &people,
+            None,
+            &Cut::default(),
+            None,
+            &mut Chosen::default(),
+        );
+        assert_eq!(found, plain);
+        let mask = people_in(&[(100, 60, 150, 270), (380, 60, 430, 270)]);
+        assert_eq!(work(&mask, &cut), work(&mask, &Cut::default()));
+        // Chosen: only the one painted.
+        let mut chosen = Chosen::default();
+        let out = chosen.pick(&vec![0.5; W * H], &mask, &cut.strokes, None);
+        assert!(out[150 * W + 125] > 0.99 && out[150 * W + 405] < 0.01);
     }
 }

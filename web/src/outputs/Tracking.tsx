@@ -1,12 +1,12 @@
-import { Crosshair, Plus, RotateCcw, Square, Trash2, VideoOff, X } from 'lucide-react';
+import { Box, Brush, Crosshair, Eraser, Plus, RotateCcw, Trash2, User, VideoOff, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
 import { Dropdown } from '../ui/Dropdown';
 import { NumberField } from '../ui/fields';
-import { useCameras } from '../engine/tracking';
+import { anchorFrom, follow, useCameras } from '../engine/tracking';
 import { fps as fpsText, num } from '../perf/format';
-import { CUT_DEFAULTS, type Cut, type InputConfig, type InputInfo, type ServerConfig } from './types';
+import { CUT_DEFAULTS, type Cut, type InputConfig, type InputInfo, type ServerConfig, type Stroke } from './types';
 import { OnSwitch } from './OnSwitch';
 import { Group, inputState, useInputStatus, type InputState } from './Inputs';
 
@@ -99,15 +99,23 @@ export function TrackingMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: S
 /** "Receiving · 50 Hz". */
 const stateText = (st: InputState) => (st.live && st.info?.fps ? `${st.text} · ${fpsText(st.info.fps)} Hz` : st.text);
 
-const cutOf = (i: InputConfig): Cut => ({ ...CUT_DEFAULTS, ...i.cut, zones: i.cut?.zones ?? [] });
+/** The settings, the defaults where missing (and nothing of older ones). */
+const cutOf = (i: InputConfig): Cut => Object.fromEntries(Object.entries(CUT_DEFAULTS).map(([k, v]) => [k, i.cut?.[k as keyof Cut] ?? v])) as unknown as Cut;
 const same = (a: Cut, b: Cut) => JSON.stringify(a) === JSON.stringify(b);
 
 type View = 'image' | 'cut' | 'result';
 
+/** The brush or the eraser, and its width (a fraction of the picture's). */
+interface Tool {
+  erase: boolean;
+  size: number;
+}
+
 function Camera({ input: i, state, edit, remove, pictures }: { input: InputConfig; state: InputState; edit: Edit; remove: () => void; pictures: { id: string; name: string }[] }) {
   const [view, setView] = useState<View>('result');
-  const [showZones, setShowZones] = useState(true);
+  const [tool, setTool] = useState<Tool>({ erase: false, size: 0.03 });
   const cut = cutOf(i);
+  const chosen = cut.foreground === 'chosen';
   const setCut = (patch: Partial<Cut>) =>
     edit((x) => {
       const next = { ...cutOf(x), ...patch };
@@ -123,6 +131,17 @@ function Camera({ input: i, state, edit, remove, pictures }: { input: InputConfi
     const h = setTimeout(() => void api('PUT', `/api/inputs/${encodeURIComponent(i.id)}/cut`, JSON.parse(key)).catch(() => {}), 120);
     return () => clearTimeout(h);
   }, [i.id, i.image, key]);
+
+  // B: the brush, E: the eraser (not while typing).
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'b' || k === 'e') setTool((x) => ({ ...x, erase: k === 'e' }));
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
 
   const p = state.info?.people;
   return (
@@ -163,14 +182,8 @@ function Camera({ input: i, state, edit, remove, pictures }: { input: InputConfi
                   </button>
                 ))}
               </div>
-              <span className="spacer" />
-              {cut.zonesOn && cut.zones.length > 0 && (
-                <button className={`btn small tk-zbtn ${showZones ? 'on' : ''}`} onClick={() => setShowZones(!showZones)}>
-                  <Square size={13} strokeDasharray="4 3" /> {t('Zones')}
-                </button>
-              )}
             </div>
-            <div className="tk-screen">
+            <div className={`tk-screen ${chosen ? 'tk-paint' : ''}`}>
               {i.image ? (
                 <PeopleImage id={i.id} view={view} />
               ) : (
@@ -179,14 +192,14 @@ function Camera({ input: i, state, edit, remove, pictures }: { input: InputConfi
                   {t('No picture')}
                 </span>
               )}
-              {showZones && cut.zonesOn && <Zones zones={cut.zones} onChange={(zones) => setCut({ zones })} />}
+              {chosen && <Paint id={i.id} strokes={cut.strokes} shown={view !== 'image'} tool={tool} add={(st) => setCut({ strokes: [...cut.strokes, st] })} />}
               <span className="tk-hud tl">{i.name || i.id}</span>
               {p?.ms != null && <span className="tk-hud tr">{num(p.ms, 0)} ms</span>}
             </div>
           </section>
           <Movement id={i.id} />
         </div>
-        <CutCard input={i} cut={cut} setCut={setCut} edit={edit} info={state.info} pictures={pictures} onZone={() => setShowZones(true)} />
+        <CutCard input={i} cut={cut} setCut={setCut} edit={edit} info={state.info} pictures={pictures} tool={tool} setTool={setTool} />
       </div>
 
       <div className="tk-bottom">
@@ -258,41 +271,96 @@ function PeopleImage({ id, view }: { id: string; view: View }) {
   return url ? <img src={url} alt="" draggable={false} /> : <span className="tk-none">{t('Waiting for a picture…')}</span>;
 }
 
-type Zone = Cut['zones'][number];
+/** Points of a stroke closer than this to the last one kept are dropped (a fraction of the width). */
+const SPACING = 0.003;
+const round = (v: number) => Math.round(v * 10000) / 10000;
 
-/** The foreground zones over the picture: moved by their middle, sized by their corner. */
-function Zones({ zones, onChange }: { zones: Zone[]; onChange: (z: Zone[]) => void }) {
+/** Painting over the picture: the cursor, the stroke being painted, and the paint where the camera sees it now (`shown`). */
+function Paint({ id, strokes, shown, tool, add }: { id: string; strokes: Stroke[]; shown: boolean; tool: Tool; add: (s: Stroke) => void }) {
   const box = useRef<HTMLDivElement>(null);
-  const drag = (e: React.PointerEvent, n: number, size: boolean) => {
-    const r = box.current?.getBoundingClientRect();
-    if (!r) return;
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const cursor = useRef<HTMLElement>(null);
+  const cam = useCameras((x) => x.samples[id]);
+  const [drawing, setDrawing] = useState<Stroke | null>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setSize({ w: Math.round(el.clientWidth * devicePixelRatio), h: Math.round(el.clientHeight * devicePixelRatio) }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const c = canvas.current;
+    const g = c?.getContext('2d');
+    if (!c || !g) return;
+    const { w, h } = size;
+    c.width = w;
+    c.height = h;
+    g.clearRect(0, 0, w, h);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.strokeStyle = g.fillStyle = '#34d399';
+    for (const st of [...(shown ? strokes : []), ...(drawing ? [drawing] : [])]) {
+      // Where the camera sees it now (as painted without a camera).
+      const pts: [number, number, number][] = [];
+      for (const [u, v] of st.points) {
+        const m = st.anchor && cam ? follow(st.anchor, cam, w, h, u * w, v * h) : [0, 0, 1];
+        if (m) pts.push([u * w + m[0], v * h + m[1], m[2]]);
+      }
+      if (!pts.length) continue;
+      g.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
+      g.lineWidth = st.size * w * pts[0][2];
+      g.beginPath();
+      if (pts.length === 1) {
+        g.arc(pts[0][0], pts[0][1], g.lineWidth / 2, 0, Math.PI * 2);
+        g.fill();
+        continue;
+      }
+      g.moveTo(pts[0][0], pts[0][1]);
+      for (const [x, y] of pts.slice(1)) g.lineTo(x, y);
+      g.stroke();
+    }
+  }, [size, strokes, drawing, shown, cam]);
+
+  const at = (e: React.PointerEvent): [number, number] => {
+    const r = box.current!.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
+  };
+  const moveCursor = (e: React.PointerEvent) => {
+    const r = box.current!.getBoundingClientRect();
+    const c = cursor.current;
+    if (!c) return;
+    const d = tool.size * r.width;
+    Object.assign(c.style, { display: 'block', left: `${e.clientX - r.left}px`, top: `${e.clientY - r.top}px`, width: `${d}px`, height: `${d}px` });
+  };
+  const down = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
     e.preventDefault();
-    e.stopPropagation();
-    const start = { x: e.clientX, y: e.clientY, z: zones[n] };
-    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-    const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - start.x) / r.width;
-      const dy = (ev.clientY - start.y) / r.height;
-      const z = start.z;
-      const next = size ? { ...z, w: clamp(z.w + dx, 0.03, 1 - z.x), h: clamp(z.h + dy, 0.03, 1 - z.y) } : { ...z, x: clamp(z.x + dx, 0, 1 - z.w), y: clamp(z.y + dy, 0, 1 - z.h) };
-      const round = (v: number) => Math.round(v * 1000) / 1000;
-      onChange(zones.map((x, i) => (i === n ? { x: round(next.x), y: round(next.y), w: round(next.w), h: round(next.h) } : x)));
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    // The camera now: the paint stays on the set.
+    const sample = useCameras.getState().samples[id];
+    setDrawing({ ...(tool.erase ? { erase: true } : {}), size: round(tool.size), points: [at(e).map(round) as [number, number]], ...(sample ? { anchor: anchorFrom(sample) } : {}) });
+  };
+  const move = (e: React.PointerEvent) => {
+    moveCursor(e);
+    if (!drawing) return;
+    const [u, v] = at(e);
+    const [lu, lv] = drawing.points[drawing.points.length - 1];
+    const r = box.current!.getBoundingClientRect();
+    if (Math.hypot(u - lu, ((v - lv) * r.height) / r.width) < SPACING) return;
+    setDrawing({ ...drawing, points: [...drawing.points, [round(u), round(v)]] });
+  };
+  const up = () => {
+    if (drawing) add(drawing);
+    setDrawing(null);
   };
   return (
-    <div className="tk-zones" ref={box}>
-      {zones.map((z, n) => (
-        <div key={n} className="tk-z" style={{ left: `${z.x * 100}%`, top: `${z.y * 100}%`, width: `${z.w * 100}%`, height: `${z.h * 100}%` }} onPointerDown={(e) => drag(e, n, false)}>
-          <span>{t('Zone {n}', { n: n + 1 })}</span>
-          <i className="tk-zh" onPointerDown={(e) => drag(e, n, true)} />
-        </div>
-      ))}
+    <div className="tk-brush" ref={box} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={() => cursor.current && (cursor.current.style.display = 'none')}>
+      <canvas ref={canvas} />
+      <i ref={cursor} className={`tk-cursor ${tool.erase ? 'erase' : ''}`} />
     </div>
   );
 }
@@ -384,7 +452,7 @@ function deviceText(p?: InputInfo['people']): { text: string; slow: boolean; tit
   return d.noGpu ? { text: `${t('GPU unavailable')} · ${cpu}`, slow: true, title: d.noGpu } : { text: cpu, slow: false };
 }
 
-function CutCard({ input: i, cut, setCut, edit, info, pictures, onZone }: { input: InputConfig; cut: Cut; setCut: (p: Partial<Cut>) => void; edit: Edit; info?: InputInfo; pictures: { id: string; name: string }[]; onZone: () => void }) {
+function CutCard({ input: i, cut, setCut, edit, info, pictures, tool, setTool }: { input: InputConfig; cut: Cut; setCut: (p: Partial<Cut>) => void; edit: Edit; info?: InputInfo; pictures: { id: string; name: string }[]; tool: Tool; setTool: (t: Tool) => void }) {
   const device = i.image ? deviceText(info?.people) : null;
   const slider = (k: 'contour' | 'edge' | 'steady' | 'shift', label: string, min: number, max: number, show: (v: number) => string, lo: string, hi: string) => (
     <div className="tk-sl">
@@ -436,37 +504,63 @@ function CutCard({ input: i, cut, setCut, edit, info, pictures, onZone }: { inpu
       {slider('edge', tc('cut', 'Edge'), 0, 100, (v) => `${v} %`, t('Sharp'), t('Soft'))}
       {slider('steady', t('Steadiness'), 0, 100, (v) => `${v} %`, t('Reactive'), tc('cut', 'Steady'))}
       {slider('shift', tc('cut', 'Shift'), -3, 3, (v) => signed(v, tc('frames', 'fr.')), t('Before'), t('After'))}
-      <div className="tk-zrow">
-        <span className="set-label">{t('Foreground zones')}</span>
-        <OnSwitch on={cut.zonesOn} mini onChange={(v) => setCut({ zonesOn: v })} />
+      <Foreground cut={cut} setCut={setCut} items={info?.people?.items ?? []} tool={tool} setTool={setTool} />
+    </section>
+  );
+}
+
+/** Who passes in front of the graphics: every person, or what was painted (the brush, the eraser, what they chose). */
+function Foreground({ cut, setCut, items, tool, setTool }: { cut: Cut; setCut: (p: Partial<Cut>) => void; items: NonNullable<NonNullable<InputInfo['people']>['items']>; tool: Tool; setTool: (t: Tool) => void }) {
+  const chosen = cut.foreground === 'chosen';
+  const n = { person: 0, object: 0 };
+  const remove = (gone: number[]) => {
+    const left = cut.strokes.filter((_, k) => !gone.includes(k));
+    // Only erasers left: nothing.
+    setCut({ strokes: left.some((x) => !x.erase) ? left : [] });
+  };
+  const shown = items.filter((it) => it.strokes.some((k) => k < cut.strokes.length));
+  return (
+    <div className="tk-fg">
+      <span className="set-label">{t('Foreground')}</span>
+      <div className="seg vs-seg tk-mode">
+        {(['all', 'chosen'] as const).map((f) => (
+          <button key={f} type="button" className={cut.foreground === f ? 'on' : ''} onClick={() => setCut({ foreground: f })}>
+            {f === 'all' ? t('All the people') : t('My selection')}
+          </button>
+        ))}
       </div>
-      {cut.zonesOn && (
+      {chosen && (
         <>
-          {cut.zones.length > 0 && (
-            <div className="tk-zlist">
-              {cut.zones.map((_, n) => (
-                <div key={n} className="tk-zi">
+          <div className="tk-tools">
+            <div className="segmented tk-toolseg">
+              <button className={!tool.erase ? 'on' : ''} title={`${t('Brush')} (B)`} onClick={() => setTool({ ...tool, erase: false })}>
+                <Brush size={14} /> {t('Brush')}
+              </button>
+              <button className={tool.erase ? 'on' : ''} title={`${t('Eraser')} (E)`} onClick={() => setTool({ ...tool, erase: true })}>
+                <Eraser size={14} /> {t('Eraser')}
+              </button>
+            </div>
+            <input type="range" className="tk-size" min={10} max={120} step={1} value={Math.round(tool.size * 1280)} title={t('Size')} aria-label={t('Size')} onChange={(e) => setTool({ ...tool, size: Number(e.target.value) / 1280 })} />
+          </div>
+          <div className="tk-items">
+            {shown.map((it) => {
+              const person = it.kind === 'person';
+              const k = ++n[it.kind];
+              return (
+                <div key={`${it.kind}-${it.strokes.join('.')}`} className="tk-zi">
                   <span>
-                    <Square size={12} strokeDasharray="4 3" /> {t('Zone {n}', { n: n + 1 })}
+                    {person ? <User size={13} /> : <Box size={13} />} {person ? t('Person {n}', { n: k }) : t('Object {n}', { n: k })}
+                    <small>{person ? t('follows the person') : t('fixed to the set')}</small>
                   </span>
-                  <button className="icon-btn ghost" title={t('Remove')} onClick={() => setCut({ zones: cut.zones.filter((__, x) => x !== n) })}>
+                  <button className="icon-btn ghost" title={t('Remove')} onClick={() => remove(it.strokes)}>
                     <X size={12} />
                   </button>
                 </div>
-              ))}
-            </div>
-          )}
-          <button
-            className="btn small tk-zadd"
-            onClick={() => {
-              setCut({ zones: [...cut.zones, { x: 0.35, y: 0.1, w: 0.3, h: 0.85 }] });
-              onZone();
-            }}
-          >
-            <Plus size={12} /> {t('Zone')}
-          </button>
+              );
+            })}
+          </div>
         </>
       )}
-    </section>
+    </div>
   );
 }

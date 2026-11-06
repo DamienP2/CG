@@ -789,16 +789,6 @@
 .tk-views button {
   flex: 1;
 }
-.tk-zbtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.tk-zbtn.on {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent-2);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
 .tk-screen {
   position: relative;
   aspect-ratio: 16 / 9;
@@ -822,42 +812,9 @@
   color: var(--text-3);
   font-size: 13px;
 }
-.tk-zones {
-  position: absolute;
-  inset: 0;
-}
-.tk-z {
-  position: absolute;
-  border: 1.5px dashed var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-  cursor: move;
-  border-radius: 4px;
-  touch-action: none;
-}
-.tk-z span {
-  position: absolute;
-  left: 6px;
-  top: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--accent);
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-.tk-zh {
-  position: absolute;
-  right: -6px;
-  bottom: -6px;
-  width: 11px;
-  height: 11px;
-  background: #fff;
-  border: 1.5px solid var(--accent);
-  border-radius: 2px;
-  cursor: nwse-resize;
-}
 .tk-hud {
   position: absolute;
+  pointer-events: none;
   padding: 3px 8px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.55);
@@ -966,18 +923,6 @@
   font-size: 11px;
   color: var(--text-3);
 }
-.tk-zrow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-}
-.tk-zlist {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 .tk-zi {
   display: flex;
   align-items: center;
@@ -993,11 +938,72 @@
   align-items: center;
   gap: 6px;
 }
-.tk-zadd {
-  align-self: flex-start;
+.tk-zi small {
+  color: var(--text-3);
+  margin-left: 6px;
+  font-size: 11px;
+}
+/* What passes in front: everyone, or what was painted. */
+.tk-fg {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.tk-mode button {
+  white-space: nowrap;
+}
+.tk-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tk-toolseg button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 0 10px;
+}
+.tk-size {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+.tk-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tk-screen.tk-paint {
+  cursor: none;
+  overflow: hidden;
+  touch-action: none;
+}
+.tk-brush {
+  position: absolute;
+  inset: 0;
+}
+.tk-brush canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.45;
+  pointer-events: none;
+}
+.tk-cursor {
+  position: absolute;
+  display: none;
+  border: 1.5px solid #34d399;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.tk-cursor.erase {
+  border-color: #f87171;
+  border-style: dashed;
 }
 .tk-bottom {
   display: grid;

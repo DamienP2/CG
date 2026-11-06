@@ -206,8 +206,19 @@ impl Cam {
     /// samples around then, on from the last at the same pace a little
     /// while, the oldest kept before them all.
     fn at(&self, t: Instant) -> Option<CameraSample> {
+        self.around(t.checked_sub(self.late())?)
+    }
+
+    /// Where the camera looked when the picture coming at `t` was taken
+    /// (its samples are held `delay` frames to meet it).
+    fn filmed(&self, t: Instant) -> Option<CameraSample> {
+        let held = Duration::from_secs_f64(self.delay as f64 * self.period());
+        self.around(t.checked_sub(held)?)
+    }
+
+    /// Where the camera looked at `due`.
+    fn around(&self, due: Instant) -> Option<CameraSample> {
         let samples = lock(&self.samples);
-        let due = t.checked_sub(self.late())?;
         let after = samples.iter().position(|(at, _)| *at > due);
         let (a, b) = match after {
             Some(0) => return samples.front().map(|(_, s)| *s),
@@ -327,6 +338,13 @@ impl Tracking {
     #[cfg(test)]
     pub fn sample(&self, id: &str) -> Option<CameraSample> {
         lock(&self.running).get(id)?.cam.at(Instant::now())
+    }
+
+    /// Where camera `id` looked when its picture coming at `t` was taken
+    /// (none while it sends nothing).
+    pub fn filmed(&self, id: &str, t: Instant) -> Option<CameraSample> {
+        let cam = lock(&self.running).get(id)?.cam.clone();
+        cam.live().then(|| cam.filmed(t)).flatten()
     }
 
     /// The cameras the templates of a project follow, for a frame shown at `shown`.

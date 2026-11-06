@@ -603,9 +603,11 @@ pub async fn serve(
             &shared.config.load().inputs,
             hardware::interface_ip(&shared.config.load().hardware.network.tracking),
         );
-        shared
-            .people
-            .apply(&shared.config.load().inputs, &shared.inputs);
+        shared.people.apply(
+            &shared.config.load().inputs,
+            &shared.inputs,
+            &shared.tracking,
+        );
         shared.data.set_cameras(&shared.config.load().inputs);
         shared
             .renderer

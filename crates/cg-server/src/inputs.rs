@@ -131,18 +131,36 @@ pub struct Cut {
     /// The people of a picture this many frames after (+) or before (−) the
     /// one the frame shows, when the mixer's delay is not exactly met (−3 to 3).
     pub shift: i32,
-    /// Only the people inside `zones` are cut (when there are zones).
-    pub zones_on: bool,
-    pub zones: Vec<Zone>,
+    /// What passes in front of the graphics: every person, or what was painted.
+    pub foreground: Foreground,
+    /// What was painted (`Foreground::Chosen`), in order.
+    pub strokes: Vec<Stroke>,
 }
 
-/// A part of the picture, 0 to 1 from its top left corner.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct Zone {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
+/// What a tracked camera's graphics behind the people are cut by.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Foreground {
+    /// Every person found.
+    #[default]
+    All,
+    /// The people and the objects painted.
+    Chosen,
+}
+
+/// A stroke of the brush (or of the eraser) on the camera's picture.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Stroke {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub erase: bool,
+    /// Its width, a fraction of the picture's.
+    pub size: f32,
+    /// 0 to 1 from the picture's top left corner.
+    pub points: Vec<[f32; 2]>,
+    /// The camera when it was painted: it stays on the set as the camera moves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<cg_core::tracking::Track>,
 }
 
 impl Default for Cut {
@@ -153,8 +171,8 @@ impl Default for Cut {
             edge: 40.0,
             steady: 60.0,
             shift: 0,
-            zones_on: true,
-            zones: Vec::new(),
+            foreground: Foreground::All,
+            strokes: Vec::new(),
         }
     }
 }
