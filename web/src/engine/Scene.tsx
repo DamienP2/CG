@@ -105,7 +105,7 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
     height: h,
     opacity: num(r.opacity),
     transformOrigin: `${num(r.anchorX) * 100}% ${num(r.anchorY) * 100}%`,
-    transform: `translate(${num(r.x)}px, ${num(r.y)}px) rotate(${num(r.rotation)}deg) scale(${num(r.scaleX)}, ${num(r.scaleY)})`,
+    transform: layerTransform(r),
     ...(moves ? { willChange: 'transform' } : {}),
     boxSizing: 'border-box',
   };
@@ -118,8 +118,9 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
     style.clipPath = `inset(${p(ct)} ${p(cr)} ${p(cb)} ${p(cl)})`;
   }
   // Drop shadow of the layer and its children, in its own space (cg-render draws the same); a Text has its own.
-  const shadow = layerShadow(layer, r);
-  if (shadow) style.filter = shadow;
+  // Its thickness first, then its drop shadow (cg-render: the same order).
+  const filter = [layerDepth(layer, r), layerShadow(layer, r)].filter(Boolean).join(' ');
+  if (filter) style.filter = filter;
   // The spec widgets draw everything inside their box (SpecWidget).
   if (widgetOf(layer)?.Render) return { style };
   const fill = cssColor(col(r.fill));
@@ -184,6 +185,50 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
 }
 
 /** The CSS filter of a layer's drop shadow (Layer.dropShadow), if it has one. */
+/** Position, rotation, pseudo-3D turn, skew and scale round the anchor (cg-render: local_transform, draw_projected). */
+export function layerTransform(r: Resolved): string {
+  const rx = num(r.rotateX);
+  const ry = num(r.rotateY);
+  const turn = rx || ry ? ` perspective(${Math.max(1, num(r.perspective))}px) rotateX(${rx}deg) rotateY(${ry}deg)` : '';
+  const kx = num(r.skewX);
+  const ky = num(r.skewY);
+  const skew = kx || ky ? ` skew(${kx}deg, ${ky}deg)` : '';
+  return `translate(${num(r.x)}px, ${num(r.y)}px) rotate(${num(r.rotation)}deg)${turn}${skew} scale(${num(r.scaleX)}, ${num(r.scaleY)})`;
+}
+
+const SHAPED = new Set(['rect', 'ellipse', 'polygon', 'pen', 'text']);
+
+/** The colour of a layer's thickness: its fill darker (shapes, texts), else a dark blue (cg-render: depth_color). */
+function depthColor(layer: Layer, r: Resolved): string {
+  if (!SHAPED.has(layer.type)) return 'rgb(58, 68, 118)';
+  const c = col(r.fill);
+  const v = (x: number) => Math.round(Math.min(1, Math.max(0, x * 0.45)) * 255);
+  return `rgb(${v(c[0])}, ${v(c[1])}, ${v(c[2])})`;
+}
+
+/**
+ * The thickness: the layer's shape stacked behind it one pixel further each time, away from the
+ * eye (down right when it faces it). Each drop-shadow doubles the copies: n of them in log2 n
+ * filters (cg-render: extrude).
+ */
+export function layerDepth(layer: Layer, r: Resolved): string | undefined {
+  const n = Math.round(Math.min(400, num(r.depth)));
+  if (n < 1) return undefined;
+  let dx = -Math.sin((num(r.rotateY) * Math.PI) / 180);
+  let dy = Math.sin((num(r.rotateX) * Math.PI) / 180);
+  const len = Math.hypot(dx, dy);
+  [dx, dy] = len < 1e-3 ? [Math.SQRT1_2, Math.SQRT1_2] : [dx / len, dy / len];
+  const color = depthColor(layer, r);
+  const steps: string[] = [];
+  let covered = 0;
+  for (let s = 1; covered < n; s *= 2) {
+    const step = Math.min(s, n - covered);
+    steps.push(`drop-shadow(${(dx * step).toFixed(3)}px ${(dy * step).toFixed(3)}px 0 ${color})`);
+    covered += step;
+  }
+  return steps.join(' ');
+}
+
 export function layerShadow(layer: Layer, r: Resolved): string | undefined {
   if (!layer.dropShadow || layer.type === 'text') return undefined;
   const c = col(r.shadowColor);
@@ -487,7 +532,9 @@ function maskStyle(m: Layer, r: Resolved, gm: GroupMask, gw: number, gh: number,
   }
   const ax = num(r.anchorX) * w;
   const ay = num(r.anchorY) * h;
-  const tf = `translate(${pad + num(r.x) + ax} ${pad + num(r.y) + ay}) rotate(${num(r.rotation)}) scale(${num(r.scaleX)} ${num(r.scaleY)}) translate(${-ax} ${-ay})`;
+  const kx = Math.tan((num(r.skewX) * Math.PI) / 180);
+  const ky = Math.tan((num(r.skewY) * Math.PI) / 180);
+  const tf = `translate(${pad + num(r.x) + ax} ${pad + num(r.y) + ay}) rotate(${num(r.rotation)}) matrix(1 ${ky} ${kx} 1 0 0) scale(${num(r.scaleX)} ${num(r.scaleY)}) translate(${-ax} ${-ay})`;
   let shape: string;
   // A shape: its outline as it is drawn (rounded corners, star, polygon, pen…).
   const ol = widgetOf(m)?.outline?.(m as never, r, w, h);

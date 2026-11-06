@@ -141,4 +141,12 @@ export const ux3: Record<string, string> = {
   'trk|Behind': 'Derrière',
   'Remove the camera': 'Retirer la caméra',
   'page|Camera tracking': 'Tracking caméras',
+  Skew: 'Inclinaison',
+  'Skew X': 'Inclinaison X',
+  'Skew Y': 'Inclinaison Y',
+  '3D rotation': 'Rotation 3D',
+  '3D rotation X': 'Rotation 3D X',
+  '3D rotation Y': 'Rotation 3D Y',
+  Perspective: 'Perspective',
+  Thickness: 'Épaisseur',
 };

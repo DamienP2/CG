@@ -116,6 +116,10 @@ const TRANSFORM_ROWS: PropRow[] = [
   { label: 'Dimensions', props: ['width', 'height'], fields: ['W', 'H'], suffix: 'px', min: 0 },
   { label: 'Anchor', props: ['anchorX', 'anchorY'], fields: ['X', 'Y'], display: 100, suffix: '%' },
   { label: 'Rotation', props: ['rotation'], suffix: '°', precision: 1 },
+  { label: 'Skew', props: ['skewX', 'skewY'], fields: ['X', 'Y'], suffix: '°', precision: 1, min: -80, max: 80 },
+  { label: '3D rotation', props: ['rotateX', 'rotateY'], fields: ['X', 'Y'], suffix: '°', precision: 1 },
+  { label: 'Perspective', props: ['perspective'], suffix: 'px', min: 100, max: 20000 },
+  { label: 'Thickness', props: ['depth'], suffix: 'px', min: 0, max: 400 },
   { label: 'Opacity', props: ['opacity'], display: 100, suffix: '%', min: 0, max: 1 },
 ];
 const MASK_ROWS: PropRow[] = [
@@ -242,7 +246,7 @@ export function LayerProperties({ entry, io, flat }: { entry: ExposedLayer; io: 
       );
   }
   // The settings this page does not lay out itself: as the Operator always showed them.
-  const others = [...at.entries()].filter(([p]) => !shown.has(p) && !/^@(x|y|width|height|scaleX|scaleY|anchorX|anchorY|rotation|opacity|crop\w+)$/.test(p));
+  const others = [...at.entries()].filter(([p]) => !shown.has(p) && !/^@(x|y|width|height|scaleX|scaleY|anchorX|anchorY|rotation|skewX|skewY|rotateX|rotateY|perspective|depth|opacity|crop\w+)$/.test(p));
   if (others.length)
     sections.push(
       <OpSection key="settings" title={t('Settings')}>

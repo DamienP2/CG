@@ -80,7 +80,7 @@ export function copyAnimation(layerId: string, props?: Prop[], rowLabel?: string
   toast(props ? t('Animation of {what} copied: paste it on another property or layer', { what: label }) : tn(list.length, 'Animation of {name} copied ({n} property): paste it on another layer (Ctrl+V)', 'Animation of {name} copied ({n} properties): paste it on another layer (Ctrl+V)', { name: l.name }));
 }
 
-const ALWAYS = new Set<Prop>(['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'opacity', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom']);
+const ALWAYS = new Set<Prop>(['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY', 'rotateX', 'rotateY', 'perspective', 'depth', 'opacity', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom']);
 
 /** Whether a layer has a property (as its properties panel shows them). */
 export function layerHasProp(l: Layer, p: Prop): boolean {
@@ -161,6 +161,8 @@ export const PASTE_GROUPS: { id: string; label: string; props: Prop[] }[] = [
   { id: 'size', label: 'Size', props: ['width', 'height'] },
   { id: 'scale', label: 'Scale', props: ['scaleX', 'scaleY'] },
   { id: 'rotation', label: 'Rotation', props: ['rotation'] },
+  { id: 'skew', label: 'Skew', props: ['skewX', 'skewY'] },
+  { id: 'pseudo3d', label: '3D rotation', props: ['rotateX', 'rotateY', 'perspective', 'depth'] },
   { id: 'opacity', label: 'Opacity', props: ['opacity'] },
   { id: 'anchor', label: 'Anchor', props: ['anchorX', 'anchorY'] },
   { id: 'crop', label: 'Reveal mask', props: ['cropLeft', 'cropRight', 'cropTop', 'cropBottom'] },

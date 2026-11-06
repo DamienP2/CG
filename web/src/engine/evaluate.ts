@@ -112,6 +112,12 @@ export const DEFAULTS: Record<Prop, Value> = {
   cornerBl: 0,
   // Second colour of a gradient (shapes, Text).
   fill2: [1, 59 / 255, 92 / 255, 1],
+  skewX: 0,
+  skewY: 0,
+  rotateX: 0,
+  rotateY: 0,
+  perspective: 1200,
+  depth: 0,
 };
 
 /** Mirror of anim::layer_default: a property neither set nor animated; an ellipse's arc is its settings (older layers have them only there). */

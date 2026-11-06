@@ -31,6 +31,8 @@ pub fn default_value(prop: Prop) -> Value {
         DrawEnd => Value::Number(100.0),
         CornerTl | CornerTr | CornerBr | CornerBl => Value::Number(0.0),
         Fill2 => Value::Color(Color([1.0, 59.0 / 255.0, 92.0 / 255.0, 1.0])),
+        SkewX | SkewY | RotateX | RotateY | Depth => Value::Number(0.0),
+        Perspective => Value::Number(1200.0),
     }
 }
 

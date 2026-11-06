@@ -7,7 +7,7 @@ import { loadLottieAsset } from './lottie';
 import { fieldUsed } from '../engine/settings';
 import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Sparkles, Unlink } from 'lucide-react';
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { applyEasing, col, holdFrame, interpolateText, keepingRatios, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
+import { applyEasing, col, DEFAULTS, holdFrame, interpolateText, keepingRatios, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, clockAt, drivenProps, measureLayer, withOutputs } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
 import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type GroupMask, type Layer, type LayerType, type Prop, type Template, type Value, type Data } from '../engine/types';
@@ -54,6 +54,12 @@ const TRANSFORM: PropSpec[] = [
   { prop: 'rotation', label: 'Rotation', suffix: '°', precision: 1 },
   { prop: 'scaleX', label: 'Scale X', display: 100, suffix: '%' },
   { prop: 'scaleY', label: 'Scale Y', display: 100, suffix: '%' },
+  { prop: 'skewX', label: 'Skew X', suffix: '°', precision: 1 },
+  { prop: 'skewY', label: 'Skew Y', suffix: '°', precision: 1 },
+  { prop: 'rotateX', label: '3D rotation X', suffix: '°', precision: 1 },
+  { prop: 'rotateY', label: '3D rotation Y', suffix: '°', precision: 1 },
+  { prop: 'perspective', label: 'Perspective', suffix: 'px', min: 100 },
+  { prop: 'depth', label: 'Thickness', suffix: 'px', min: 0 },
   {
     prop: 'opacity',
     label: 'Opacity',
@@ -172,6 +178,10 @@ const TRANSFORM_ROWS: RowSpec[] = [
     suffix: '%',
   },
   { label: 'Rotation', props: ['rotation'], suffix: '°', precision: 1 },
+  { label: 'Skew', props: ['skewX', 'skewY'], fields: ['X', 'Y'], suffix: '°', precision: 1, min: -80, max: 80 },
+  { label: '3D rotation', props: ['rotateX', 'rotateY'], fields: ['X', 'Y'], suffix: '°', precision: 1 },
+  { label: 'Perspective', props: ['perspective'], suffix: 'px', min: 100, max: 20000 },
+  { label: 'Thickness', props: ['depth'], suffix: 'px', min: 0, max: 400 },
   {
     label: 'Opacity',
     props: ['opacity'],
@@ -181,6 +191,9 @@ const TRANSFORM_ROWS: RowSpec[] = [
     max: 1,
   },
 ];
+
+/** Properties with a value of their own (a default) the ↺ of their row goes back to. */
+const RESETTABLE = new Set<Prop>(['scaleX', 'scaleY', 'anchorX', 'anchorY', 'rotation', 'skewX', 'skewY', 'rotateX', 'rotateY', 'perspective', 'depth', 'opacity']);
 
 /**
  * ◆ of a property row. Off the timeline (dim): click puts the property on
@@ -398,6 +411,20 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
       <span className="pp-label">
         {t(spec.label)}
         <LogicBadge layer={layer} props={spec.props} />
+        {spec.props.every((p) => RESETTABLE.has(p)) && (
+          <button
+            className={`pp-reset ${!spec.props.some((p) => driven.has(p)) && spec.props.some((p) => num(propValue(layer, p, frame)) !== num(DEFAULTS[p])) ? 'on' : ''}`}
+            title={t('Default value')}
+            onClick={() =>
+              update((tpl) => {
+                const l = findLayer(tpl, layer.id)!;
+                for (const p of spec.props) setProp(l, p, DEFAULTS[p], frame);
+              }, `prop-${layer.id}-${spec.label}`)
+            }
+          >
+            <RotateCcw size={11} />
+          </button>
+        )}
       </span>
       <div className="pp-fields">
         {/* Locked: one field, the other value follows. */}

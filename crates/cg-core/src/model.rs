@@ -158,6 +158,15 @@ pub enum Prop {
     /// Second colour of a gradient (shapes, Text); unset, their settings
     /// (`fillStyle.color2`, `color2`).
     Fill2,
+    /// Skew (degrees), as CSS `skew(x, y)`, around the anchor.
+    SkewX,
+    SkewY,
+    /// Pseudo-3D: turn round the X and Y axes (degrees) seen with a
+    /// perspective (px), around the anchor; thickness (px) behind the layer.
+    RotateX,
+    RotateY,
+    Perspective,
+    Depth,
 }
 
 impl Prop {
@@ -196,6 +205,12 @@ impl Prop {
         Prop::CornerBr,
         Prop::CornerBl,
         Prop::Fill2,
+        Prop::SkewX,
+        Prop::SkewY,
+        Prop::RotateX,
+        Prop::RotateY,
+        Prop::Perspective,
+        Prop::Depth,
     ];
 
     pub fn is_color(self) -> bool {

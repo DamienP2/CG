@@ -35,6 +35,53 @@ interface Box {
 const same = (was: Box[], now: Box[]) => (was.length === now.length && was.every((b, i) => b.id === now[i].id && b.left === now[i].left && b.top === now[i].top && b.width === now[i].width && b.height === now[i].height) ? was : now);
 
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+/** The rotation knob, the skew bars (right side: Y, bottom side: X) and the anchor point. */
+type Tool = 'rotate' | 'skewX' | 'skewY' | 'anchor';
+type Pt = [number, number];
+
+/**
+ * The selected layer as it is seen: its corners and the middles of its sides (in the handles'
+ * order), its centre and its anchor, from the stage's top left. Read from the page, so turned,
+ * skewed, scaled and in perspective as drawn.
+ */
+interface Quad {
+  id: string;
+  pts: Pt[];
+}
+const QUAD_AT: Pt[] = [[0, 0], [0.5, 0], [1, 0], [1, 0.5], [1, 1], [0.5, 1], [0, 1], [0, 0.5], [0.5, 0.5]];
+const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
+const unit = (v: Pt, or: Pt): Pt => {
+  const n = Math.hypot(v[0], v[1]);
+  return n < 1e-6 ? or : [v[0] / n, v[1] / n];
+};
+const along = (p: Pt, d: Pt, k: number): Pt => [p[0] + d[0] * k, p[1] + d[1] * k];
+const deg = (v: Pt) => (Math.atan2(v[1], v[0]) * 180) / Math.PI;
+/** (a, b) such that a·ex + b·ey = d. */
+const solve = (ex: Pt, ey: Pt, d: Pt): Pt => {
+  const det = ex[0] * ey[1] - ex[1] * ey[0] || 1e-9;
+  return [(d[0] * ey[1] - d[1] * ey[0]) / det, (ex[0] * d[1] - ex[1] * d[0]) / det];
+};
+/** The resize cursor along a direction on the screen. */
+const resizeCursor = (v: Pt) => {
+  const a = ((deg(v) % 180) + 180) % 180;
+  return a < 22.5 || a >= 157.5 ? 'ew-resize' : a < 67.5 ? 'nwse-resize' : a < 112.5 ? 'ns-resize' : 'nesw-resize';
+};
+
+/** Points of a layer's box seen on the page (`at`: fractions of its box), from `origin`. */
+function seenAt(el: HTMLElement, at: Pt[], origin: DOMRect): Pt[] {
+  const probes = at.map(([u, v]) => {
+    const d = document.createElement('i');
+    d.style.cssText = `position:absolute;left:${u * 100}%;top:${v * 100}%;width:0;height:0;pointer-events:none`;
+    el.appendChild(d);
+    return d;
+  });
+  const pts = probes.map((d): Pt => {
+    const r = d.getBoundingClientRect();
+    return [r.left - origin.left, r.top - origin.top];
+  });
+  probes.forEach((d) => d.remove());
+  return pts;
+}
 
 /** A line a dragged box snaps to: a guide or the picture's edge (no box: across the picture), or another layer's edge or centre. */
 interface SnapLine {
@@ -108,6 +155,9 @@ type Start = {
   rot: number;
   sx: number;
   sy: number;
+  /** Its skew (degrees). */
+  kx: number;
+  ky: number;
   /** Its parents' turn and scale. */
   prot: number;
   psx: number;
@@ -164,6 +214,9 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const [ghosts, setGhosts] = useState<Box[]>([]);
   // The folders the selected layers are in: their frame, light.
   const [folders, setFolders] = useState<Box[]>([]);
+  const [quad, setQuad] = useState<Quad | null>(null);
+  const quadRef = useRef<Quad | null>(null);
+  quadRef.current = quad;
   // Right-click menu of the layer under the pointer (the timeline's, ClipboardMenu).
   const [ctx, setCtx] = useState<ClipMenuAt | null>(null);
   const widgetRun = useDesigner((s) => s.widgetRun);
@@ -305,6 +358,11 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
         }),
       ),
     );
+    // One layer selected: its frame as it is seen, for the handles.
+    const one = selected.length === 1 && template ? findLayer(template, selected[0]) : undefined;
+    const oneEl = one && root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(one.id)}"]`);
+    const pts = one && oneEl ? seenAt(oneEl, [...QUAD_AT, [num(propValue(one, 'anchorX', frame)), num(propValue(one, 'anchorY', frame))]], origin) : null;
+    setQuad((was) => (!pts || !one ? null : was && was.id === one.id && was.pts.every((p, i) => p[0] === pts[i][0] && p[1] === pts[i][1]) ? was : { id: one.id, pts }));
     setBoxes((was) =>
       same(
         was,
@@ -375,7 +433,11 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   }, [scale, stageZoom === null, room.l, room.t, room.r, room.b, !!template]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const drag = useRef<{
-    mode: 'move' | Handle;
+    mode: 'move' | Handle | Tool;
+    /** The rotation, skew and anchor tools: the layer's frame as seen when the drag began. */
+    quad?: Quad;
+    /** The stage's top left on the page then. */
+    origin?: Pt;
     startX: number;
     startY: number;
     start: Record<string, Start>;
@@ -390,6 +452,10 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
       const d = drag.current;
       const st = useDesigner.getState();
       if (!d || !st.template) return;
+      if (d.quad && d.origin && (d.mode === 'rotate' || d.mode === 'skewX' || d.mode === 'skewY' || d.mode === 'anchor')) {
+        toolDrag(d.mode, d.quad, d.start[d.quad.id], [e.clientX - d.origin[0], e.clientY - d.origin[1]], [d.startX - d.origin[0], d.startY - d.origin[1]], e.shiftKey, e.altKey);
+        return;
+      }
       let dx = (e.clientX - d.startX) / scale;
       let dy = (e.clientY - d.startY) / scale;
       // Shift while moving: one axis only, the one moved the most.
@@ -497,7 +563,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     };
   }, [scale]);
 
-  const beginDrag = (e: React.PointerEvent, mode: 'move' | Handle, ids: string[]) => {
+  const beginDrag = (e: React.PointerEvent, mode: 'move' | Handle | Tool, ids: string[]) => {
     const st = useDesigner.getState();
     if (!st.template) return;
     const start: Record<string, Start> = {};
@@ -522,7 +588,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
         psx *= num(propValue(p, 'scaleX', st.frame)) || 1;
         psy *= num(propValue(p, 'scaleY', st.frame)) || 1;
       }
-      const v = (k: 'x' | 'y' | 'width' | 'height' | 'anchorX' | 'anchorY' | 'rotation' | 'scaleX' | 'scaleY') => num(propValue(l, k, st.frame));
+      const v = (k: 'x' | 'y' | 'width' | 'height' | 'anchorX' | 'anchorY' | 'rotation' | 'scaleX' | 'scaleY' | 'skewX' | 'skewY') => num(propValue(l, k, st.frame));
       // As it is seen: turned and scaled around its anchor.
       const el = root0?.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
       const r = el?.getBoundingClientRect();
@@ -539,6 +605,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
         rot: v('rotation'),
         sx: v('scaleX') || 1,
         sy: v('scaleY') || 1,
+        kx: v('skewX'),
+        ky: v('skewY'),
         prot,
         psx,
         psy,
@@ -563,7 +631,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
         for (const v of [t, t + h / 2, t + h]) objs.y.push({ v, from: l, to: l + w });
       }
     }
-    drag.current = { mode, startX: e.clientX, startY: e.clientY, start, objs };
+    const o = sceneRef.current?.getBoundingClientRect();
+    drag.current = { mode, startX: e.clientX, startY: e.clientY, start, objs, quad: quadRef.current ?? undefined, origin: o ? [o.left, o.top] : undefined };
     useDesigner.setState({ lastCoalesce: null });
     e.stopPropagation();
   };
@@ -681,11 +750,12 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
               <div key={`${g.axis}${g.v}`} className={`smart-guide ${g.axis}`} style={g.axis === 'x' ? { left: g.v * scale, top: g.from * scale, height: (g.to - g.from) * scale } : { top: g.v * scale, left: g.from * scale, width: (g.to - g.from) * scale }} />
             ))}
             {!zonesEdit && boxes.map((b) => (
-              <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
-                {selected.length === 1 && HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}
+              <div key={b.id} className={`sel-box ${quad?.id === b.id ? 'seen' : ''}`} style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
+                {selected.length === 1 && quad?.id !== b.id && HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}
                 {selected.length === 1 && <WidgetOverlay layerId={b.id} box={b} frame={frame} />}
               </div>
             ))}
+            {!zonesEdit && quad && selected.length === 1 && quad.id === selected[0] && <TransformFrame quad={quad} onDown={(e, mode) => beginDrag(e, mode, [quad.id])} />}
           </div>
         </div>
       </div>
@@ -810,4 +880,101 @@ function OverviewScene({ template, format, ticking, fps, lang }: { template: Tem
 function StageVideo({ input }: { input: string }) {
   const { url } = useLiveFrame(input, 'preview');
   return url ? <img className="stage-video" src={url} alt="" draggable={false} /> : null;
+}
+
+/**
+ * The selected layer's frame as it is seen: the size handles at its corners and sides, the
+ * rotation knob at the end of a stalk above it, the skew bars beside its right and bottom sides
+ * and its anchor point.
+ */
+function TransformFrame({ quad, onDown }: { quad: Quad; onDown: (e: React.PointerEvent, mode: Handle | Tool) => void }) {
+  const p = quad.pts;
+  const c = p[8];
+  const corners = [p[0], p[2], p[4], p[6]];
+  const out = (i: number, k: number, or: Pt) => along(p[i], unit(sub(p[i], c), or), k);
+  const up = unit(sub(p[1], c), [0, -1]);
+  const tip = along(p[1], up, 26);
+  const down = (mode: Handle | Tool) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    onDown(e, mode);
+  };
+  const at = (q: Pt, extra?: React.CSSProperties): React.CSSProperties => ({ left: q[0], top: q[1], ...extra });
+  return (
+    <div className="tf-frame">
+      <svg className="tf-lines">
+        <polygon points={corners.map((q) => q.join(',')).join(' ')} />
+        <line x1={p[1][0]} y1={p[1][1]} x2={tip[0]} y2={tip[1]} />
+      </svg>
+      {HANDLES.map((h, i) => (
+        <div key={h} className="handle tf-handle" style={at(p[i], { cursor: resizeCursor(sub(p[i], c)) })} onPointerDown={down(h)} />
+      ))}
+      <div className="tf-knob" title={t('Rotation')} style={at(tip)} onPointerDown={down('rotate')} />
+      <div className="tf-skew" title={t('Skew')} style={at(out(3, 14, [1, 0]), { transform: `translate(-50%, -50%) rotate(${deg(sub(p[4], p[2]))}deg)`, cursor: resizeCursor(sub(p[4], p[2])) })} onPointerDown={down('skewY')} />
+      <div className="tf-skew" title={t('Skew')} style={at(out(5, 14, [0, 1]), { transform: `translate(-50%, -50%) rotate(${deg(sub(p[4], p[6]))}deg)`, cursor: resizeCursor(sub(p[4], p[6])) })} onPointerDown={down('skewX')} />
+      <div className="tf-anchor" title={t('Anchor')} style={at(p[9])} onPointerDown={down('anchor')} />
+    </div>
+  );
+}
+
+/**
+ * A drag of the rotation knob, a skew bar or the anchor point (`now`, `from`: the pointer, from
+ * the stage's top left; `quad`: the layer's frame when it began). Shift: rotation by 15°, skew by
+ * 5°. The anchor snaps to the centre and the corners (Alt: free) and the layer stays in place.
+ */
+function toolDrag(mode: Tool, quad: Quad, s: Start | undefined, now: Pt, from: Pt, shift: boolean, alt: boolean) {
+  if (!s) return;
+  const st = useDesigner.getState();
+  const p = quad.pts;
+  // The box's axes on the screen: per pixel of its width / height.
+  const ex: Pt = [(p[2][0] - p[0][0]) / (s.w || 1), (p[2][1] - p[0][1]) / (s.w || 1)];
+  const ey: Pt = [(p[6][0] - p[0][0]) / (s.h || 1), (p[6][1] - p[0][1]) / (s.h || 1)];
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  st.update((tpl) => {
+    const l = findLayer(tpl, quad.id);
+    if (!l || l.locked) return;
+    if (mode === 'rotate') {
+      const a = p[9];
+      let r = s.rot + deg(sub(now, a)) - deg(sub(from, a));
+      r = ((((r + 180) % 360) + 360) % 360) - 180;
+      setProp(l, 'rotation', shift ? Math.round(r / 15) * 15 : r1(r), st.frame);
+      return;
+    }
+    if (mode === 'skewX' || mode === 'skewY') {
+      const [a, b] = solve(ex, ey, sub(now, from));
+      const tan = (v: number) => Math.tan((v * Math.PI) / 180);
+      const atan = (v: number) => {
+        const d = (Math.atan(v) * 180) / Math.PI;
+        return Math.max(-80, Math.min(80, shift ? Math.round(d / 5) * 5 : r1(d)));
+      };
+      // The side dragged is that far from the anchor's line.
+      // (skewed after being scaled: the scale of the other side counts)
+      if (mode === 'skewX') setProp(l, 'skewX', atan(tan(s.kx) + (a * s.sx) / (Math.max(1, s.h * (1 - s.ay) || s.h) * s.sy)), st.frame);
+      else setProp(l, 'skewY', atan(tan(s.ky) + (b * s.sy) / (Math.max(1, s.w * (1 - s.ax) || s.w) * s.sx)), st.frame);
+      return;
+    }
+    // The anchor: where the pointer is in the box, on the centre or a corner when near.
+    let [u, v] = solve(ex, ey, sub(now, p[0]));
+    u /= s.w || 1;
+    v /= s.h || 1;
+    if (!alt) {
+      const near = ([0, 2, 4, 6, 8] as const).map((i) => ({ i, d: Math.hypot(now[0] - p[i][0], now[1] - p[i][1]) })).sort((x, y) => x.d - y.d)[0];
+      if (near.d < 10) [u, v] = QUAD_AT[near.i];
+    }
+    u = Math.round(u * 1000) / 1000;
+    v = Math.round(v * 1000) / 1000;
+    // The layer stays where it is: x' = x + (I − M)(a − a'), M its turn, skew and scale.
+    const da: Pt = [(s.ax - u) * s.w, (s.ay - v) * s.h];
+    const kx = Math.tan((s.kx * Math.PI) / 180);
+    const ky = Math.tan((s.ky * Math.PI) / 180);
+    // CSS order: scaled, then skewed, then turned.
+    const k: Pt = [da[0] * s.sx + kx * da[1] * s.sy, ky * da[0] * s.sx + da[1] * s.sy];
+    const [mx, my] = ((): Pt => {
+      const a = (s.rot * Math.PI) / 180;
+      return [k[0] * Math.cos(a) - k[1] * Math.sin(a), k[0] * Math.sin(a) + k[1] * Math.cos(a)];
+    })();
+    setProp(l, 'anchorX', u, st.frame);
+    setProp(l, 'anchorY', v, st.frame);
+    setProp(l, 'x', r1(s.x + da[0] - mx), st.frame);
+    setProp(l, 'y', r1(s.y + da[1] - my), st.frame);
+  }, 'stage-drag');
 }

@@ -157,7 +157,7 @@ export function rowsFor(l: Layer | undefined): { key: string; group: string }[] 
   ];
 }
 
-const PROP_NAMES: Partial<Record<Prop, string>> = { x: 'X position', y: 'Y position', width: 'Width', height: 'Height', anchorX: 'Anchor X', anchorY: 'Anchor Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity', strokeWidth: 'Stroke width', cornerRadius: 'Corner radius', fontSize: 'Text size', letterSpacing: 'Letter spacing', fill: 'Colour' };
+const PROP_NAMES: Partial<Record<Prop, string>> = { x: 'X position', y: 'Y position', width: 'Width', height: 'Height', anchorX: 'Anchor X', anchorY: 'Anchor Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', skewX: 'Skew X', skewY: 'Skew Y', rotateX: '3D rotation X', rotateY: '3D rotation Y', perspective: 'Perspective', depth: 'Thickness', opacity: 'Opacity', strokeWidth: 'Stroke width', cornerRadius: 'Corner radius', fontSize: 'Text size', letterSpacing: 'Letter spacing', fill: 'Colour' };
 const METRIC_NAMES: Record<string, string> = { 'text.width': 'Text width', 'text.height': 'Text height', 'text.lines': 'Lines', 'text.chars': 'Characters' };
 const CONTENT_NAMES: Record<string, string> = { text: 'Text', src: 'Picture', items: 'Items', link: 'Data set', csv: 'Values', data: 'Data', value: 'Value', max: 'Maximum', min: 'Minimum', title: 'Title', 'title.text': 'Title', to: 'Value', prefix: 'Prefix', suffix: 'Suffix', goal: 'Goal', url: 'Address', author: 'Author', platform: 'Platform', avatar: 'Avatar', bannerText: 'Banner' };
 

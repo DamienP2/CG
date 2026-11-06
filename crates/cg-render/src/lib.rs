@@ -10,6 +10,7 @@
 mod cache;
 mod mask;
 pub mod pool;
+mod pseudo3d;
 mod scaled;
 pub mod sequence;
 mod shadow;
@@ -1554,6 +1555,8 @@ impl Renderer {
             // A folder under full opacity: its layers drawn together, then laid
             // at its opacity (they do not show through each other, as in CSS).
             let faded = is_group && r.num(Prop::Opacity) < 0.999;
+            // Pseudo-3D: drawn flat with its layers, then seen turned.
+            let projected = lifted(&r);
             // A mask folder: its children drawn through its mask (one step, drawn each frame).
             let masked = folder_mask(ctx.template, &layer.id).filter(|m| {
                 ctx.template
@@ -1570,7 +1573,7 @@ impl Renderer {
                 continue;
             }
             if planning {
-                if shadowed || (faded && masked.is_none()) {
+                if shadowed || projected || (faded && masked.is_none()) {
                     // The layer and its children are one step (drawn together).
                     let outer = self.steps.plan.replace(Vec::new());
                     let (own, then) = self.layer_motion(pm, ctx, &r, tf, opacity);
@@ -1618,12 +1621,35 @@ impl Renderer {
             // (its own motion, that of its second step when drawn in two)
             let sprite = (self.sprites_on
                 && !faded
+                && !projected
                 && !own_drawn
                 && !self.in_sprite
                 && !self.steps.fading
                 && self.steps.clocked == 0)
                 .then(|| self.step_motion(pm, ctx, &r, tf, opacity, shadowed && is_group, split))
                 .filter(|(m, _)| *m != cache::Motion::Moving);
+            if projected {
+                self.steps.whole += 1;
+                let a = parent_tf.pre_concat(turned(&r, w, h));
+                let clip = clip_children
+                    .then(|| Rect::from_xywh(0.0, 0.0, w.max(0.01), h.max(0.01)))
+                    .flatten();
+                self.draw_projected(
+                    pm,
+                    ctx,
+                    &r,
+                    a,
+                    tf,
+                    opacity,
+                    mask,
+                    crop.flatten(),
+                    clip,
+                    masked,
+                    shadowed,
+                );
+                self.steps.whole -= 1;
+                continue;
+            }
             let own_mask = own_rect.map(|rect| build_mask(pm, mask, rect, tf));
             let m = own_mask.as_ref().or(mask);
             if let Some(gm) = masked {
@@ -2247,6 +2273,105 @@ impl Renderer {
             ..PixmapPaint::default()
         };
         pm.draw_pixmap(x, y, out.as_ref(), &paint, Transform::identity(), mask);
+    }
+
+    /// A layer in pseudo-3D (`lifted`): it and its layers drawn flat (`tf`, a
+    /// folder's `clip` cutting its layers), their thickness behind them, their
+    /// drop shadow (`shadowed`), all cut by its `crop` (CSS: filter, then
+    /// clip-path), then seen turned round its anchor (`a`: its space up to its
+    /// rotation) at `opacity` through `mask`.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_projected(
+        &mut self,
+        pm: &mut Pixmap,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        a: Transform,
+        tf: Transform,
+        opacity: f32,
+        mask: Option<&Mask>,
+        crop: Option<Rect>,
+        clip: Option<Rect>,
+        masked: Option<&cg_core::model::GroupMask>,
+        shadowed: bool,
+    ) {
+        let mut content = match self.scratch.take() {
+            Some(mut c) if (c.width(), c.height()) == (pm.width(), pm.height()) => {
+                c.fill(tiny_skia::Color::TRANSPARENT);
+                c
+            }
+            _ => match Pixmap::new(pm.width(), pm.height()) {
+                Some(c) => c,
+                None => return,
+            },
+        };
+        let cut = clip.map(|rc| build_mask(&content, None, rc, tf));
+        self.draw_layer(&mut content, ctx, r, tf, 1.0, None);
+        if matches!(r.layer.kind, LayerKind::Group { .. }) {
+            match masked {
+                Some(gm) => {
+                    if let Some(c) =
+                        self.folder_cut(&content, ctx, &r.layer.id, tf, gm, cut.as_ref())
+                    {
+                        self.draw_children(&mut content, ctx, Some(&r.layer.id), tf, 1.0, Some(&c));
+                    }
+                }
+                None => {
+                    self.draw_children(&mut content, ctx, Some(&r.layer.id), tf, 1.0, cut.as_ref())
+                }
+            }
+        }
+        // The thickness, a pixel of the layer's space at a time.
+        let n = r.num(Prop::Depth).max(0.0).round() as u32;
+        if n > 0 {
+            let (dx, dy) = depth_dir(r);
+            let (vx, vy) = (tf.sx * dx + tf.kx * dy, tf.ky * dx + tf.sy * dy);
+            pseudo3d::extrude(&mut content, vx, vy, n.min(400), depth_color(r));
+        }
+        // Its drop shadow, in its space as drawn flat.
+        let mut composed = shadowed
+            .then(|| {
+                let (ox, oy) = (r.num(Prop::ShadowX) as f32, r.num(Prop::ShadowY) as f32);
+                let (dx, dy) = (tf.sx * ox + tf.kx * oy, tf.ky * ox + tf.sy * oy);
+                let scale = (tf.sx * tf.sy - tf.kx * tf.ky).abs().sqrt();
+                let sigma = r.num(Prop::ShadowBlur).max(0.0) as f32 * scale / 2.0;
+                shadow::compose(&content, r.color(Prop::ShadowColor), dx, dy, sigma)
+            })
+            .flatten();
+        if let Some(rc) = crop {
+            match &mut composed {
+                Some((out, x, y)) => {
+                    let m =
+                        build_mask(out, None, rc, tf.post_translate(-(*x as f32), -(*y as f32)));
+                    out.apply_mask(&m);
+                }
+                None => {
+                    let m = build_mask(&content, None, rc, tf);
+                    content.apply_mask(&m);
+                }
+            }
+        }
+        let (src, x, y) = match &composed {
+            Some((out, x, y)) => (out, *x, *y),
+            None => (&content, 0, 0),
+        };
+        let (rx, ry) = (r.num(Prop::RotateX) as f32, r.num(Prop::RotateY) as f32);
+        match (rx.abs() > 1e-3 || ry.abs() > 1e-3)
+            .then(|| pseudo3d::homography(a, rx, ry, r.num(Prop::Perspective) as f32))
+            .flatten()
+        {
+            Some(h) => pseudo3d::warp(pm, src, x, y, &h, opacity, mask),
+            None => {
+                let paint = PixmapPaint {
+                    opacity,
+                    ..PixmapPaint::default()
+                };
+                pm.draw_pixmap(x, y, src.as_ref(), &paint, Transform::identity(), mask);
+            }
+        }
+        if self.caching {
+            self.scratch = Some(content);
+        }
     }
 
     /// A folder and its layers drawn on their own, then laid at `opacity`
@@ -3336,10 +3461,77 @@ fn geometry_moving(t: &Template, layer: &cg_core::Layer, frame: f64) -> bool {
 fn local_transform(r: &ResolvedLayer, w: f32, h: f32) -> Transform {
     let ax = r.num(Prop::AnchorX) as f32 * w;
     let ay = r.num(Prop::AnchorY) as f32 * h;
-    Transform::from_translate(r.num(Prop::X) as f32 + ax, r.num(Prop::Y) as f32 + ay)
-        .pre_rotate(r.num(Prop::Rotation) as f32)
+    turned(r, w, h)
+        .pre_concat(skew(r))
         .pre_scale(r.num(Prop::ScaleX) as f32, r.num(Prop::ScaleY) as f32)
         .pre_translate(-ax, -ay)
+}
+
+/// The layer's space up to its anchor and rotation (its pseudo-3D turn happens there).
+fn turned(r: &ResolvedLayer, w: f32, h: f32) -> Transform {
+    let ax = r.num(Prop::AnchorX) as f32 * w;
+    let ay = r.num(Prop::AnchorY) as f32 * h;
+    Transform::from_translate(r.num(Prop::X) as f32 + ax, r.num(Prop::Y) as f32 + ay)
+        .pre_rotate(r.num(Prop::Rotation) as f32)
+}
+
+/// CSS `skew(x, y)`: x' = x + tan(x)·y, y' = tan(y)·x + y.
+fn skew(r: &ResolvedLayer) -> Transform {
+    let kx = (r.num(Prop::SkewX) as f32)
+        .clamp(-89.0, 89.0)
+        .to_radians()
+        .tan();
+    let ky = (r.num(Prop::SkewY) as f32)
+        .clamp(-89.0, 89.0)
+        .to_radians()
+        .tan();
+    Transform::from_row(1.0, ky, kx, 1.0, 0.0, 0.0)
+}
+
+/// Turned round X / Y, or with a thickness: drawn flat, then seen in perspective.
+fn lifted(r: &ResolvedLayer) -> bool {
+    r.num(Prop::RotateX).abs() > 1e-3
+        || r.num(Prop::RotateY).abs() > 1e-3
+        || r.num(Prop::Depth) >= 0.5
+}
+
+/// The colour of a layer's thickness (premultiplied, opaque): its fill darker
+/// (shapes, texts), else a dark blue. Same as the HTML5 renderer (depthColor).
+fn depth_color(r: &ResolvedLayer) -> [u8; 4] {
+    let shaped = matches!(
+        r.layer.kind,
+        LayerKind::Rect { .. }
+            | LayerKind::Ellipse { .. }
+            | LayerKind::Polygon { .. }
+            | LayerKind::Pen { .. }
+            | LayerKind::Text { .. }
+    );
+    let [cr, cg, cb] = if shaped {
+        let c = r.color(Prop::Fill).0;
+        [c[0] * 0.45, c[1] * 0.45, c[2] * 0.45]
+    } else {
+        [58.0 / 255.0, 68.0 / 255.0, 118.0 / 255.0]
+    };
+    let b = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    [b(cr), b(cg), b(cb), 255]
+}
+
+/// The direction of the thickness in the layer's space: away from the eye,
+/// down right when it faces it.
+fn depth_dir(r: &ResolvedLayer) -> (f32, f32) {
+    let (dx, dy) = (
+        -(r.num(Prop::RotateY) as f32).to_radians().sin(),
+        (r.num(Prop::RotateX) as f32).to_radians().sin(),
+    );
+    let n = (dx * dx + dy * dy).sqrt();
+    if n < 1e-3 {
+        (
+            std::f32::consts::FRAC_1_SQRT_2,
+            std::f32::consts::FRAC_1_SQRT_2,
+        )
+    } else {
+        (dx / n, dy / n)
+    }
 }
 
 /// Returns `None` when no crop is set, `Some(None)` when fully cropped.
