@@ -15,6 +15,9 @@ import { UserMenu } from './ui/UserMenu';
 import { NavGroup, type NavEntry } from './ui/NavMenu';
 import { ShortcutsOverlay } from './operator/ShortcutsOverlay';
 import { loadDisplayPrefs, useDisplayPrefs } from './displayPrefs';
+import { HelpButton, TrainingBar } from './learn/Topbar';
+import { Coach } from './learn/Coach';
+import { loadTraining, useLearn } from './learn/store';
 
 // The heavy pages load when opened: the project list and the outputs do not carry the Designer.
 const Designer = lazy(() => import('./designer/Designer').then((m) => ({ default: m.Designer })));
@@ -26,6 +29,7 @@ const Outputs = lazy(() => import('./outputs/Outputs').then((m) => ({ default: m
 const DataPage = lazy(() => import('./data/DataPage').then((m) => ({ default: m.DataPage })));
 const ShortcutsScreen = lazy(() => import('./settings/Settings').then((m) => ({ default: m.ShortcutsScreen })));
 const SystemPage = lazy(() => import('./pages/SystemPage').then((m) => ({ default: m.SystemPage })));
+const LearnPage = lazy(() => import('./learn/LearnPage').then((m) => ({ default: m.LearnPage })));
 const Social = lazy(() => import('./social/Social').then((m) => ({ default: m.Social })));
 
 const LAST_PROJECT = 'pulse.lastProject';
@@ -91,6 +95,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   const prefsOf = useDisplayPrefs((s) => s.user);
   useEffect(() => {
     if (user) void loadDisplayPrefs(user.id);
+    if (user) void loadTraining();
   }, [user]);
 
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
@@ -120,6 +125,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
       {can.admin(user) && route.page !== 'project' && <CrashBanner />}
       <DialogHost />
       <ShortcutsOverlay />
+      <Coach />
       <Toasts quiet={route.page === 'project' && (route.sub === 'designer' || route.sub === 'operator')} />
     </div>
   );
@@ -140,7 +146,7 @@ function Toasts({ quiet }: { quiet: boolean }) {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'tracking' | 'system' | 'shortcuts' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'tracking' | 'system' | 'shortcuts' | 'learn' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata Graphics';
@@ -169,7 +175,9 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           </button>
         </div>
         <div className="spacer" />
+        <TrainingBar />
         <StatusPill />
+        <HelpButton on={route.page === 'learn'} />
         <UserMenu named />
       </nav>
       <div className="content">
@@ -180,6 +188,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {(route.page === 'outputs' || route.page === 'inputs' || route.page === 'tracking') && <Outputs mode={route.page} />}
           {route.page === 'system' && <SystemPage section={route.section} />}
           {route.page === 'shortcuts' && <ShortcutsScreen />}
+          {route.page === 'learn' && <LearnPage />}
         </Suspense>
       </div>
     </>
@@ -195,7 +204,9 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   const user = auth!.user!;
   const { projectId, sub } = route;
   const summary = projects.find((p) => p.id === projectId);
-  const known = !!summary || !connected || !projects.length;
+  // A training project is in no list (crate::learn).
+  const training = useLearn((s) => s.project) === projectId;
+  const known = !!summary || training || !connected || !projects.length;
 
   // The Designer sees the project's settings waiting for Publish, the Operator the published ones.
   useEffect(() => {
@@ -251,7 +262,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   else {
     // Without an output of this project, the operator still prepares and previews.
     // Off a production station: a simulation of the project's output (none: in the project's format).
-    const driven = station === null ? (own[0]?.id ?? null) : operated && operated.projectId === projectId ? operated.id : null;
+    const driven = station === null || training ? (own[0]?.id ?? null) : operated && operated.projectId === projectId ? operated.id : null;
     page = <Operator key={driven ?? 'none'} channelId={driven} />;
   }
 
@@ -275,7 +286,9 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
         {/* Filled by the page (the Designer's undo, redo and history). */}
         <div id="topbar-slot" className="topbar-slot" />
         {/* The project's own tab: the Performance page opens in another one. */}
+        <TrainingBar />
         <StatusPill newTab />
+        <HelpButton />
         <UserMenu />
       </nav>
       <div className="content">

@@ -1,6 +1,7 @@
 import { withSettings } from '../engine/settings';
 import { RichInput } from '../ui/RichText';
 import { paragraphField, plain, richField } from '../engine/rich';
+import { useLearn } from '../learn/store';
 import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Eraser, Share2, UserRound, Clock, Copy, CopyPlus, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal } from 'lucide-react';
 import { busItems, busOf } from '../engine/buses';
@@ -295,7 +296,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const allSources = useSources();
   const sourceName = (id: string) => allSources.find((s) => s.id === id)?.name ?? id;
   // Off a production station: this person's simulation of the output (nothing goes on air).
-  const simulation = useApp((s) => s.station === null);
+  // A training project (Apprendre): always its simulation.
+  const learning = useLearn((s) => s.project);
+  const training = useApp((s) => !!learning && s.projectId === learning);
+  const simulation = useApp((s) => s.station === null) || training;
   // Made again after a reconnection (the engine restarted: simulations are gone).
   const connections = useApp((s) => s.connections);
   const mayOperate = can.operate(auth?.user);

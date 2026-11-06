@@ -19,6 +19,7 @@ mod health;
 mod iconlib;
 mod import;
 mod inputs;
+mod learn;
 mod library;
 mod locks;
 mod logicflows;

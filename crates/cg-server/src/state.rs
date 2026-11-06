@@ -536,9 +536,14 @@ impl AppState {
         self.library.read().await.get(id)
     }
 
+    /// The projects, training ones aside (crate::learn).
     pub async fn summaries(&self) -> Vec<ProjectSummary> {
+        let training = crate::learn::projects(&self.data_dir);
         let lib = self.library.read().await;
-        lib.list().map(|p| lib.summary(p)).collect()
+        lib.list()
+            .filter(|p| !training.contains(&p.id))
+            .map(|p| lib.summary(p))
+            .collect()
     }
 
     pub async fn channel_infos(&self) -> Vec<ChannelInfo> {

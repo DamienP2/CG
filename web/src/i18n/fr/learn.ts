@@ -1,0 +1,20 @@
+// « Apprendre »: the lessons, the examples, the tips, the training mode.
+export const learn: Record<string, string> = {
+  Learn: 'Apprendre',
+  Lessons: 'Leçons',
+  Tips: 'Astuces',
+  OK: 'OK',
+  'learn|Skip': 'Passer',
+  Training: 'Entraînement',
+  Quit: 'Quitter',
+  Lesson: 'Leçon',
+  'Next lesson': 'Leçon suivante',
+  'Lesson done': 'Leçon terminée',
+  'How it is made': 'Comment c’est fait',
+  Practise: 'S’entraîner',
+  '{n} lessons': '{n} leçons',
+  '{n} examples': '{n} exemples',
+  'Learn: lessons, examples, tips': 'Apprendre : leçons, exemples, astuces',
+  'Training: nothing is saved, nothing goes on air': 'Entraînement : rien n’est gardé, rien ne part à l’antenne',
+  'Leave the lesson': 'Quitter la leçon',
+};

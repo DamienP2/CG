@@ -68,6 +68,12 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects", get(list_projects).post(create_project))
         .route("/api/examples", get(list_examples))
         .route("/api/examples/{id}", post(create_from_example))
+        .route(
+            "/api/learn",
+            get(crate::learn::get)
+                .post(crate::learn::start)
+                .delete(crate::learn::stop),
+        )
         .route("/api/examples/{id}/cover.png", get(example_cover))
         .route("/api/projects/import", post(import_project))
         .route(
@@ -856,8 +862,19 @@ async fn create_from_example(
         crate::examples::project(&id, &new_id).ok_or_else(|| not_found("example"))?;
     p.id = new_id;
     p.rundown.iter_mut().for_each(|r| r.id = cg_core::new_id());
-    // The data sources it reads (shared, or the new project's own), with
-    // their sample value, unless they exist already (never replaced).
+    add_example_sources(&s, sources).await?;
+    let p = s.save_project(p).await.map_err(internal)?;
+    // A designer limited to some projects sees the one they made.
+    s.auth.grant_project(&me.id, &p.id).map_err(internal)?;
+    Ok(Json(ProjectSummary::from(p.as_ref())))
+}
+
+/// The data sources an example reads (shared, or the new project's own),
+/// with their sample value, unless they exist already (never replaced).
+pub(crate) async fn add_example_sources(
+    s: &Shared,
+    sources: Vec<crate::examples::ExampleSource>,
+) -> ApiResult<()> {
     let mut added = false;
     for ex in sources {
         let sid = ex.source.id.clone();
@@ -870,7 +887,7 @@ async fn create_from_example(
         match ex.value {
             Some(v) => {
                 let changed = s.data.record(&sid, Ok((v, 0)));
-                crate::datasources::updated(&s, &sid, changed).await;
+                crate::datasources::updated(s, &sid, changed).await;
             }
             None => s.data.refresh(&sid),
         }
@@ -878,10 +895,7 @@ async fn create_from_example(
     if added {
         s.changed("sources");
     }
-    let p = s.save_project(p).await.map_err(internal)?;
-    // A designer limited to some projects sees the one they made.
-    s.auth.grant_project(&me.id, &p.id).map_err(internal)?;
-    Ok(Json(ProjectSummary::from(p.as_ref())))
+    Ok(())
 }
 
 /// The picture of an example's card: its cover template on air.
@@ -1373,17 +1387,23 @@ async fn delete_project(
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
     require(me.can_design(&id))?;
+    remove_project(&s, &id).await
+}
+
+/// A project goes, with its media, programmed takes and own data connectors.
+pub(crate) async fn remove_project(s: &Shared, id: &str) -> ApiResult<StatusCode> {
+    let id = id.to_string();
     if !s.delete_project(&id).await.map_err(internal)? {
         return Err(not_found("project"));
     }
-    let _ = tokio::fs::remove_dir_all(crate::media::project_dir(&s, &id)).await;
-    let _ = crate::media::edit_library_folders(&s, |all| {
+    let _ = tokio::fs::remove_dir_all(crate::media::project_dir(s, &id)).await;
+    let _ = crate::media::edit_library_folders(s, |all| {
         all.remove(&id);
     })
     .await;
     // Its programmed takes and the templates kept with it in the library.
     s.forget_scheduled(|e| e.project_id == id).await;
-    crate::tpllib::forget_project(&s, &id);
+    crate::tpllib::forget_project(s, &id);
     // Its own data connectors go with it (the shared ones stay).
     let own: Vec<String> = s
         .data
@@ -2600,6 +2620,7 @@ async fn load_project(
     authorize_drive(&s, &me, &actor, station.0.is_some(), &id).await?;
     if let Some(pid) = &l.project_id {
         require(me.sees_project(pid))?;
+        crate::learn::check_channel(&s, &id, pid)?;
     }
     s.load_project(&id, l.project_id).await.map_err(bad)?;
     Ok(StatusCode::NO_CONTENT)

@@ -12,6 +12,8 @@ export type Route =
   | { page: 'system'; section: SystemSection | '' }
   /** Your keyboard shortcuts. */
   | { page: 'shortcuts' }
+  /** Lessons, examples, tips. */
+  | { page: 'learn' }
   | {
       page: 'project';
       projectId: string;
@@ -59,6 +61,8 @@ export function parseRoute(path = location.pathname): Route {
       return system(second ?? '');
     case 'shortcuts':
       return { page: 'shortcuts' };
+    case 'learn':
+      return { page: 'learn' };
     // Before the System page.
     case 'settings': {
       const h = location.hash.slice(1);
