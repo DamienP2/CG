@@ -688,7 +688,8 @@
 /* ---- camera tracking: the chosen camera on the whole page ---- */
 .oc-main.tk-main {
   overflow: auto;
-  padding: 0 24px 24px;
+  /* Room under the last cards for the save bar. */
+  padding: 0 24px 96px;
 }
 .tk-empty {
   margin: auto;

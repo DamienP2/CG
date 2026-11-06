@@ -158,7 +158,7 @@ fn runtime() -> Result<(), String> {
         .get_or_init(|| {
             let named = ["STRATA_ONNXRUNTIME", "ORT_DYLIB_PATH"]
                 .iter()
-                .filter_map(|k| std::env::var_os(k))
+                .filter_map(std::env::var_os)
                 .map(std::path::PathBuf::from);
             let file = if cfg!(windows) {
                 "onnxruntime.dll"

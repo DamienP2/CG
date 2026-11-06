@@ -710,11 +710,11 @@ export function useDataLayer(o: DataLayerOpts) {
       } else if (!target?.closest('.dc-node')) {
         // Dropped on empty space: a new variable fed from here.
         let made = '';
-        update((t) => {
-          made = newField(t, `Field ${t.fields.length + 1}`, kind ?? 'text', '');
-          const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
+        update((tpl) => {
+          made = newField(tpl, t('Field {n}', { n: tpl.fields.length + 1 }), kind ?? 'text', '');
+          const f: DataFlow = structuredClone(tpl.dataflow ?? migrated ?? { nodes: [], edges: [] });
           linkFlow(f, w.id, `field:${made}`);
-          compile(t, f);
+          compile(tpl, f);
         });
         const spot = freeSpot(document.querySelector('.logic-editor .logic-canvas'), { x: at.x, y: at.y - HEAD / 2 });
         setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${made}`]: spot } }));

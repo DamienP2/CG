@@ -508,8 +508,7 @@ fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
 /// The second thread: each picture's people, their edges laid, kept for the frames.
 fn refine_all(cam: &Cam, pictures: std::sync::mpsc::Receiver<Rough>) {
     let mut prev: Option<(Instant, Vec<f32>)> = None;
-    let mut n = 0u64;
-    for r in pictures {
+    for (n, r) in (1u64..).zip(pictures) {
         // Steadied with the picture before only when it came just before.
         let before = prev
             .as_ref()
@@ -519,7 +518,6 @@ fn refine_all(cam: &Cam, pictures: std::sync::mpsc::Receiver<Rough>) {
         let (found, mask) = refine(&r.picture, &r.people, before, &cut);
         prev = Some((r.came, mask));
         let found = Arc::new(found);
-        n += 1;
         *lock(&cam.last) = Some(Shot {
             n,
             picture: Arc::new(r.picture),
