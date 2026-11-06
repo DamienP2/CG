@@ -94,6 +94,58 @@ export function StageZoom() {
 }
 
 /** The canvas, at the size of the format being edited. */
+
+type Start = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Where its group is on the stage. */
+  ox: number;
+  oy: number;
+  ax: number;
+  ay: number;
+  rot: number;
+  sx: number;
+  sy: number;
+  /** Its parents' turn and scale. */
+  prot: number;
+  psx: number;
+  psy: number;
+  /** Its box as seen on the stage (turned, scaled). */
+  seen?: { l: number; t: number; w: number; h: number };
+};
+
+const turn = (x: number, y: number, deg: number): [number, number] => {
+  const a = (deg * Math.PI) / 180;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return [x * c - y * s, x * s + y * c];
+};
+
+/** A move on the stage in the layer's own axes, before its turn and scale. */
+function toLocal(dx: number, dy: number, s: Start): [number, number] {
+  const [px, py] = turn(dx, dy, -s.prot);
+  const [lx, ly] = turn(px / s.psx, py / s.psy, -s.rot);
+  return [lx / s.sx, ly / s.sy];
+}
+
+/** The position that keeps the side (or corner) opposite the handle where it was, the box now `w` × `h`. */
+function keepOpposite(s: Start, mode: string, w: number, h: number): [number, number] {
+  // That point in the box, before and after (a side not dragged: the anchor's line).
+  const fx = (bw: number) => (mode.includes('w') ? bw : mode.includes('e') ? 0 : s.ax * bw);
+  const fy = (bh: number) => (mode.includes('n') ? bh : mode.includes('s') ? 0 : s.ay * bh);
+  // Where a point of the box is in its parent: x + anchor + turn(scale(point − anchor)).
+  const at = (x: number, y: number, bw: number, bh: number): [number, number] => {
+    const [tx, ty] = turn((fx(bw) - s.ax * bw) * s.sx, (fy(bh) - s.ay * bh) * s.sy, s.rot);
+    return [x + s.ax * bw + tx, y + s.ay * bh + ty];
+  };
+  const [px, py] = at(s.x, s.y, s.w, s.h);
+  const [qx, qy] = at(0, 0, w, h);
+  const round = (v: number) => Math.round(v * 100) / 100;
+  return [round(px - qx), round(py - qy)];
+}
+
 export function Stage({ project: _project, size, showZones, background, bgInput }: { project: Project; size: { width: number; height: number }; showZones: boolean; background: string; /** The live input shown behind (« video » background). */ bgInput: string }) {
   const project = { ..._project, width: size.width, height: size.height };
   const { template, frame, previewData, selected, format } = useDesigner(useShallow((s) => ({ template: s.template, frame: s.frame, previewData: s.previewData, selected: s.selected, format: s.format })));
@@ -326,7 +378,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     mode: 'move' | Handle;
     startX: number;
     startY: number;
-    start: Record<string, { x: number; y: number; w: number; h: number; ox: number; oy: number }>;
+    start: Record<string, Start>;
     /** The other layers' edges and centres (stage pixels), read when the drag began. */
     objs: { x: SnapLine[]; y: SnapLine[] };
   } | null>(null);
@@ -354,10 +406,11 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
         const ty: SnapLine[] = [...gy.map((v) => ({ v })), ...d.objs.y];
         const th = 6 / scale;
         // The selection's box on the stage (in a group, x / y are from the group).
-        const bx = Math.min(...starts.map((s) => s.ox + s.x));
-        const by = Math.min(...starts.map((s) => s.oy + s.y));
-        const bw = Math.max(...starts.map((s) => s.ox + s.x + s.w)) - bx;
-        const bh = Math.max(...starts.map((s) => s.oy + s.y + s.h)) - by;
+        const seen = starts.map((s) => s.seen ?? { l: s.ox + s.x, t: s.oy + s.y, w: s.w, h: s.h });
+        const bx = Math.min(...seen.map((s) => s.l));
+        const by = Math.min(...seen.map((s) => s.t));
+        const bw = Math.max(...seen.map((s) => s.l + s.w)) - bx;
+        const bh = Math.max(...seen.map((s) => s.t + s.h)) - by;
         const nx = bx + dx;
         const ny = by + dy;
         let ex: number[];
@@ -408,17 +461,13 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
             setProp(l, 'y', r(s.y + dy), st.frame);
             continue;
           }
-          let { x, y, w, h } = s;
-          if (d.mode.includes('e')) w = Math.max(1, r(s.w + dx));
-          if (d.mode.includes('s')) h = Math.max(1, r(s.h + dy));
-          if (d.mode.includes('w')) {
-            w = Math.max(1, r(s.w - dx));
-            x = s.x + (s.w - w);
-          }
-          if (d.mode.includes('n')) {
-            h = Math.max(1, r(s.h - dy));
-            y = s.y + (s.h - h);
-          }
+          let { w, h } = s;
+          // The drag in the layer's own axes (its parents' and its own turn and scale undone).
+          const [lx, ly] = toLocal(dx, dy, s);
+          if (d.mode.includes('e')) w = Math.max(1, r(s.w + lx));
+          if (d.mode.includes('s')) h = Math.max(1, r(s.h + ly));
+          if (d.mode.includes('w')) w = Math.max(1, r(s.w - lx));
+          if (d.mode.includes('n')) h = Math.max(1, r(s.h - ly));
           // Width / height locked: the ratio stays (a corner follows the side moved the most).
           if (l.lockRatio && s.w > 0 && s.h > 0) {
             const k = s.w / s.h;
@@ -426,9 +475,9 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
             const vert = /[ns]/.test(d.mode);
             if (horiz && (!vert || Math.abs(w - s.w) / s.w >= Math.abs(h - s.h) / s.h)) h = Math.max(1, Math.round(w / k));
             else w = Math.max(1, Math.round(h * k));
-            if (d.mode.includes('w')) x = s.x + (s.w - w);
-            if (d.mode.includes('n')) y = s.y + (s.h - h);
           }
+          // The side (or corner) opposite the handle stays where it is seen, whatever the anchor, turn and scale.
+          const [x, y] = keepOpposite(s, d.mode, w, h);
           if (x !== s.x) setProp(l, 'x', x, st.frame);
           if (y !== s.y) setProp(l, 'y', y, st.frame);
           if (w !== s.w) setProp(l, 'width', w, st.frame);
@@ -451,26 +500,49 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const beginDrag = (e: React.PointerEvent, mode: 'move' | Handle, ids: string[]) => {
     const st = useDesigner.getState();
     if (!st.template) return;
-    const start: Record<string, { x: number; y: number; w: number; h: number; ox: number; oy: number }> = {};
+    const start: Record<string, Start> = {};
+    const root0 = sceneRef.current;
+    const origin0 = root0?.getBoundingClientRect();
     for (const id of ids) {
       const l = findLayer(st.template, id);
       if (!l) continue;
       // Where its group is on the stage.
       let ox = 0;
       let oy = 0;
+      // Its parents' turn and scale: a drag on the stage, in the layer's own axes.
+      let prot = 0;
+      let psx = 1;
+      let psy = 1;
       const seen = new Set<string>();
       for (let p = l.parent ? findLayer(st.template, l.parent) : undefined; p && !seen.has(p.id); p = p.parent ? findLayer(st.template, p.parent) : undefined) {
         seen.add(p.id);
         ox += num(propValue(p, 'x', st.frame));
         oy += num(propValue(p, 'y', st.frame));
+        prot += num(propValue(p, 'rotation', st.frame));
+        psx *= num(propValue(p, 'scaleX', st.frame)) || 1;
+        psy *= num(propValue(p, 'scaleY', st.frame)) || 1;
       }
+      const v = (k: 'x' | 'y' | 'width' | 'height' | 'anchorX' | 'anchorY' | 'rotation' | 'scaleX' | 'scaleY') => num(propValue(l, k, st.frame));
+      // As it is seen: turned and scaled around its anchor.
+      const el = root0?.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
+      const r = el?.getBoundingClientRect();
+      const seenBox = r && origin0 && r.width > 0 ? { l: (r.left - origin0.left) / scale, t: (r.top - origin0.top) / scale, w: r.width / scale, h: r.height / scale } : undefined;
       start[id] = {
         ox,
         oy,
-        x: num(propValue(l, 'x', st.frame)),
-        y: num(propValue(l, 'y', st.frame)),
-        w: num(propValue(l, 'width', st.frame)),
-        h: num(propValue(l, 'height', st.frame)),
+        x: v('x'),
+        y: v('y'),
+        w: v('width'),
+        h: v('height'),
+        ax: v('anchorX'),
+        ay: v('anchorY'),
+        rot: v('rotation'),
+        sx: v('scaleX') || 1,
+        sy: v('scaleY') || 1,
+        prot,
+        psx,
+        psy,
+        seen: seenBox,
       };
     }
     // The other layers (not the ones dragged, nor inside them): their edges and centres.
