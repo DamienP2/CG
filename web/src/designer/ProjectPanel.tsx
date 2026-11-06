@@ -1,7 +1,7 @@
 import { friendlyError } from '../ui/serverError';
 import { HYPHEN_LANGS } from '../engine/textFit';
 import { Dropdown } from '../ui/Dropdown';
-import { History, MoreHorizontal, Pencil, Plus, RotateCcw, X } from 'lucide-react';
+import { History, Link2, MoreHorizontal, Pencil, Plus, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../engine/types';
 import { api, useApp } from '../store';
@@ -116,12 +116,16 @@ const when = (ms: number) => {
       });
 };
 
-export function ProjectPanel({ project, readOnly }: { project: Project; readOnly: boolean }) {
+export function ProjectPanel({ project, readOnly, onLogic }: { project: Project; readOnly: boolean; /** Opens the project's Logic. */ onLogic: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <section className="project-panel">
       <header>
         <span>{t('Project')}</span>
+        {/* The project's Logic, whatever template is open. */}
+        <button className={`btn small pjp-logic ${project.logic?.nodes.length ? 'has' : ''}`} onClick={onLogic} title={t('Rules between graphics and playlists')}>
+          <Link2 size={13} /> {t('Logic · project')}
+        </button>
       </header>
       <div className="pjp-body">
         <button className="pjp-name" onClick={() => setOpen(true)} title={t('Project settings')}>

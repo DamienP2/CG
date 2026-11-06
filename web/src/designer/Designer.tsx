@@ -197,7 +197,7 @@ function duplicateSelection() {
 /** The files a template can be made from. */
 const TEMPLATE_FILES = '.psd,.psb,.svg,.mogrt,.aep,.json,.zip,.lottie';
 
-function TemplateList({ project, onProjectLogic }: { project: Project; onProjectLogic: () => void }) {
+function TemplateList({ project }: { project: Project }) {
   // Not the playhead: the list is not drawn again on each frame of the playback.
   const { template, load, format } = useDesigner(useShallow((s) => ({ template: s.template, load: s.load, format: s.format })));
   const saveTemplate = useApp((s) => s.saveTemplate);
@@ -281,10 +281,6 @@ function TemplateList({ project, onProjectLogic }: { project: Project; onProject
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
         <div className="header-actions">
-          {/* The project's Logic, whatever template is open. */}
-          <button className={`btn small ${project.logic?.nodes.length ? 'has' : ''}`} onClick={onProjectLogic} title={t('Rules between graphics and playlists')}>
-            <Link2 size={13} /> {t('Logic · project')}
-          </button>
           <button className="opx-add" title={t('New template')} disabled={importing} onClick={openNew}>
             <Plus size={15} />
           </button>
@@ -410,7 +406,7 @@ function TemplateList({ project, onProjectLogic }: { project: Project; onProject
               setDropAt(null);
             }}
             onDragEnd={() => (setDragging(null), setDropAt(null))}
-            onClick={(e) => (e.stopPropagation(), template?.id !== tpl.id && load(tpl))}
+            onClick={(e) => (e.stopPropagation(), template?.id !== tpl.id ? load(tpl) : useDesigner.getState().select([]))}
           >
             <span className="opx-grip" title={t('Drag to reorder')}>
               <GripVertical size={13} />
@@ -614,8 +610,8 @@ export const Designer = memo(function Designer() {
     >
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={320} onChange={(v) => setLayout('left', v)} />
-        <ProjectPanel project={project} readOnly={lock.state.status === 'held'} />
-        <TemplateList project={project} onProjectLogic={() => setLogicOpen('project')} />
+        <ProjectPanel project={project} readOnly={lock.state.status === 'held'} onLogic={() => setLogicOpen('project')} />
+        <TemplateList project={project} />
       </aside>
       <main className="center">
         <div className="toolbar">

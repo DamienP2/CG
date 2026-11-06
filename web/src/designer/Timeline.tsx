@@ -10,7 +10,6 @@ import {
   Copy,
   Diamond,
   Folder,
-  FolderOpen,
   DiamondMinus,
   Eye,
   EyeOff,
@@ -531,7 +530,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         {/* A folder's icon folds its layers. */}
         {isFolder ? (
           <button className="tl-fold" title={isFolded ? t('Show its layers') : t('Fold its layers')} onClick={(e) => (e.stopPropagation(), setFolded((f) => ({ ...f, [row.id]: !f[row.id] })))}>
-            {isMask ? <Icon size={13} className="layer-icon" /> : isFolded ? <Folder size={13} className="layer-icon" /> : <FolderOpen size={13} className="layer-icon" />}
+            {isMask ? <Icon size={13} className="layer-icon" /> : <Folder size={13} className="layer-icon folder-fill" />}
           </button>
         ) : (
           <Icon size={13} className="layer-icon" />
