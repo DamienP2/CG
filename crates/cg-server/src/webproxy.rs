@@ -37,7 +37,7 @@ pub async fn proxy(
     crate::auth::MaybeUser(me): crate::auth::MaybeUser,
     Query(q): Query<ProxyQuery>,
 ) -> Response {
-    if me.is_none() && !s.config.public_outputs {
+    if me.is_none() && !s.config.load().public_outputs {
         return (StatusCode::UNAUTHORIZED, "login required").into_response();
     }
     let clear = q.transparent.as_deref().is_some_and(|v| v != "0");

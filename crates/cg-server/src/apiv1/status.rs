@@ -331,7 +331,7 @@ fn health(s: &Shared, channel: &str) -> Health {
 
 /// The status of one channel, as `user` may see it (`None`: everything).
 pub async fn channel_status(s: &Shared, ch: &ChannelRt, user: Option<&User>) -> ChannelStatus {
-    let id = ch.config.id.clone();
+    let id = ch.config.load().id.clone();
     let pid = ch.project_id.read().await.clone();
     let project = match pid.filter(|p| user.is_none_or(|u| u.sees_project(p))) {
         Some(p) => s.project(&p).await.map(super::shared_only),
@@ -357,7 +357,7 @@ pub async fn channel_status(s: &Shared, ch: &ChannelRt, user: Option<&User>) -> 
             .map(|l| l.user_name.clone());
     }
     ChannelStatus {
-        name: ch.config.name.clone(),
+        name: ch.config.load().name.clone(),
         project: project.map(|p| Named {
             id: p.id.clone(),
             name: p.name.clone(),
@@ -376,13 +376,13 @@ pub async fn channel_status(s: &Shared, ch: &ChannelRt, user: Option<&User>) -> 
 pub async fn status(s: &Shared, user: Option<&User>, only: Option<&str>) -> Status {
     let mut channels = Vec::new();
     for ch in s.channels.values() {
-        let id = &ch.config.id;
+        let id = &ch.config.load().id;
         if only.is_some_and(|o| o != id) || user.is_some_and(|u| !u.sees_channel(id)) {
             continue;
         }
         channels.push(channel_status(s, ch, user).await);
     }
-    let c = &s.config.control;
+    let c = &s.config.load().control;
     Status {
         kind: "status",
         server_time: crate::state::now_ms(),

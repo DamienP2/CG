@@ -620,6 +620,7 @@ name = "cg-server"
 version = "0.7.1"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "argon2",
  "axum",
  "axum-server",

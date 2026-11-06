@@ -228,7 +228,8 @@ fn is_zero(n: &u32) -> bool {
 }
 
 pub struct ChannelRt {
-    pub config: ChannelConfig,
+    /// Its settings (its outputs change while it runs: `engine::reconfigure`).
+    pub config: arc_swap::ArcSwap<ChannelConfig>,
     pub project_id: RwLock<Option<String>>,
     pub state: RwLock<ChannelState>,
     /// The project loaded (`project_id`), for the clock (set with it).
@@ -239,6 +240,8 @@ pub struct ChannelRt {
     pub dirty: std::sync::atomic::AtomicBool,
     /// Zones held by operators, actions that can be undone.
     pub ops: crate::antenna::ChannelOps,
+    /// Its outputs changed: the settings its clock takes at the next tick.
+    pub next: std::sync::Mutex<Option<Arc<ChannelConfig>>>,
 }
 
 /// What a channel has on air, kept on disk so a restart (or a crash) puts
@@ -306,6 +309,7 @@ impl ChannelRt {
     pub async fn info(&self) -> ChannelInfo {
         let c = &self.config;
         let outputs = c
+            .load()
             .pictures()
             .into_iter()
             .flat_map(|(_, _, _, o)| {
@@ -336,15 +340,16 @@ impl ChannelRt {
             })
             .collect();
         ChannelInfo {
-            id: c.id.clone(),
-            name: c.name.clone(),
-            width: c.width,
-            height: c.height,
-            frame_rate: c.frame_rate,
-            interlaced: c.interlaced,
+            id: c.load().id.clone(),
+            name: c.load().name.clone(),
+            width: c.load().width,
+            height: c.load().height,
+            frame_rate: c.load().frame_rate,
+            interlaced: c.load().interlaced,
             project_id: self.project_id.read().await.clone(),
             outputs,
             renditions: c
+                .load()
                 .renditions
                 .iter()
                 .map(|r| RenditionInfo {
@@ -357,9 +362,10 @@ impl ChannelRt {
                     bus: r.bus,
                 })
                 .collect(),
-            slate: c.slate.clone(),
-            slate_style: slate_style(c.slate_style, &c.slate),
+            slate: c.load().slate.clone(),
+            slate_style: slate_style(c.load().slate_style, &c.load().slate),
             html5: c
+                .load()
                 .pictures()
                 .into_iter()
                 .flat_map(|(picture, _, _, o)| {
@@ -414,8 +420,8 @@ pub struct AppState {
     pub people: Arc<crate::people::People>,
     /// Load of the machine, the channels, outputs and inputs (kept across engine restarts).
     pub perf: Arc<crate::perf::Perf>,
-    /// Settings this engine cycle was started with.
-    pub config: ServerConfig,
+    /// The settings (those applied while the engine runs replace it).
+    pub config: arc_swap::ArcSwap<ServerConfig>,
     /// Address actually bound by this cycle.
     pub bind: SocketAddr,
     pub started_at: SystemTime,
@@ -472,6 +478,14 @@ impl OutputStatus {
         );
     }
 
+    /// Forgets an output (removed from the settings).
+    pub fn remove(&self, channel: &str, output: &str) {
+        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(c) = map.get_mut(channel) {
+            c.remove(output);
+        }
+    }
+
     /// Forgets a channel's outputs (the engine restarts them).
     pub fn reset(&self, channel: &str) {
         let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
@@ -524,11 +538,12 @@ impl AppState {
             .values()
             .find(|c| {
                 c.config
+                    .load()
                     .pictures()
                     .iter()
                     .any(|(_, _, _, o)| o.html5.iter().any(|h| h.path.eq_ignore_ascii_case(at)))
             })
-            .map(|c| c.config.id.clone())
+            .map(|c| c.config.load().id.clone())
             .or_else(|| self.channels.contains_key(at).then(|| at.to_string()))
     }
 
@@ -680,7 +695,7 @@ impl AppState {
         }
         ch.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = self.events.send(Event::Channel {
-            channel_id: ch.config.id.clone(),
+            channel_id: ch.config.load().id.clone(),
             state,
             server_time: now_ms(),
         });
@@ -690,7 +705,7 @@ impl AppState {
         ch.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         let state = ch.state.read().await.clone();
         let _ = self.events.send(Event::Channel {
-            channel_id: ch.config.id.clone(),
+            channel_id: ch.config.load().id.clone(),
             state,
             server_time: now_ms(),
         });
@@ -729,7 +744,7 @@ impl AppState {
             .await
             .ok_or("the loaded project no longer exists")?;
         let store = self.data.store();
-        let all = channel_buses(&ch.config);
+        let all = channel_buses(&ch.config.load());
         let mut buses: Vec<u32> = buses.into_iter().filter(|b| all.contains(b)).collect();
         if buses.is_empty() {
             if let Command::Take {
@@ -737,7 +752,7 @@ impl AppState {
                 ..
             } = &cmd
             {
-                buses = playlist_buses(&ch.config, &project, rid);
+                buses = playlist_buses(&ch.config.load(), &project, rid);
             }
         }
         let zone = crate::antenna::command_zone(&project, &cmd);
@@ -876,7 +891,7 @@ impl AppState {
                 crate::asrun::Entry {
                     at: now_ms(),
                     channel_id: channel_id.into(),
-                    channel_name: ch.config.name.clone(),
+                    channel_name: ch.config.load().name.clone(),
                     project_id: project.id.clone(),
                     project_name: project.name.clone(),
                     action: action.into(),
@@ -962,7 +977,7 @@ impl AppState {
             crate::asrun::Entry {
                 at: now_ms(),
                 channel_id: channel_id.into(),
-                channel_name: ch.config.name.clone(),
+                channel_name: ch.config.load().name.clone(),
                 project_id: project.as_ref().map(|p| p.id.clone()).unwrap_or_default(),
                 project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
                 action: "undo".into(),

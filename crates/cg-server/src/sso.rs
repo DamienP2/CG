@@ -434,7 +434,7 @@ struct StartQuery {
 }
 
 async fn start(State(s): State<Shared>, Query(q): Query<StartQuery>, req: Request) -> Response {
-    let cfg = s.config.security.sso.clone();
+    let cfg = s.config.load().security.sso.clone();
     if !cfg.ready() {
         return (StatusCode::NOT_FOUND, "SSO is off").into_response();
     }
@@ -513,7 +513,7 @@ async fn callback(
     let Some(p) = pending().remove(&state) else {
         return back_with_error("sign-in expired: try again");
     };
-    let cfg = s.config.security.sso.clone();
+    let cfg = s.config.load().security.sso.clone();
     if !cfg.ready() {
         return back_with_error("SSO is off");
     }
@@ -565,7 +565,7 @@ async fn callback(
         Ok(Err(e)) => return back_with_error(&e),
         Err(e) => return back_with_error(&e.to_string()),
     };
-    let role = s.config.security.sso.role_for(&groups);
+    let role = s.config.load().security.sso.role_for(&groups);
     match s.auth.sso_login(&who, role) {
         Ok((token, user)) => {
             tracing::info!(user = user.username, role = ?user.role, "signed in through SSO");

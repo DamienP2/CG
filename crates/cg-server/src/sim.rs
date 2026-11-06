@@ -79,7 +79,9 @@ impl AppState {
         let (sid, mut config) = match channel_id {
             Some(c) => (
                 id(user, c),
-                self.channel(c).ok_or("no such channel")?.config.clone(),
+                crate::config::ChannelConfig::clone(
+                    &self.channel(c).ok_or("no such channel")?.config.load(),
+                ),
             ),
             None => (
                 id(user, NO_OUTPUT),
@@ -96,8 +98,11 @@ impl AppState {
         config.id = sid.clone();
         // Another format (a project of another size, without output): made again.
         if self.sims.get(&sid).is_some_and(|ch| {
-            (ch.config.width, ch.config.height, ch.config.frame_rate)
-                != (config.width, config.height, config.frame_rate)
+            (
+                ch.config.load().width,
+                ch.config.load().height,
+                ch.config.load().frame_rate,
+            ) != (config.width, config.height, config.frame_rate)
         }) {
             self.sims.map().remove(&sid);
         }
@@ -113,13 +118,14 @@ impl AppState {
             return Ok(sid);
         }
         let ch = Arc::new(ChannelRt {
-            config,
+            config: arc_swap::ArcSwap::from_pointee(config),
             project_id: RwLock::new(Some(project_id.to_string())),
             state: Default::default(),
             loaded: crate::state::Loaded::new(Some(project)),
             published: Default::default(),
             dirty: Default::default(),
             ops: Default::default(),
+            next: Default::default(),
         });
         let sim = Arc::new(Sim {
             ch: ch.clone(),
@@ -162,7 +168,7 @@ impl AppState {
 /// The clock of a simulation: the channel's playout at its rate, until it
 /// is dropped (idle, or the engine restarts).
 async fn run(s: Shared, sid: String, sim: Arc<Sim>) {
-    let fps = sim.ch.config.frame_rate.as_f64().max(1.0);
+    let fps = sim.ch.config.load().frame_rate.as_f64().max(1.0);
     let mut tick = tokio::time::interval(Duration::from_secs_f64(1.0 / fps));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let closing = crate::state::until_true(s.closing.subscribe());

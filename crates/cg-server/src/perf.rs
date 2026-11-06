@@ -61,6 +61,10 @@ impl PictureStats {
         lock(&self.outputs).push(s.clone());
         s
     }
+    /// Forgets the outputs closed (removed, or opened again).
+    pub fn forget_outputs(&self, gone: impl Fn(&str) -> bool) {
+        lock(&self.outputs).retain(|o| !gone(&o.id));
+    }
 }
 
 /// One output (NDI, ST 2110, SDI, stream).
@@ -796,7 +800,7 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
     let cost = |costs: &mut [Cost; 5], kind: &str| costs.iter_mut().position(|c| c.kind == kind);
     let mut channels = Vec::new();
     let mut rates = Vec::new();
-    for c in &s.config.channels {
+    for c in &s.config.load().channels {
         let Some(ch) = s.channels.get(&c.id) else {
             continue;
         };
@@ -916,7 +920,7 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
     let (mut in_stream, mut in_ndi) = (Cost::new("inputStream", 0.35), Cost::new("inputNdi", 0.3));
     let status_in = s.inputs.status();
     let mut inputs = Vec::new();
-    for i in &s.config.inputs {
+    for i in &s.config.load().inputs {
         let r = sm.inputs.get(&i.id).cloned().unwrap_or_default();
         let st = status_in.iter().find(|x| x.id == i.id);
         let live = st.is_some_and(|x| x.live);
@@ -990,13 +994,19 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
     let budget = cores * 0.8;
     let used = sm.machine.cpu as f64 / 100.0 * cores;
     let free = (budget - used).max(0.0);
-    let (w, h, rate) = s.config.channels.first().map_or((1920, 1080, 50.0), |c| {
-        (c.width, c.height, c.frame_rate.as_f64())
-    });
+    let (w, h, rate) = s
+        .config
+        .load()
+        .channels
+        .first()
+        .map_or((1920, 1080, 50.0), |c| {
+            (c.width, c.height, c.frame_rate.as_f64())
+        });
     let out_px = w as f64 * h as f64 * rate;
     let fmt = format_name(w, h, rate);
     let (iw, ih, ifps) = s
         .config
+        .load()
         .inputs
         .iter()
         .find(|i| {

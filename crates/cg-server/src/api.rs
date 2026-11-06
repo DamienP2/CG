@@ -294,8 +294,8 @@ pub(crate) fn session_cookie(token: &str, max_age: i64, secure: bool) -> String 
 }
 
 fn server_timezone(s: &Shared) -> String {
-    if !s.config.timezone.trim().is_empty() {
-        return s.config.timezone.trim().to_string();
+    if !s.config.load().timezone.trim().is_empty() {
+        return s.config.load().timezone.trim().to_string();
     }
     jiff::tz::TimeZone::system()
         .iana_name()
@@ -317,12 +317,12 @@ struct AuthState {
 }
 
 async fn auth_state(State(s): State<Shared>, MaybeUser(user): MaybeUser) -> Json<AuthState> {
-    let sso = &s.config.security.sso;
+    let sso = &s.config.load().security.sso;
     Json(AuthState {
         needs_setup: s.auth.needs_setup(),
         user: user.as_ref().map(PublicUser::from),
-        server_name: s.config.name.clone(),
-        public_outputs: s.config.public_outputs,
+        server_name: s.config.load().name.clone(),
+        public_outputs: s.config.load().public_outputs,
         sso: sso.ready().then(|| sso.label()),
         local_accounts: if sso.ready() {
             sso.local_accounts
@@ -428,7 +428,7 @@ async fn auth_login(
             LOGINS.succeeded(ip, &name);
             // With SSO on, passwords may be for admins only (or nobody);
             // the server itself always gets in, to fix the settings.
-            let sso = &s.config.security.sso;
+            let sso = &s.config.load().security.sso;
             if !sso.local_allowed(user.role) && !crate::guard::this_machine(&peer, &headers) {
                 s.auth.logout(&token);
                 return Err((
@@ -510,7 +510,7 @@ async fn create_user(
     require(me.is_admin())?;
     // Made ahead for the company's directory (SSO on): a password nobody
     // knows, the directory signs them in.
-    if input.password.is_empty() && s.config.security.sso.ready() {
+    if input.password.is_empty() && s.config.load().security.sso.ready() {
         input.password = format!(
             "{}{}",
             uuid::Uuid::new_v4().simple(),
@@ -2344,7 +2344,7 @@ async fn render_video(
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
     let assets = s.assets_dir();
-    let tz = s.config.timezone.clone();
+    let tz = s.config.load().timezone.clone();
     let started = std::time::Instant::now();
     let mov =
         tokio::task::spawn_blocking(move || crate::render::render_clip(&p, &req, assets, &tz))
@@ -2807,13 +2807,14 @@ async fn channel_preview(
     let wanted = q.rendition.as_deref().unwrap_or("main");
     let slate = ch
         .config
+        .load()
         .slate_of(wanted)
         .ok_or_else(|| not_found("rendition"))?;
     let out = cg_render::OutputFormat {
         width: slate.width,
         height: slate.height,
     };
-    let tz = s.config.timezone.clone();
+    let tz = s.config.load().timezone.clone();
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || {
         let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
@@ -2846,11 +2847,12 @@ async fn channel_slate(
 ) -> ApiResult<Response> {
     match &me {
         Some(me) => visible_channel(me, &id)?,
-        None => require(s.config.public_outputs)?,
+        None => require(s.config.load().public_outputs)?,
     }
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let slate = ch
         .config
+        .load()
         .slate_of(q.picture.as_deref().unwrap_or("main"))
         .ok_or_else(|| not_found("picture"))?;
     slate_png(&s, slate, q.w).await
@@ -2925,7 +2927,7 @@ async fn get_sdp(
 ) -> ApiResult<Response> {
     visible_channel(&me, &id)?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
-    let c = &ch.config;
+    let c = ch.config.load();
     // By id (or name, as before): unique across the channel's pictures.
     let (width, height, cfg) = c
         .pictures()
@@ -3211,13 +3213,10 @@ async fn put_system_config(
         .map(|c| c.id.clone())
         .collect();
     let time = (before.time != cfg.time).then(|| cfg.time.clone());
-    // Only the time changed: the engine goes on.
-    let restart = {
-        let mut same = before.clone();
-        same.time = cfg.time.clone();
-        same != cfg
-    };
-    tokio::task::spawn_blocking(move || cfg.save(&dir))
+    // What can change in place does: the outputs on air go on.
+    let plan = crate::reconfig::plan(&before, &cfg);
+    let saved = cfg.clone();
+    tokio::task::spawn_blocking(move || saved.save(&dir))
         .await
         .map_err(internal)?
         .map_err(internal)?;
@@ -3234,11 +3233,16 @@ async fn put_system_config(
             .await;
         s.auth.forget_channels(&removed).map_err(internal)?;
     }
-    s.changed("config");
-    if restart {
-        tracing::info!("settings saved, restarting the engine");
-        s.restart.notify_one();
+    match plan {
+        crate::reconfig::Plan::Restart => {
+            tracing::info!("settings saved, restarting the engine");
+            s.restart.notify_one();
+        }
+        crate::reconfig::Plan::InPlace { inputs, channels } => {
+            crate::reconfig::apply(&s, &cfg, inputs, &channels);
+        }
     }
+    s.changed("config");
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -3296,7 +3300,7 @@ async fn outputs_status(
 /// Unauthenticated status for the desktop tray app and monitoring.
 async fn health(State(s): State<Shared>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
-        "name": s.config.name,
+        "name": s.config.load().name,
         "version": env!("CARGO_PKG_VERSION"),
         "bind": s.bind,
         "channels": s.channels.len(),
@@ -3390,7 +3394,7 @@ async fn tray_info(
         .flat_map(|o| o.values())
         .filter(|o| o.ok)
         .count();
-    let roles = &s.config.hardware.network;
+    let roles = &s.config.load().hardware.network;
     // A newer release (found by the automatic or the menu's check) and how
     // its install goes.
     let up = crate::update::status();
@@ -3400,7 +3404,7 @@ async fn tray_info(
         .filter(|r| crate::update::is_newer(&r.version, env!("CARGO_PKG_VERSION")))
         .map(|r| r.version.clone());
     Ok(Json(serde_json::json!({
-        "name": s.config.name,
+        "name": s.config.load().name,
         "version": env!("CARGO_PKG_VERSION"),
         "bind": s.bind,
         "uptimeSecs": s.started_at.elapsed().map(|d| d.as_secs()).unwrap_or(0),
@@ -3522,7 +3526,7 @@ async fn put_network_roles(
 /// What the HTML5 MOS plugin needs to build items.
 async fn mos_info(State(s): State<Shared>, CurrentUser(_): CurrentUser) -> Json<serde_json::Value> {
     Json(
-        serde_json::json!({ "mosId": s.config.mos.mos_id, "enabled": s.config.mos.enabled, "projectId": s.config.mos.project_id, "schema": crate::mos::SCHEMA }),
+        serde_json::json!({ "mosId": s.config.load().mos.mos_id, "enabled": s.config.load().mos.enabled, "projectId": s.config.load().mos.project_id, "schema": crate::mos::SCHEMA }),
     )
 }
 
@@ -4087,7 +4091,7 @@ async fn ws_upgrade(
             crate::stations::secret_from(&parts),
         )
     };
-    if user.is_none() && !(s.config.public_outputs && q.channel.is_some()) {
+    if user.is_none() && !(s.config.load().public_outputs && q.channel.is_some()) {
         return (StatusCode::UNAUTHORIZED, "login required").into_response();
     }
     // An output page: the address of an HTML5 output, or a channel's id.
@@ -4159,7 +4163,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
     let hello = Hello {
         r#type: "hello",
         user: viewer.user.as_ref().map(PublicUser::from),
-        server_name: s.config.name.clone(),
+        server_name: s.config.load().name.clone(),
         server_time: now_ms(),
         timezone: server_timezone(&s),
         channels: channels.clone(),
@@ -4204,10 +4208,10 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
         .sims
         .all()
         .into_iter()
-        .filter(|ch| viewer.sees_channel(&ch.config.id))
+        .filter(|ch| viewer.sees_channel(&ch.config.load().id))
     {
         let ev = Event::Channel {
-            channel_id: ch.config.id.clone(),
+            channel_id: ch.config.load().id.clone(),
             state: ch.state.read().await.clone(),
             server_time: now_ms(),
         };

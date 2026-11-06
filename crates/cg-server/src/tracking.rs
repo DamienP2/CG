@@ -242,6 +242,17 @@ impl Cam {
     }
 }
 
+/// The same reception: what is received, how (its picture and how its
+/// people are cut out are `crate::people`'s, changed while it runs).
+fn same_reception(a: &InputConfig, b: &InputConfig) -> bool {
+    let plain = |c: &InputConfig| InputConfig {
+        image: String::new(),
+        cut: Default::default(),
+        ..c.clone()
+    };
+    plain(a) == plain(b)
+}
+
 impl Tracking {
     /// Runs the tracking inputs: new and changed ones start, removed ones stop.
     /// `iface`: the network card of the Tracking role (multicast joined on it).
@@ -254,7 +265,7 @@ impl Tracking {
         running.retain(|id, r| {
             let keep = configs
                 .iter()
-                .any(|c| &c.id == id && **c == r.config && r.iface == iface);
+                .any(|c| &c.id == id && same_reception(c, &r.config) && r.iface == iface);
             if !keep {
                 r.cam.stop.store(true, Ordering::Relaxed);
             }

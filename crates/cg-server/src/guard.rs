@@ -137,7 +137,7 @@ pub async fn csrf(State(s): State<Shared>, req: Request, next: Next) -> Response
     if changes(&req)
         && with_cookie_only(req.headers())
         && !with_api_key(req.uri().query())
-        && cross_site(req.headers(), &s.config.trusted_origins)
+        && cross_site(req.headers(), &s.config.load().trusted_origins)
     {
         let origin = req
             .headers()

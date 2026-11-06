@@ -32,6 +32,7 @@ mod people_net;
 mod perf;
 mod prefs;
 mod premiere;
+mod reconfig;
 mod render;
 mod rt;
 mod schedule;
@@ -552,7 +553,7 @@ pub async fn serve(
             channels.insert(
                 c.id.clone(),
                 Arc::new(ChannelRt {
-                    config: c.clone(),
+                    config: arc_swap::ArcSwap::from_pointee(c.clone()),
                     // What it had on air before the restart.
                     state: RwLock::new(state::load_on_air(&data_dir, &c.id, pid.as_deref())),
                     loaded: state::Loaded::new(pid.as_deref().and_then(|id| library.get(id))),
@@ -560,6 +561,7 @@ pub async fn serve(
                     published: Default::default(),
                     dirty: Default::default(),
                     ops: Default::default(),
+                    next: Default::default(),
                 }),
             );
         }
@@ -588,7 +590,7 @@ pub async fn serve(
             tracking: tracking.clone(),
             people: people.clone(),
             perf: perf.clone(),
-            config,
+            config: arc_swap::ArcSwap::from_pointee(config),
             bind,
             started_at,
             restart: Notify::new(),
@@ -596,13 +598,15 @@ pub async fn serve(
             presence: Default::default(),
             schedule: schedule::Schedule::load(&data_dir),
         });
-        shared.inputs.apply(&shared.config.inputs);
+        shared.inputs.apply(&shared.config.load().inputs);
         shared.tracking.apply(
-            &shared.config.inputs,
-            hardware::interface_ip(&shared.config.hardware.network.tracking),
+            &shared.config.load().inputs,
+            hardware::interface_ip(&shared.config.load().hardware.network.tracking),
         );
-        shared.people.apply(&shared.config.inputs, &shared.inputs);
-        shared.data.set_cameras(&shared.config.inputs);
+        shared
+            .people
+            .apply(&shared.config.load().inputs, &shared.inputs);
+        shared.data.set_cameras(&shared.config.load().inputs);
         shared
             .renderer
             .lock()
@@ -659,7 +663,7 @@ pub async fn serve(
 
         // HTTPS, when on: its certificate read (or made); a certificate that
         // cannot be used leaves plain HTTP as it is, never a locked door.
-        let https = shared.config.security.https.clone();
+        let https = shared.config.load().security.https.clone();
         let tls_config = if https.mode == tls::CertMode::Off {
             tls::set_running(false, 0, String::new());
             None

@@ -40,7 +40,14 @@ struct Opened {
     id: String,
     kind: &'static str,
     name: String,
+    /// Its settings (an output whose settings change is opened again).
+    key: String,
     sink: Box<dyn OutputSink>,
+}
+
+/// An output's settings, to compare (the same: it stays as it is).
+fn key_of(o: &impl serde::Serialize) -> String {
+    serde_json::to_string(o).unwrap_or_default()
 }
 
 fn open_outputs(
@@ -56,6 +63,7 @@ fn open_outputs(
     let off = |id: &str| status.set(&cfg.id, id, true, "Off");
     let mut opened = |id: &str,
                       name: &str,
+                      key: String,
                       kind: &'static str,
                       r: Result<Box<dyn OutputSink>, OutputError>| match r {
         Ok(sink) => {
@@ -64,6 +72,7 @@ fn open_outputs(
                 id: id.to_string(),
                 kind,
                 name: name.to_string(),
+                key,
                 sink,
             });
         }
@@ -82,7 +91,7 @@ fn open_outputs(
             continue;
         }
         let r = St2110Sender::start(o.clone(), period).map(|s| Box::new(s) as Box<dyn OutputSink>);
-        opened(&o.id, &o.name, "st2110", r);
+        opened(&o.id, &o.name, key_of(o), "st2110", r);
     }
     for o in &outputs.sdi {
         if !o.enabled {
@@ -97,7 +106,7 @@ fn open_outputs(
             cfg.interlaced,
         )
         .map(|s| Box::new(s) as Box<dyn OutputSink>);
-        opened(&o.id, &o.name, "sdi", r);
+        opened(&o.id, &o.name, key_of(o), "sdi", r);
     }
     let rate = (cfg.frame_rate.num, cfg.frame_rate.den);
     for o in &outputs.ndi {
@@ -106,7 +115,7 @@ fn open_outputs(
             continue;
         }
         let r = NdiSender::open(o.clone(), rate).map(|s| Box::new(s) as Box<dyn OutputSink>);
-        opened(&o.id, &o.name, "ndi", r);
+        opened(&o.id, &o.name, key_of(o), "ndi", r);
     }
     for o in &outputs.streams {
         if !o.enabled {
@@ -116,7 +125,7 @@ fn open_outputs(
         let hls = (o.protocol == cg_output::stream::Protocol::Hls).then(|| hls_root.join(&o.id));
         let r = StreamSender::open(o.clone(), size.0, size.1, rate, hls)
             .map(|s| Box::new(s) as Box<dyn OutputSink>);
-        opened(&o.id, &o.name, "stream", r);
+        opened(&o.id, &o.name, key_of(o), "stream", r);
     }
     if let Some(path) = cg_output::ndi::loaded_path() {
         for o in &outputs.ndi {
@@ -145,7 +154,7 @@ fn short(e: &OutputError) -> String {
 /// Starts every channel. The tasks end by themselves once the cycle closes
 /// (`state.closing`), after their outputs have stopped.
 pub fn start(state: &Shared) -> Vec<tokio::task::JoinHandle<()>> {
-    cg_output::ndi::set_library_path(&state.config.ndi_library);
+    cg_output::ndi::set_library_path(&state.config.load().ndi_library);
     crate::webimages::install(state.assets_dir());
     crate::sound::start(state);
     state
@@ -175,6 +184,8 @@ struct Mailbox {
 }
 
 struct OutputThread {
+    id: String,
+    key: String,
     mailbox: Arc<Mailbox>,
     stats: Arc<SinkStats>,
     thread: std::thread::JoinHandle<()>,
@@ -182,6 +193,7 @@ struct OutputThread {
 
 impl OutputThread {
     fn start(o: Opened, stats: Arc<SinkStats>, status: Arc<OutputStatus>, channel: String) -> Self {
+        let (id, key) = (o.id.clone(), o.key.clone());
         let mailbox = Arc::new(Mailbox::default());
         let thread = std::thread::Builder::new()
             .name(format!("cg-out-{}", o.id))
@@ -191,6 +203,8 @@ impl OutputThread {
             })
             .expect("spawn output thread");
         Self {
+            id,
+            key,
             mailbox,
             stats,
             thread,
@@ -277,6 +291,10 @@ type Done = Arc<Mutex<std::collections::BTreeMap<u64, Arc<Frame>>>>;
 /// n + `ahead`: a frame that takes a little longer than one period to render
 /// (a big picture loading, a busy moment) is still on time.
 struct Picture {
+    /// "main" or the rendition's id.
+    id: String,
+    /// The settings of its outputs (to tell what changed).
+    settings: crate::config::OutputsConfig,
     jobs: mpsc::SyncSender<RenderJob>,
     done: Done,
     ahead: u64,
@@ -479,7 +497,6 @@ fn render_loop(
 /// Opens a channel's outputs and starts the render threads of each picture that has some.
 fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
     let period = cfg.frame_rate.frame_duration();
-    let ahead = cfg.render_ahead.clamp(1, 4);
     let mut pictures = Vec::new();
     for (id, width, height, outputs) in cfg.pictures() {
         let hls = state.hls_dir().join(&cfg.id).join(id);
@@ -494,73 +511,257 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
         if opened.is_empty() {
             continue;
         }
-        let rendition = cfg.renditions.iter().find(|r| r.id == id);
-        let name = rendition.map_or("Principal", |r| r.name.as_str());
-        let bus = rendition.map_or(0, |r| r.bus);
-        let stats = state.perf.picture(&cfg.id, id, name, width, height);
-        let card = opened.iter().find_map(|o| o.sink.frame_clock());
-        let outputs = opened
-            .into_iter()
-            .map(|o| {
-                let s = stats.output(&o.id, o.kind, &o.name);
-                OutputThread::start(o, s, state.output_status.clone(), cfg.id.clone())
-            })
-            .collect();
-        // As many threads as frames ahead: each frame has a period per thread to render.
-        let (jobs, rx) = mpsc::sync_channel::<RenderJob>(1);
-        let rx = Arc::new(Mutex::new(rx));
-        let done: Done = Default::default();
-        let cache = Arc::new(FrameCache::new());
-        let renders = (0..ahead)
-            .map(|k| {
-                std::thread::Builder::new()
-                    .name(format!("cg-render-{}-{id}-{k}", cfg.id))
-                    .spawn({
-                        let assets = state.assets_dir();
-                        let out = OutputFormat { width, height };
-                        let tz = state.config.timezone.clone();
-                        let slate = cfg.slate_of(id);
-                        let live = state.inputs.clone();
-                        let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
-                        let cache = cache.clone();
-                        let scope = format!("{}/{id}", cfg.id);
-                        move || {
-                            let mut r = Renderer::new(assets);
-                            r.set_live(live);
-                            // Its render threads share what widgets remember.
-                            r.set_scope(scope);
-                            render_loop(r, out, tz, slate, rx, done, stats, cache)
-                        }
-                    })
-                    .expect("spawn render thread")
-            })
-            .collect();
-        // A picture fed through the channel's source gets the live video
-        // under its graphics as each frame goes out.
-        let (outputs, mixer) = match cfg.background.clone() {
-            Some(source) if !cfg.graphics_only.iter().any(|p| p == id) => {
-                let name = format!("cg-mix-{}-{id}", cfg.id);
-                (
-                    Vec::new(),
-                    Some(Mixer::start(name, source, state.inputs.clone(), outputs)),
-                )
-            }
-            _ => (outputs, None),
-        };
-        pictures.push(Picture {
-            jobs,
-            done,
-            ahead: ahead as u64,
-            last: None,
-            stats,
-            outputs,
-            mixer,
-            renders,
-            card,
-            bus,
-        });
+        pictures.push(build_picture(state, cfg, id, outputs, opened));
     }
     pictures
+}
+
+/// A picture of the channel with the outputs opened for it: its render
+/// threads started, its outputs fed.
+fn build_picture(
+    state: &Shared,
+    cfg: &ChannelConfig,
+    id: &str,
+    settings: &crate::config::OutputsConfig,
+    opened: Vec<Opened>,
+) -> Picture {
+    let ahead = cfg.render_ahead.clamp(1, 4);
+    let (width, height) = cfg
+        .pictures()
+        .into_iter()
+        .find(|p| p.0 == id)
+        .map_or((cfg.width, cfg.height), |p| (p.1, p.2));
+    let rendition = cfg.renditions.iter().find(|r| r.id == id);
+    let name = rendition.map_or("Principal", |r| r.name.as_str());
+    let bus = rendition.map_or(0, |r| r.bus);
+    let stats = state.perf.picture(&cfg.id, id, name, width, height);
+    let card = opened.iter().find_map(|o| o.sink.frame_clock());
+    let outputs = opened
+        .into_iter()
+        .map(|o| {
+            let s = stats.output(&o.id, o.kind, &o.name);
+            OutputThread::start(o, s, state.output_status.clone(), cfg.id.clone())
+        })
+        .collect();
+    // As many threads as frames ahead: each frame has a period per thread to render.
+    let (jobs, rx) = mpsc::sync_channel::<RenderJob>(1);
+    let rx = Arc::new(Mutex::new(rx));
+    let done: Done = Default::default();
+    let cache = Arc::new(FrameCache::new());
+    let renders = (0..ahead)
+        .map(|k| {
+            std::thread::Builder::new()
+                .name(format!("cg-render-{}-{id}-{k}", cfg.id))
+                .spawn({
+                    let assets = state.assets_dir();
+                    let out = OutputFormat { width, height };
+                    let tz = state.config.load().timezone.clone();
+                    let slate = cfg.slate_of(id);
+                    let live = state.inputs.clone();
+                    let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
+                    let cache = cache.clone();
+                    let scope = format!("{}/{id}", cfg.id);
+                    move || {
+                        let mut r = Renderer::new(assets);
+                        r.set_live(live);
+                        // Its render threads share what widgets remember.
+                        r.set_scope(scope);
+                        render_loop(r, out, tz, slate, rx, done, stats, cache)
+                    }
+                })
+                .expect("spawn render thread")
+        })
+        .collect();
+    // A picture fed through the channel's source gets the live video
+    // under its graphics as each frame goes out.
+    let (outputs, mixer) = match cfg.background.clone() {
+        Some(source) if !cfg.graphics_only.iter().any(|p| p == id) => {
+            let name = format!("cg-mix-{}-{id}", cfg.id);
+            (
+                Vec::new(),
+                Some(Mixer::start(name, source, state.inputs.clone(), outputs)),
+            )
+        }
+        _ => (outputs, None),
+    };
+    Picture {
+        id: id.to_string(),
+        settings: settings.clone(),
+        jobs,
+        done,
+        ahead: ahead as u64,
+        last: None,
+        stats,
+        outputs,
+        mixer,
+        renders,
+        card,
+        bus,
+    }
+}
+
+// ------------------------------------------------------------ reconfigure --
+
+/// Outputs opened off the clock for a picture of the channel: added to it
+/// (or, `whole`, the picture made again with them).
+struct Opening {
+    picture: String,
+    settings: crate::config::OutputsConfig,
+    opened: Vec<Opened>,
+    whole: bool,
+}
+
+/// Every output of a picture's settings, by id: its settings (as compared)
+/// and whether it is on.
+fn outputs_of(o: &crate::config::OutputsConfig) -> Vec<(String, String, bool)> {
+    let mut v = Vec::new();
+    v.extend(
+        o.st2110
+            .iter()
+            .map(|x| (x.id.clone(), key_of(x), x.enabled)),
+    );
+    v.extend(o.sdi.iter().map(|x| (x.id.clone(), key_of(x), x.enabled)));
+    v.extend(o.ndi.iter().map(|x| (x.id.clone(), key_of(x), x.enabled)));
+    v.extend(
+        o.streams
+            .iter()
+            .map(|x| (x.id.clone(), key_of(x), x.enabled)),
+    );
+    v
+}
+
+/// Only the outputs of `o` whose id is in `ids`.
+fn only(o: &crate::config::OutputsConfig, ids: &[String]) -> crate::config::OutputsConfig {
+    let has = |id: &String| ids.contains(id);
+    crate::config::OutputsConfig {
+        st2110: o.st2110.iter().filter(|x| has(&x.id)).cloned().collect(),
+        sdi: o.sdi.iter().filter(|x| has(&x.id)).cloned().collect(),
+        ndi: o.ndi.iter().filter(|x| has(&x.id)).cloned().collect(),
+        html5: Vec::new(),
+        streams: o.streams.iter().filter(|x| has(&x.id)).cloned().collect(),
+    }
+}
+
+/// The channel's outputs changed while it runs (`crate::reconfig`): the
+/// outputs whose settings did not change go on, untouched; the others are
+/// closed, and the new ones opened off the clock (`opening`), then fed from
+/// the tick they are ready. A picture keyed over a live source is made
+/// again whole (its mixer holds its outputs).
+fn reconfigure(
+    state: &Shared,
+    cfg: &Arc<ChannelConfig>,
+    pictures: &mut [Picture],
+    opening: &mpsc::Sender<Opening>,
+) {
+    for (id, _, _, settings) in cfg.pictures() {
+        let at = pictures.iter().position(|p| p.id == id);
+        if at.is_some_and(|i| pictures[i].settings == *settings) {
+            continue;
+        }
+        let wanted = outputs_of(settings);
+        let (whole, ids): (bool, Vec<String>) = match at {
+            Some(i) if pictures[i].mixer.is_none() => {
+                let p = &mut pictures[i];
+                // Gone or changed: closed (off the clock).
+                let (keep, gone): (Vec<_>, Vec<_>) =
+                    std::mem::take(&mut p.outputs).into_iter().partition(|o| {
+                        wanted
+                            .iter()
+                            .any(|(id, key, on)| *on && *id == o.id && *key == o.key)
+                    });
+                p.outputs = keep;
+                p.stats.forget_outputs(|id| gone.iter().any(|o| o.id == id));
+                for o in gone {
+                    if !wanted.iter().any(|(id, _, _)| *id == o.id) {
+                        state.output_status.remove(&cfg.id, &o.id);
+                    }
+                    std::thread::spawn(move || o.close());
+                }
+                p.settings = settings.clone();
+                let open: Vec<String> = wanted
+                    .iter()
+                    .filter(|(id, _, _)| !p.outputs.iter().any(|o| o.id == *id))
+                    .map(|(id, _, _)| id.clone())
+                    .collect();
+                (false, open)
+            }
+            // Keyed over a source, or without outputs so far: made whole.
+            _ => (true, wanted.iter().map(|(id, _, _)| id.clone()).collect()),
+        };
+        if ids.is_empty() {
+            continue;
+        }
+        let name = cfg.name.clone();
+        let (cfg, tx, state) = (cfg.clone(), opening.clone(), state.clone());
+        let (picture, settings) = (id.to_string(), settings.clone());
+        // Opening can take a moment (ffmpeg, NDI): the clock goes on meanwhile.
+        let spawned = std::thread::Builder::new()
+            .name(format!("cg-open-{}", cfg.id))
+            .spawn(move || {
+                let (width, height) = cfg
+                    .pictures()
+                    .into_iter()
+                    .find(|p| p.0 == picture)
+                    .map_or((cfg.width, cfg.height), |p| (p.1, p.2));
+                let hls = state.hls_dir().join(&cfg.id).join(&picture);
+                let opened = open_outputs(
+                    &cfg,
+                    &only(&settings, &ids),
+                    (width, height),
+                    cfg.frame_rate.frame_duration(),
+                    &state.output_status,
+                    &hls,
+                );
+                let _ = tx.send(Opening {
+                    picture,
+                    settings,
+                    opened,
+                    whole,
+                });
+            });
+        if let Err(e) = spawned {
+            tracing::error!(channel = name, "cannot open the outputs: {e}");
+        }
+    }
+}
+
+/// Outputs opened off the clock, put to work.
+fn take_opened(
+    state: &Shared,
+    cfg: &ChannelConfig,
+    pictures: &mut Vec<Picture>,
+    opening: &mpsc::Receiver<Opening>,
+) {
+    while let Ok(o) = opening.try_recv() {
+        let at = pictures.iter().position(|p| p.id == o.picture);
+        match at {
+            Some(i) if !o.whole => {
+                let p = &mut pictures[i];
+                for x in o.opened {
+                    let s = p.stats.output(&x.id, x.kind, &x.name);
+                    p.outputs.push(OutputThread::start(
+                        x,
+                        s,
+                        state.output_status.clone(),
+                        cfg.id.clone(),
+                    ));
+                }
+            }
+            _ => {
+                if o.opened.is_empty() {
+                    continue;
+                }
+                let new = build_picture(state, cfg, &o.picture, &o.settings, o.opened);
+                match at {
+                    Some(i) => {
+                        let old = std::mem::replace(&mut pictures[i], new);
+                        std::thread::spawn(move || old.close());
+                    }
+                    None => pictures.push(new),
+                }
+            }
+        }
+    }
 }
 
 // ----------------------------------------------------------------- memory --
@@ -594,7 +795,7 @@ impl Drop for StopOnDrop {
 }
 
 async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
-    let id = ch.config.id.clone();
+    let id = ch.config.load().id.clone();
     state.output_status.reset(&id);
     state.perf.reset_channel(&id);
     let stop = Arc::new(AtomicBool::new(false));
@@ -607,15 +808,15 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
             let (state, ch, stop) = (state.clone(), ch.clone(), stop.clone());
             move || {
                 // Opening outputs can take a moment (ffmpeg, NDI runtime).
-                let pictures = start_pictures(&state, &ch.config);
-                let stats = state.perf.clock(&ch.config.id);
+                let pictures = start_pictures(&state, &ch.config.load());
+                let stats = state.perf.clock(&ch.config.load().id);
                 clock(&handle, &state, &ch, pictures, &stop, &stats);
                 let _ = done_tx.send(());
             }
         });
     if let Err(e) = spawned {
         tracing::error!(
-            channel = ch.config.name,
+            channel = ch.config.load().name,
             "cannot start the channel clock: {e}"
         );
         return;
@@ -664,13 +865,14 @@ fn clock(
     stats: &ClockStats,
 ) {
     crate::rt::prioritize(crate::rt::Work::Clock);
-    let rate = ch.config.frame_rate;
+    let rate = ch.config.load().frame_rate;
     let period = rate.frame_duration();
     let reference = ch
         .config
+        .load()
         .clock
-        .unwrap_or(state.config.hardware.sync.reference);
-    let tai = state.config.hardware.sync.tai_offset;
+        .unwrap_or(state.config.load().hardware.sync.reference);
+    let tai = state.config.load().hardware.sync.tai_offset;
     let card = pictures.iter().find_map(|p| p.card.clone());
     let auto = reference == ClockReference::Auto;
     // What Auto follows now: the card when its reference input is locked,
@@ -691,14 +893,14 @@ fn clock(
         // the card never has to repeat or drop a frame to stay in step.
         (ClockReference::Free, Some(_)) => {
             tracing::info!(
-                channel = ch.config.name,
+                channel = ch.config.load().name,
                 "the channel runs on its DeckLink output's clock"
             );
             ClockReference::Decklink
         }
         (ClockReference::Decklink, None) => {
             tracing::warn!(
-                channel = ch.config.name,
+                channel = ch.config.load().name,
                 "no DeckLink output to follow: the channel runs on the server's time"
             );
             ClockReference::Free
@@ -712,18 +914,24 @@ fn clock(
         _ => Pace::Grid(Grid::new(rate, tai)),
     };
     let mut pace = pace_for(followed);
-    stats.set_reference(followed, &ch.config.name);
+    stats.set_reference(followed, &ch.config.load().name);
     let check_every = (rate.num as u64 / rate.den.max(1) as u64).max(1);
     let mut n: u64 = 0;
     let mut saved_at = Instant::now();
+    let (opened_tx, opened_rx) = mpsc::channel::<Opening>();
     while !stop.load(Ordering::Relaxed) {
         n += 1;
+        // Its outputs changed: done between two ticks, the others untouched.
+        if let Some(cfg) = lock(&ch.next).take() {
+            reconfigure(state, &cfg, &mut pictures, &opened_tx);
+        }
+        take_opened(state, &ch.config.load(), &mut pictures, &opened_rx);
         // Auto: about once a second, the reference that is best now.
         if auto && n.is_multiple_of(check_every) {
             let now = choose(&card);
             if now != followed {
                 tracing::info!(
-                    channel = ch.config.name,
+                    channel = ch.config.load().name,
                     "the channel now follows {}",
                     match now {
                         ClockReference::Decklink => "its DeckLink card",
@@ -735,7 +943,7 @@ fn clock(
                     pace = pace_for(now);
                 }
                 followed = now;
-                stats.set_reference(followed, &ch.config.name);
+                stats.set_reference(followed, &ch.config.load().name);
             }
         }
         let tick = pace.next();
@@ -993,8 +1201,8 @@ fn log_auto(
         state,
         crate::asrun::Entry {
             at: crate::state::now_ms(),
-            channel_id: ch.config.id.clone(),
-            channel_name: ch.config.name.clone(),
+            channel_id: ch.config.load().id.clone(),
+            channel_name: ch.config.load().name.clone(),
             project_id: p.id.clone(),
             project_name: p.name.clone(),
             action: action.into(),
@@ -1016,7 +1224,7 @@ pub(crate) async fn advance(
     ch: &ChannelRt,
     saved_at: &mut Instant,
 ) -> (Option<Arc<Project>>, ChannelState) {
-    let channel_fps = ch.config.frame_rate.as_f64().max(1.0);
+    let channel_fps = ch.config.load().frame_rate.as_f64().max(1.0);
     // Without waiting on the library (a project being saved).
     let project = ch.loaded.get();
     let pid = project.as_ref().map(|p| p.id.clone());
@@ -1026,9 +1234,9 @@ pub(crate) async fn advance(
         .as_ref()
         .map(|p| p.frame_rate.as_f64() / channel_fps)
         .unwrap_or(1.0);
-    let sim = crate::sim::is_sim(&ch.config.id);
+    let sim = crate::sim::is_sim(&ch.config.load().id);
     if !sim {
-        crate::sound::loaded_on(state, &ch.config.id, project.as_ref());
+        crate::sound::loaded_on(state, &ch.config.load().id, project.as_ref());
     }
     let (changed, snapshot) = {
         let mut st = ch.state.write().await;
@@ -1095,13 +1303,13 @@ pub(crate) async fn advance(
                 changed = true;
             }
             // Countdowns at zero firing their trigger.
-            for name in st.zero_triggers(p, &state.config.timezone) {
+            for name in st.zero_triggers(p, &state.config.load().timezone) {
                 crate::asrun::record(
                     state,
                     crate::asrun::Entry {
                         at: crate::state::now_ms(),
-                        channel_id: ch.config.id.clone(),
-                        channel_name: ch.config.name.clone(),
+                        channel_id: ch.config.load().id.clone(),
+                        channel_name: ch.config.load().name.clone(),
                         project_id: p.id.clone(),
                         project_name: p.name.clone(),
                         action: "trigger".into(),
@@ -1123,16 +1331,16 @@ pub(crate) async fn advance(
                     std::sync::Mutex::new(cg_render::TextWidths::new(state.assets_dir()))
                 });
                 let mut w = widths.lock().unwrap_or_else(|e| e.into_inner());
-                let mut fired = st.event_resumes(p, &state.config.timezone, &mut *w);
+                let mut fired = st.event_resumes(p, &state.config.load().timezone, &mut *w);
                 // The project's Logic, and the playlists a Logic resumes or stops (on their outputs).
-                let buses = |pl: &str| crate::state::list_buses(&ch.config, p, pl);
+                let buses = |pl: &str| crate::state::list_buses(&ch.config.load(), p, pl);
                 fired.extend(st.run_project(p, &buses));
                 fired
             };
             // Sounds the Logics asked for.
             let sounds = std::mem::take(&mut st.sounds.0);
             if !sim {
-                crate::sound::run(state, &ch.config.id, p, sounds);
+                crate::sound::run(state, &ch.config.load().id, p, sounds);
             }
             // Graphics a Logic took: their data read as for a take (data sets, sources;
             // the rows read « on take » read now).
@@ -1149,8 +1357,8 @@ pub(crate) async fn advance(
                     state,
                     crate::asrun::Entry {
                         at: crate::state::now_ms(),
-                        channel_id: ch.config.id.clone(),
-                        channel_name: ch.config.name.clone(),
+                        channel_id: ch.config.load().id.clone(),
+                        channel_name: ch.config.load().name.clone(),
                         project_id: p.id.clone(),
                         project_name: p.name.clone(),
                         action: "event".into(),
@@ -1186,7 +1394,7 @@ pub(crate) async fn advance(
         *saved_at = Instant::now();
         let (dir, id, snap) = (
             state.data_dir.clone(),
-            ch.config.id.clone(),
+            ch.config.load().id.clone(),
             snapshot.clone(),
         );
         tokio::task::spawn_blocking(move || crate::state::save_on_air(&dir, &id, pid, snap));
@@ -1223,6 +1431,7 @@ mod tests {
                 id: "o".into(),
                 kind: "ndi",
                 name: "O".into(),
+                key: String::new(),
                 sink: Box::new(Slow(got.clone())),
             },
             stats,
@@ -1267,6 +1476,7 @@ mod tests {
                 id: "o".into(),
                 kind: "ndi",
                 name: "O".into(),
+                key: String::new(),
                 sink: Box::new(Record(got.clone())),
             },
             stats.output("o", "ndi", "O"),
@@ -1275,6 +1485,8 @@ mod tests {
         );
         let (jobs, _rx) = mpsc::sync_channel(1);
         let mut pic = Picture {
+            id: "main".into(),
+            settings: Default::default(),
             jobs,
             done: Default::default(),
             ahead: 2,

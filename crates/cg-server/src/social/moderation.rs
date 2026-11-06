@@ -836,7 +836,8 @@ fn local_time(at: i64, tz: &jiff::tz::TimeZone) -> String {
 }
 
 fn timezone(s: &Shared) -> jiff::tz::TimeZone {
-    let name = s.config.timezone.trim();
+    let cfg = s.config.load();
+    let name = cfg.timezone.trim();
     if !name.is_empty() {
         if let Ok(tz) = jiff::tz::TimeZone::get(name) {
             return tz;
@@ -1806,13 +1807,14 @@ mod tests {
             .iter()
             .map(|c| {
                 let rt = ChannelRt {
-                    config: c.clone(),
+                    config: arc_swap::ArcSwap::from_pointee(c.clone()),
                     project_id: RwLock::new(None),
                     state: RwLock::new(Default::default()),
                     loaded: Default::default(),
                     published: Default::default(),
                     dirty: Default::default(),
                     ops: Default::default(),
+                    next: Default::default(),
                 };
                 (c.id.clone(), Arc::new(rt))
             })
@@ -1843,7 +1845,7 @@ mod tests {
             tracking: Default::default(),
             people: Default::default(),
             perf: Default::default(),
-            config,
+            config: arc_swap::ArcSwap::from_pointee(config),
             bind: "127.0.0.1:0".parse().unwrap(),
             started_at: std::time::SystemTime::now(),
             restart: Default::default(),

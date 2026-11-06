@@ -169,13 +169,14 @@ pub fn pick_channel<'a>(
 }
 
 fn channel_id(s: &Shared, key: &str, sees: impl Fn(&str) -> bool) -> Result<String, Fail> {
-    let list: Vec<(&str, &str)> = s
+    let list: Vec<(String, String)> = s
         .channels
         .values()
-        .filter(|c| sees(&c.config.id))
-        .map(|c| (c.config.id.as_str(), c.config.name.as_str()))
+        .map(|c| c.config.load())
+        .filter(|c| sees(&c.id))
+        .map(|c| (c.id.clone(), c.name.clone()))
         .collect();
-    pick_channel(list.iter().copied(), key)
+    pick_channel(list.iter().map(|(a, b)| (a.as_str(), b.as_str())), key)
         .map(str::to_string)
         .ok_or_else(|| not_found("channel"))
 }

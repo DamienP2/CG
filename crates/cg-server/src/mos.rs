@@ -567,13 +567,13 @@ fn set_status(f: impl FnOnce(&mut Status)) {
 
 /// Listens on both MOS ports until the engine cycle ends.
 pub async fn serve(state: Shared) {
-    let cfg = state.config.mos.clone();
+    let cfg = state.config.load().mos.clone();
     set_status(|s| *s = Status::default());
     if !cfg.enabled {
         return;
     }
     // The MOS network role: one interface, else every one.
-    let role = &state.config.hardware.network.mos;
+    let role = &state.config.load().hardware.network.mos;
     let ip = crate::hardware::interface_ip(role).unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
     if !role.is_empty() && ip.is_unspecified() {
         tracing::warn!("MOS interface `{role}` has no IPv4 address: listening on every interface");
@@ -604,7 +604,7 @@ async fn accept_loop(state: Shared, listener: TcpListener) {
             continue;
         };
         // The newsroom system given in the settings only (when one is).
-        if !from_ncs(&state.config.mos.ncs_host, peer.ip()).await {
+        if !from_ncs(&state.config.load().mos.ncs_host, peer.ip()).await {
             tracing::warn!(%peer, "MOS: refused (not the newsroom system of the settings)");
             continue;
         }
@@ -762,7 +762,7 @@ async fn connection(state: Shared, mut sock: TcpStream) -> std::io::Result<()> {
 
 /// Handles one message; returns the reply to send on the same socket.
 async fn handle(state: &Shared, xml: &str) -> Option<String> {
-    let cfg = &state.config.mos;
+    let cfg = &state.config.load().mos;
     let doc = match roxmltree::Document::parse(xml) {
         Ok(d) => d,
         Err(e) => {
@@ -840,7 +840,7 @@ async fn handle(state: &Shared, xml: &str) -> Option<String> {
 /// first Strata item, else the first project.
 async fn target_project(state: &Shared, ro: &RunningOrder) -> Option<String> {
     let lib = state.library.read().await;
-    let cfg = &state.config.mos;
+    let cfg = &state.config.load().mos;
     if !cfg.project_id.is_empty() && lib.get(&cfg.project_id).is_some() {
         return Some(cfg.project_id.clone());
     }
@@ -855,7 +855,7 @@ async fn target_project(state: &Shared, ro: &RunningOrder) -> Option<String> {
 async fn write_ro(state: &Shared, project_id: &str, ro: &RunningOrder) -> Result<usize, String> {
     let _edit = state.edits.lock().await;
     let mut p = (*state.project(project_id).await.ok_or("no such project")?).clone();
-    let n = apply_to_project(&mut p, ro, &state.config.mos.mos_id);
+    let n = apply_to_project(&mut p, ro, &state.config.load().mos.mos_id);
     state.save_project(p).await.map_err(|e| e.to_string())?;
     Ok(n)
 }
@@ -972,7 +972,7 @@ fn rundown_id(ro: &RunningOrder, story: &Story, item: &MosItem) -> String {
 /// project can play, NOT READY for ours it cannot (a template missing),
 /// once each.
 fn report_ready(state: &Shared, ro: &RunningOrder, project: Option<&Project>) {
-    let mos_id = &state.config.mos.mos_id;
+    let mos_id = &state.config.load().mos.mos_id;
     let mut said = READY.lock().unwrap_or_else(|e| e.into_inner());
     let said = said.get_or_insert_with(Default::default);
     for story in &ro.stories {
@@ -1000,7 +1000,7 @@ fn report_ready(state: &Shared, ro: &RunningOrder, project: Option<&Project>) {
 /// PLAY when one of them goes on air (on any channel), STOP when it goes
 /// out; READY / NOT READY as running orders come (see [`report_ready`]).
 pub async fn report(state: Shared) {
-    let cfg = state.config.mos.clone();
+    let cfg = state.config.load().mos.clone();
     let host = cfg.ncs_host.trim().to_string();
     set_report(|r| {
         *r = Report {

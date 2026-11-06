@@ -85,7 +85,7 @@ fn path_words(words: Vec<String>) -> Vec<String> {
 }
 
 pub async fn serve(s: Shared) {
-    let cfg = s.config.control.clone();
+    let cfg = s.config.load().control.clone();
     if !cfg.tcp_enabled {
         return;
     }

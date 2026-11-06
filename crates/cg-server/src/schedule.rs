@@ -367,12 +367,12 @@ fn when_label(e: &Scheduled, tz: &TimeZone) -> String {
 
 impl AppState {
     fn tz(&self) -> TimeZone {
-        tz_of(&self.config.timezone)
+        tz_of(&self.config.load().timezone)
     }
 
     fn rate_of(&self, channel: &str) -> FrameRate {
         self.channel(channel)
-            .map(|c| c.config.frame_rate)
+            .map(|c| c.config.load().frame_rate)
             .unwrap_or_default()
     }
 
@@ -519,7 +519,7 @@ fn refire(e: &Scheduled, tz: &TimeZone, rate: FrameRate, now: i64) -> Option<i64
 /// The external timecode in use, if any: the gap between it and the
 /// server's time of day (ms), and its state for the clients.
 pub fn timecode_state(s: &AppState) -> crate::timecode::TimecodeState {
-    let input = s.config.time.timecode_input.trim().to_string();
+    let input = s.config.load().time.timecode_input.trim().to_string();
     if input.is_empty() {
         return Default::default();
     }

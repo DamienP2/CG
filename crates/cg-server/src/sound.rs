@@ -74,8 +74,8 @@ pub fn start(state: &Shared) {
     });
     let mut want: BTreeMap<(String, String), AudioOutConfig> = BTreeMap::new();
     for ch in state.channels.values() {
-        for a in &ch.config.audio {
-            want.insert((ch.config.id.clone(), a.id.clone()), a.clone());
+        for a in &ch.config.load().audio {
+            want.insert((ch.config.load().id.clone(), a.id.clone()), a.clone());
         }
     }
     let mut running = outputs();
@@ -352,7 +352,7 @@ async fn sdp(
     let Some(a) = s
         .channels
         .get(&channel)
-        .and_then(|c| c.config.audio.iter().find(|a| a.id == id))
+        .and_then(|c| c.config.load().audio.iter().find(|a| a.id == id).cloned())
     else {
         return crate::api::not_found("audio output").into_response();
     };

@@ -165,7 +165,7 @@ pub fn words(addr: &str) -> Option<Vec<String>> {
 }
 
 pub async fn serve(s: Shared) {
-    let cfg = s.config.control.clone();
+    let cfg = s.config.load().control.clone();
     if !cfg.osc_enabled {
         return;
     }

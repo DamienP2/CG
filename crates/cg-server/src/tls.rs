@@ -406,7 +406,7 @@ async fn upload(
     std::fs::write(&c, p.cert.as_bytes()).map_err(internal)?;
     write_private(&k, p.key.as_bytes()).map_err(internal)?;
     // In use: the listener takes it.
-    if s.config.security.https.mode == CertMode::Custom {
+    if s.config.load().security.https.mode == CertMode::Custom {
         s.restart.notify_one();
     }
     Ok(Json(info))
@@ -420,7 +420,7 @@ async fn renew(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> ApiResu
         .await
         .map_err(internal)?
         .map_err(internal)?;
-    if s.config.security.https.mode == CertMode::SelfSigned {
+    if s.config.load().security.https.mode == CertMode::SelfSigned {
         s.restart.notify_one();
     }
     cert_of(&s.data_dir, CertMode::SelfSigned)

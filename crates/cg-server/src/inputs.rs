@@ -662,7 +662,7 @@ pub async fn list(
     State(s): State<Shared>,
     MaybeUser(me): MaybeUser,
 ) -> ApiResult<Json<Vec<InputInfo>>> {
-    require(me.is_some() || s.config.public_outputs)?;
+    require(me.is_some() || s.config.load().public_outputs)?;
     let mut status = s.inputs.status();
     status.extend(s.tracking.status());
     for st in &mut status {
@@ -670,6 +670,7 @@ pub async fn list(
     }
     Ok(Json(
         s.config
+            .load()
             .inputs
             .iter()
             .map(|c| InputInfo {
@@ -729,7 +730,7 @@ pub async fn snapshot(
     UrlPath(id): UrlPath<String>,
     Query(q): Query<SnapshotQuery>,
 ) -> Response {
-    if me.is_none() && !s.config.public_outputs {
+    if me.is_none() && !s.config.load().public_outputs {
         return (StatusCode::UNAUTHORIZED, "sign in").into_response();
     }
     if !s.inputs.exists(&id) {
@@ -871,7 +872,7 @@ pub async fn mjpeg(
     UrlPath(id): UrlPath<String>,
     Query(q): Query<PreviewQuery>,
 ) -> Response {
-    if me.is_none() && !s.config.public_outputs {
+    if me.is_none() && !s.config.load().public_outputs {
         return (StatusCode::UNAUTHORIZED, "sign in").into_response();
     }
     if !s.inputs.exists(&id) {

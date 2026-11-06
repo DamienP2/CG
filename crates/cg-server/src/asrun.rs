@@ -377,7 +377,8 @@ pub async fn get_asrun_csv(
     let fr = me.lang.starts_with("fr");
     let mut rows = query(&s, me, f, limit).await?;
     rows.reverse();
-    let tz_name = s.config.timezone.trim();
+    let cfg = s.config.load();
+    let tz_name = cfg.timezone.trim();
     let tz = if tz_name.is_empty() {
         jiff::tz::TimeZone::system()
     } else {
