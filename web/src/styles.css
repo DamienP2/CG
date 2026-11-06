@@ -769,6 +769,13 @@ code {
   border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
   pointer-events: none;
 }
+/* The folder of the selected layer: its frame, light. */
+.folder-box {
+  position: absolute;
+  border: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  pointer-events: none;
+}
 .sel-box {
   position: absolute;
   border: 1.5px solid var(--accent);

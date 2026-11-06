@@ -110,6 +110,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const [boxes, setBoxes] = useState<Box[]>([]);
   // The other layers: a faint frame, so the template's layout reads at a glance.
   const [ghosts, setGhosts] = useState<Box[]>([]);
+  // The folders the selected layers are in: their frame, light.
+  const [folders, setFolders] = useState<Box[]>([]);
   // Right-click menu of the layer under the pointer (the timeline's, ClipboardMenu).
   const [ctx, setCtx] = useState<ClipMenuAt | null>(null);
   const widgetRun = useDesigner((s) => s.widgetRun);
@@ -239,6 +241,16 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
           .filter((el) => !selected.includes(el.dataset.layerId!))
           .map((el) => box(el.dataset.layerId!, el))
           .filter((b) => b.width > 0 && b.height > 0),
+      ),
+    );
+    const parents = [...new Set(selected.map((id) => template && findLayer(template, id)?.parent).filter((p): p is string => !!p && !selected.includes(p)))];
+    setFolders((was) =>
+      same(
+        was,
+        parents.flatMap((id) => {
+          const el = root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
+          return el ? [box(id, el)].filter((b) => b.width > 0 && b.height > 0) : [];
+        }),
       ),
     );
     setBoxes((was) =>
@@ -589,6 +601,9 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
             {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
             {view.frames && !zonesEdit && ghosts.map((b) => (
               <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
+            ))}
+            {!zonesEdit && folders.map((b) => (
+              <div key={`f${b.id}`} className="folder-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
             ))}
             {smart.map((g) => (
               <div key={`${g.axis}${g.v}`} className={`smart-guide ${g.axis}`} style={g.axis === 'x' ? { left: g.v * scale, top: g.from * scale, height: (g.to - g.from) * scale } : { top: g.v * scale, left: g.from * scale, width: (g.to - g.from) * scale }} />
