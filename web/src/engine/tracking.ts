@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { useApp } from '../store';
+import { clientNow, useApp } from '../store';
 import { useFrameNow } from './frameClock';
 import { create } from 'zustand';
 import type { Resolved } from './evaluate';
@@ -120,9 +120,26 @@ const AHEAD = 3;
 /** Where the tracked cameras look, by tracking input: the last samples, and the latest (what the pages show). */
 export const useCameras = create<{ history: Record<string, TimedSample[]>; samples: Record<string, CameraSample> }>(() => ({ history: {}, samples: {} }));
 
+/** How late each camera's newest samples came, ms (behind their time). */
+const lateness: Record<string, number[]> = {};
+/** How far behind its time a camera is shown, ms: as late as its samples come (nine in ten), so that it moves between samples received, not guessed ones. */
+export function lagOf(id: string): number {
+  const l = lateness[id];
+  if (!l || l.length < 10) return 0;
+  const sorted = [...l].sort((a, b) => a - b);
+  return Math.min(60, Math.max(0, sorted[Math.floor(sorted.length * 0.9)]));
+}
+
 /** The samples the server sent (each with the ones before it) added to those kept. */
 export function receiveCameras(sent: Record<string, TimedSample[]>) {
   const { history } = useCameras.getState();
+  const now = clientNow() + (useApp.getState().serverOffset ?? 0);
+  for (const [id, list] of Object.entries(sent)) {
+    if (!list.length) continue;
+    const l = (lateness[id] ??= []);
+    l.push(now - list[list.length - 1].t);
+    if (l.length > 100) l.shift();
+  }
   const next: Record<string, TimedSample[]> = {};
   const samples: Record<string, CameraSample> = {};
   for (const [id, list] of Object.entries(sent)) {
@@ -174,6 +191,6 @@ export function useTrackedCamera(layer: Layer): { cam: CameraSample; w: number; 
   const now = useFrameNow(anchored && !stage?.sim);
   const offset = useApp((s) => s.serverOffset);
   if (!anchored) return null;
-  const cam = stage!.sim ?? cameraAt(useCameras.getState().history[id!], now + offset);
+  const cam = stage!.sim ?? cameraAt(useCameras.getState().history[id!], now + offset - lagOf(id!));
   return cam ? { cam, w: stage!.w, h: stage!.h } : null;
 }

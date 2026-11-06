@@ -64,6 +64,13 @@ hayro-svg = "0.8"
 # Camera tracking (src/tracking.rs): several cameras on one port, multicast on a chosen card.
 socket2 = { version = "0.5", features = ["all"] }
 tract-onnx = "0.23"
+# The people found on several cores (src/people.rs).
+tract-linalg = { version = "0.23", features = ["multithread-mm"] }
+# ...or on the graphics card, with the ONNX Runtime the machine has (loaded
+# when asked: none needed to build or to run on the processor).
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "load-dynamic", "api-20"] }
+# ...after looking at it first (ort waits forever on a library it cannot load).
+libloading = "0.9"
 
 [target.'cfg(unix)'.dependencies]
 # Thread priorities of the playout (src/rt.rs).

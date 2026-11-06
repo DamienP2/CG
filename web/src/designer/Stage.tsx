@@ -242,9 +242,10 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const ghostTemplates = template && ghostPick.on ? designTemplates(_project).filter((tpl) => tpl.id !== template.id && (ghostPick.ids === null || ghostPick.ids.includes(tpl.id))) : [];
   const ghostOn = ghostTemplates.length > 0;
   const ghostOpacity = ghostPick.opacity;
-  // Anchored layers: where the template's camera looks (received, or moved by hand).
-  const sim = useTrackPreview((s) => s.sim);
-  const trackStage = useMemo(() => ({ w: size.width, h: size.height, sim: sim ?? undefined }), [size.width, size.height, sim]);
+  // Anchored layers: where they are drawn, or where the template's camera
+  // looks (received, or moved by hand).
+  const { sim, live } = useTrackPreview();
+  const trackStage = useMemo(() => (sim || live ? { w: size.width, h: size.height, sim: sim ?? undefined } : null), [size.width, size.height, sim, live]);
   const snapRef = useRef({ on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) });
   snapRef.current = { on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) };
 

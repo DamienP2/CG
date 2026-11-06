@@ -141,6 +141,11 @@ struct Cam {
     /// Late on top of that, µs: the camera delayed at the mixer while its
     /// people are found (`crate::people`).
     extra: AtomicU64,
+    /// How far ahead of their time the channels draw its graphics, µs (the
+    /// most seen): its samples must be there by then, not guessed.
+    lead: AtomicU64,
+    /// The time between two samples as they come, s (the middle of the last ones).
+    seen: Mutex<Option<f64>>,
     source: u8,
     stop: AtomicBool,
     samples: Mutex<VecDeque<(Instant, CameraSample)>>,
@@ -163,15 +168,38 @@ impl Cam {
             .is_some_and(|(t, _)| t.elapsed() < Duration::from_secs(2))
     }
 
-    /// Seconds between two samples.
+    /// Seconds between two samples: as the camera says, unless they come at
+    /// another pace (then as they come; 50 a second before any came).
     fn period(&self) -> f64 {
-        1.0 / lock(&self.rate).unwrap_or(50.0).max(1.0)
+        let said = lock(&self.rate).filter(|r| *r > 0.0).map(|r| 1.0 / r);
+        let seen = *lock(&self.seen);
+        match (said, seen) {
+            (Some(p), Some(q)) if (p - q).abs() > p * 0.1 => q,
+            (Some(p), _) => p,
+            (None, Some(q)) => q,
+            (None, None) => 1.0 / 50.0,
+        }
+    }
+
+    /// Frames the camera's picture is delayed at the mixer on top of its own
+    /// `delay`: while its people are found, and so that the graphics drawn
+    /// ahead of their time find its samples there (with a quarter of a
+    /// frame to spare).
+    fn mixer(&self) -> u32 {
+        let period = self.period();
+        let people = (self.extra.load(Ordering::Relaxed) as f64 / 1e6 / period).round() as u32;
+        let lead = self.lead.load(Ordering::Relaxed) as f64 / 1e6;
+        let ahead = if lead > 0.0 {
+            ((lead / period + 0.25).ceil() as u32).saturating_sub(self.delay)
+        } else {
+            0
+        };
+        people.max(ahead)
     }
 
     /// The delay, as a duration.
     fn late(&self) -> Duration {
-        Duration::from_secs_f64(self.delay as f64 * self.period())
-            + Duration::from_micros(self.extra.load(Ordering::Relaxed))
+        Duration::from_secs_f64((self.delay + self.mixer()) as f64 * self.period())
     }
 
     /// Where the camera looked `delay` frames before `t`: between the two
@@ -240,6 +268,8 @@ impl Tracking {
                 id: c.id.clone(),
                 delay: c.delay,
                 extra: AtomicU64::new(0),
+                lead: AtomicU64::new(0),
+                seen: Mutex::new(None),
                 source: c.source,
                 stop: AtomicBool::new(false),
                 samples: Default::default(),
@@ -295,11 +325,17 @@ impl Tracking {
         shown: SystemTime,
     ) -> BTreeMap<String, CameraSample> {
         let at = instant_of(shown);
+        let lead = shown
+            .duration_since(SystemTime::now())
+            .map_or(0, |d| d.as_micros() as u64);
         let running = lock(&self.running);
         let mut out = BTreeMap::new();
         for t in &p.templates {
             if let Some(id) = &t.camera {
                 if !out.contains_key(id) {
+                    if let Some(r) = running.get(id) {
+                        r.cam.lead.fetch_max(lead, Ordering::Relaxed);
+                    }
                     if let Some(s) = running.get(id).and_then(|r| r.cam.at(at)) {
                         out.insert(id.clone(), s);
                     }
@@ -331,7 +367,8 @@ impl Tracking {
                 live: r.cam.live(),
                 message: lock(&r.cam.message).clone(),
                 frames: r.cam.received.load(Ordering::Relaxed),
-                fps: *lock(&r.cam.rate),
+                fps: r.cam.live().then(|| 1.0 / r.cam.period()),
+                mixer_delay: Some(r.cam.mixer()),
                 ..Default::default()
             })
             .collect()
@@ -389,6 +426,8 @@ fn receive(
     let mut buf = vec![0u8; 65_536];
     let mut parts = Segments::default();
     let mut steady = Steady::default();
+    let mut came: Option<Instant> = None;
+    let mut gaps: VecDeque<f64> = VecDeque::new();
     while !cam.stop.load(Ordering::Relaxed) {
         match sock.recv(&mut buf) {
             Ok(n) => {
@@ -436,6 +475,22 @@ fn receive(
                     *lock(&cam.rate) = Some(r);
                 }
                 let now = Instant::now();
+                // The pace they come at.
+                if let Some(c) = came {
+                    let gap = (now - c).as_secs_f64();
+                    if (0.004..0.25).contains(&gap) {
+                        gaps.push_back(gap);
+                        if gaps.len() > 64 {
+                            gaps.pop_front();
+                        }
+                        if gaps.len() >= 10 {
+                            let mut g: Vec<f64> = gaps.iter().copied().collect();
+                            g.sort_by(f64::total_cmp);
+                            *lock(&cam.seen) = Some(g[g.len() / 2]);
+                        }
+                    }
+                }
+                came = Some(now);
                 let at = steady.stamp(now, cam.period());
                 {
                     let mut kept = lock(&cam.samples);
@@ -914,6 +969,8 @@ mod tests {
             id: "c".into(),
             delay,
             extra: AtomicU64::new(0),
+            lead: AtomicU64::new(0),
+            seen: Mutex::new(None),
             source: 1,
             stop: AtomicBool::new(false),
             samples: Default::default(),
@@ -973,6 +1030,37 @@ mod tests {
         let late = cam(2);
         lock(&late.samples).extend([(t0, pan(0.0)), (t0 + Duration::from_millis(20), pan(2.0))]);
         assert!((late.at(t0 + Duration::from_millis(50)).unwrap().pan - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn graphics_drawn_ahead_wait_for_their_samples() {
+        // Drawn two frames ahead: three frames late at the mixer (a quarter to spare).
+        let c = cam(0);
+        c.lead.store(40_000, Ordering::Relaxed);
+        assert_eq!(c.mixer(), 3);
+        // The camera's own delay counts.
+        let d = cam(2);
+        d.lead.store(40_000, Ordering::Relaxed);
+        assert_eq!(d.mixer(), 1);
+        // Its people found take longer: their delay.
+        d.extra.store(100_000, Ordering::Relaxed);
+        assert_eq!(d.mixer(), 5);
+        // Nothing drawn ahead: no delay.
+        assert_eq!(cam(0).mixer(), 0);
+    }
+
+    #[test]
+    fn the_pace_is_the_one_samples_come_at() {
+        let c = cam(0);
+        // Said 50, come at 59.94: as they come.
+        *lock(&c.seen) = Some(1.0 / 59.94);
+        assert!((c.period() - 1.0 / 59.94).abs() < 1e-9);
+        // Said and come at 50: as said.
+        *lock(&c.seen) = Some(0.0201);
+        assert!((c.period() - 0.02).abs() < 1e-9);
+        // Not said: as they come.
+        *lock(&c.rate) = None;
+        assert!((c.period() - 0.0201).abs() < 1e-9);
     }
 
     #[test]

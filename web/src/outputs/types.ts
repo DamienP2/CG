@@ -123,7 +123,27 @@ export interface InputConfig {
   pupil?: number;
   /** Tracking: the video input bringing the camera's picture, where the people are found. */
   image?: string;
+  /** Tracking: how the people are cut out of `image` (defaults when missing). */
+  cut?: Partial<Cut>;
 }
+
+/** How a tracked camera's people are cut out. */
+export interface Cut {
+  processor: 'auto' | 'gpu' | 'cpu';
+  /** Points of a 1920-wide picture, −10 to 10. */
+  contour: number;
+  /** 0 (sharp) to 100. */
+  edge: number;
+  /** 0 to 100. */
+  steady: number;
+  /** Frames, −3 to 3. */
+  shift: number;
+  zonesOn: boolean;
+  /** 0 to 1 from the top left corner. */
+  zones: { x: number; y: number; w: number; h: number }[];
+}
+
+export const CUT_DEFAULTS: Cut = { processor: 'auto', contour: 0, edge: 40, steady: 60, shift: 0, zonesOn: true, zones: [] };
 
 /** `GET /api/inputs`. */
 export interface InputInfo {
@@ -139,7 +159,9 @@ export interface InputInfo {
   /** Frames a second of the source (streams: as detected). */
   fps?: number;
   /** A tracked camera with a picture: the people found in it. */
-  people?: { running: boolean; ms?: number; delay: number; message?: string };
+  /** A tracked camera: frames its picture is to be delayed at the mixer. */
+  mixerDelay?: number;
+  people?: { running: boolean; ms?: number; delay: number; message?: string; device?: { kind: 'gpu' | 'cpu'; provider?: string; threads?: number; noGpu?: string } };
 }
 
 /** What a format shows while no project is loaded: a built-in design (drawn by the server) or its still picture. */

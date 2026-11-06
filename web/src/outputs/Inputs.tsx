@@ -1,4 +1,4 @@
-import { Cpu, Crosshair, Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
+import { Cpu, Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
@@ -11,7 +11,6 @@ import { corePct, fps as fpsText, fpsTone, inputTone, num } from '../perf/format
 import '../perf/perf.css';
 import { deviceOf, hardwareOf } from '../hardware/model';
 import { navigate } from '../router';
-import { useCameras } from '../engine/tracking';
 import { OnSwitch } from './OnSwitch';
 import { NdiPicker } from './NdiPicker';
 
@@ -68,9 +67,6 @@ const badgeText = (c: Pick<InputConfig, 'kind' | 'listen'>) => {
 
 /** Jitter buffer, in frames. */
 const BUFFERS = [0, 1, 2, 3, 5];
-/** Camera tracking: frames the samples are held, to meet the video. */
-const DELAYS = [0, 1, 2, 3, 4, 5, 6, 8, 10];
-
 
 function placeholder(c: Pick<InputConfig, 'kind' | 'listen'>): string {
   switch (c.kind) {
@@ -100,15 +96,12 @@ function modeDefault(c: Pick<InputConfig, 'kind' | 'listen' | 'url'>): string {
 /** Waiting is not failing. */
 const WAITING = /^(Starting…|Waiting for the sender…|Waiting for the camera…|Connecting…|Connecting to .*…|Not started.*|Waiting for a signal .*…|Off)$/;
 
-type Tone = 'ok' | 'warn' | 'idle';
+export type Tone = 'ok' | 'warn' | 'idle';
+export type InputState = { tone: Tone; text: string; live: boolean; info?: InputInfo };
 
-export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: ServerConfig; saved: ServerConfig; edit: (fn: (c: ServerConfig) => void) => void; /** The tracked cameras (Diffusion › Camera tracking), else the video inputs. */ tracking?: boolean }) {
-  const inputs = (cfg.inputs ?? []).filter((i) => (i.kind === 'tracking') === tracking);
-  const [sel, setSel] = useState<string | null>(null);
+/** What the server says of every input, every 2 seconds. */
+export function useInputStatus(): InputInfo[] {
   const [status, setStatus] = useState<InputInfo[]>([]);
-  const metrics = useMetrics();
-  const rates = (id: string) => metrics?.inputs.find((x) => x.id === id);
-
   useEffect(() => {
     let alive = true;
     const poll = () =>
@@ -122,18 +115,29 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
       clearInterval(h);
     };
   }, []);
+  return status;
+}
+
+/** How an input goes: off, not saved yet, receiving, waiting or failing. */
+export function inputState(c: InputConfig, saved: ServerConfig, status: InputInfo[]): InputState {
+  if (c.enabled === false) return { tone: 'idle', text: tc('output', 'Off'), live: false };
+  const s = (saved.inputs ?? []).find((i) => i.id === c.id);
+  const info = status.find((x) => x.id === c.id);
+  if (info?.message === 'Off') return { tone: 'idle', text: s && s.enabled !== false ? t('Not applied yet') : tc('output', 'Off'), live: false };
+  if (!s || !info) return { tone: 'idle', text: s ? t('Starting…') : t('Not applied yet'), live: false };
+  if (info.live) return { tone: 'ok', text: messageText(info.message) || t('Receiving'), live: true, info };
+  return { tone: WAITING.test(info.message) ? 'idle' : 'warn', text: messageText(info.message), live: false, info };
+}
+
+export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: ServerConfig; edit: (fn: (c: ServerConfig) => void) => void }) {
+  const inputs = (cfg.inputs ?? []).filter((i) => i.kind !== 'tracking');
+  const [sel, setSel] = useState<string | null>(null);
+  const status = useInputStatus();
+  const metrics = useMetrics();
+  const rates = (id: string) => metrics?.inputs.find((x) => x.id === id);
 
   const current = inputs.find((i) => i.id === sel) ?? inputs[0];
-  const savedOf = (id: string) => (saved.inputs ?? []).find((i) => i.id === id);
-  const stateOf = (c: InputConfig): { tone: Tone; text: string; live: boolean; info?: InputInfo } => {
-    if (c.enabled === false) return { tone: 'idle', text: tc('output', 'Off'), live: false };
-    const s = savedOf(c.id);
-    const info = status.find((x) => x.id === c.id);
-    if (info?.message === 'Off') return { tone: 'idle', text: s && s.enabled !== false ? t('Not applied yet') : tc('output', 'Off'), live: false };
-    if (!s || !info) return { tone: 'idle', text: s ? t('Starting…') : t('Not applied yet'), live: false };
-    if (info.live) return { tone: 'ok', text: messageText(info.message) || t('Receiving'), live: true, info };
-    return { tone: WAITING.test(info.message) ? 'idle' : 'warn', text: messageText(info.message), live: false, info };
-  };
+  const stateOf = (c: InputConfig) => inputState(c, saved, status);
 
   const editInput = (fn: (i: InputConfig) => void, id = current?.id) =>
     edit((c) => {
@@ -151,13 +155,6 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
     let n = 1;
     while (ids.has(`input-${n}`)) n++;
     const id = `input-${n}`;
-    if (tracking) {
-      // OpenTrackIO: the multicast group of source 1, on its port.
-      const cams = inputs.length + 1;
-      edit((c) => void (c.inputs ??= []).push({ id, name: t('Camera {n}', { n: cams }), kind: 'tracking', url: '', port: 55555, multicast: true, source: 1, delay: 0, listen: false, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25, buffer: 2, hwDecode: false }));
-      setSel(id);
-      return;
-    }
     // An SRT listener on a port nothing else uses.
     const urls = [...inputs.map((i) => i.url), ...cfg.channels.flatMap((ch) => [ch.outputs, ...(ch.renditions ?? []).map((r) => r.outputs)].flatMap((o) => (o.streams ?? []).map((s) => s.url)))];
     let port = 10000;
@@ -202,8 +199,8 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
     <div className="outputs-page">
       <aside className="lib-nav">
         <div className="lib-nav-section">
-          <span className="grow">{tracking ? t('Cameras') : t('Inputs')}</span>
-          <button className="icon-btn ghost" title={tracking ? t('Add a camera') : t('Add an input')} onClick={add}>
+          <span className="grow">{t('Inputs')}</span>
+          <button className="icon-btn ghost" title={t('Add an input')} onClick={add}>
             <Plus size={14} />
           </button>
         </div>
@@ -218,11 +215,9 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
                 <small title={st.text}>{st.text}</small>
               </span>
               <Rate m={rates(i.id)} />
-              {!tracking && (
-                <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
-                  {badgeText(i)}
-                </span>
-              )}
+              <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
+                {badgeText(i)}
+              </span>
             </div>
           );
         })}
@@ -231,15 +226,15 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
       <main className="oc-main">
         <header className="oc-head">
           <div>
-            <h1>{tracking ? tc('page', 'Camera tracking') : t('Inputs')}</h1>
+            <h1>{t('Inputs')}</h1>
             <span className="muted small">
-              {tracking ? tn(inputs.length, '{n} camera', '{n} cameras') : tn(inputs.length, '{n} input', '{n} inputs')} · {t('{n} receiving', { n: liveCount })}
+              {tn(inputs.length, '{n} input', '{n} inputs')} · {t('{n} receiving', { n: liveCount })}
             </span>
           </div>
           <div className="spacer" />
           <div className="oc-tools">
             <button className="oc-tool" onClick={add}>
-              {tracking ? <Crosshair size={15} color={COLOR} /> : <Video size={15} color={COLOR} />} {tracking ? t('Add a camera') : t('Add an input')}
+              <Video size={15} color={COLOR} /> {t('Add an input')}
             </button>
           </div>
         </header>
@@ -248,8 +243,8 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
           <div className="vs-grid-wrap">
             {inputs.length === 0 ? (
               <div className="vs-empty">
-                {tracking ? <Crosshair size={28} /> : <VideoOff size={28} />}
-                <p>{tracking ? t('No camera') : t('No input')}</p>
+                <VideoOff size={28} />
+                <p>{t('No input')}</p>
               </div>
             ) : (
               <div className="vs-grid">
@@ -257,21 +252,19 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
                   const st = stateOf(i);
                   return (
                     <div key={i.id} role="button" tabIndex={0} className={`vs-tile ${i.id === current?.id ? 'sel' : ''} ${i.enabled === false ? 'off' : ''}`} onClick={() => setSel(i.id)} onKeyDown={(e) => e.key === 'Enter' && setSel(i.id)}>
-                      {i.kind === 'tracking' ? <TrackView id={i.id} /> : <Preview id={i.id} live={st.live} />}
+                      <Preview id={i.id} live={st.live} />
                       <span className="vs-tile-head">
                         <OnSwitch on={i.enabled !== false} mini onChange={(v) => setOn(i.id, v)} />
                         <strong>{i.name || i.id}</strong>
-                        {!tracking && (
-                          <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
-                            {badgeText(i)}
-                          </span>
-                        )}
+                        <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
+                          {badgeText(i)}
+                        </span>
                       </span>
                       <span className="vs-tile-status" title={st.text}>
                         <span className={`oc-dot ${st.tone}`} />
                         <span className="grow">{st.text}</span>
                         <Rate m={rates(i.id)} full />
-                        <span className="vs-res">{i.kind === 'tracking' ? (st.info?.fps ? `OpenTrackIO · ${fpsText(st.info.fps)} Hz` : 'OpenTrackIO') : detected(st.info) || '—'}</span>
+                        <span className="vs-res">{detected(st.info) || '—'}</span>
                       </span>
                     </div>
                   );
@@ -291,7 +284,6 @@ export function InputsMode({ cfg, saved, edit, tracking = false }: { cfg: Server
                 hwChoices={hwChoices}
                 setKind={setKind}
                 remove={remove}
-                pictures={(cfg.inputs ?? []).filter((x) => x.kind !== 'tracking').map((x) => ({ id: x.id, name: x.name || x.id }))}
               />
             )}
           </aside>
@@ -310,7 +302,6 @@ function Inspector({
   hwChoices,
   setKind,
   remove,
-  pictures,
 }: {
   input: InputConfig;
   state: { tone: Tone; text: string; live: boolean; info?: InputInfo };
@@ -320,8 +311,6 @@ function Inspector({
   hwChoices: (k: InputKind) => { id: string; name: string }[];
   setKind: (k: InputKind) => void;
   remove: () => void;
-  /** The video inputs a camera's picture can come from. */
-  pictures: { id: string; name: string }[];
 }) {
   const listId = `vs-ndi-${i.id}`;
   const [picking, setPicking] = useState(false);
@@ -332,7 +321,7 @@ function Inspector({
       <div className="oc-ins-head" style={{ ['--k' as string]: COLOR }}>
         <span className="oc-swatch" />
         <div className="grow">
-          <small>{i.kind === 'tracking' ? t('Camera') : t('Input')}</small>
+          <small>{t('Input')}</small>
           <strong>{i.name || i.id}</strong>
         </div>
         <OnSwitch on={i.enabled !== false} onChange={setOn} label={i.enabled !== false ? tc('output', 'On') : tc('output', 'Off')} />
@@ -344,17 +333,15 @@ function Inspector({
       <div className={`oc-state ${state.tone}`}>
         <span className={`oc-dot ${state.tone}`} />
         <span className="grow">{state.text}</span>
-        {!!state.info?.frames && i.kind !== 'tracking' && <span className="vs-res">{tn(state.info.frames, '{n} frame', '{n} frames')}</span>}
+        {!!state.info?.frames && <span className="vs-res">{tn(state.info.frames, '{n} frame', '{n} frames')}</span>}
       </div>
-      {i.kind === 'tracking' && <TrackValues id={i.id} />}
-      {i.kind === 'tracking' && !!i.image && <PeopleView id={i.id} info={state.info} />}
       {state.live && detected(state.info) && (
         <div className="vs-detected">
           <small>{t('Detected')}</small>
           <strong>{detected(state.info)}</strong>
         </div>
       )}
-      {rates && i.kind !== 'tracking' && (
+      {rates && (
         <div className="vs-perf">
           <div>
             <small>{t('Received')}</small>
@@ -376,7 +363,6 @@ function Inspector({
       <Field label={t('Name')}>
         <input value={i.name} onChange={(e) => editInput((x) => void (x.name = e.target.value))} />
       </Field>
-      {i.kind !== 'tracking' && (
       <Field label={t('Type')}>
         <Dropdown
           value={i.kind}
@@ -388,7 +374,6 @@ function Inspector({
           onChange={setKind}
         />
       </Field>
-      )}
 
       {isStream(i.kind) && (
         <>
@@ -485,48 +470,6 @@ function Inspector({
         </>
       )}
 
-      {i.kind === 'tracking' && (
-        <>
-          <Group label={t('Reception')}>
-            <div className="seg vs-seg">
-              {[true, false].map((m) => (
-                <button key={String(m)} type="button" className={(i.multicast ?? true) === m ? 'on' : ''} onClick={() => editInput((x) => void (x.multicast = m))}>
-                  {m ? 'Multicast' : 'Unicast'}
-                </button>
-              ))}
-            </div>
-          </Group>
-          <Group label={t('Source number')}>
-            <NumberField value={i.source ?? 1} min={0} max={255} title={(i.multicast ?? true) ? `239.135.1.${i.source ?? 1}` : undefined} onChange={(v) => editInput((x) => void (x.source = Math.max(0, Math.min(255, Math.round(v) || 0))))} />
-          </Group>
-          <Group label={t('Port')}>
-            <NumberField value={i.port || 55555} min={1} max={65535} onChange={(v) => editInput((x) => void (x.port = Math.max(1, Math.min(65535, Math.round(v) || 0))))} />
-          </Group>
-          <Field label={tc('camera', 'Delay')}>
-            <Dropdown
-              value={String(i.delay ?? 0)}
-              title={tc('camera', 'Delay')}
-              options={[...(DELAYS.includes(i.delay ?? 0) ? [] : [i.delay ?? 0]), ...DELAYS].map((d) => ({ value: String(d), label: tn(d, '{n} frame', '{n} frames') }))}
-              onChange={(v) => editInput((x) => void (x.delay = Number(v)))}
-            />
-          </Field>
-          <Field label={t('Picture')}>
-            <Dropdown
-              value={i.image ?? ''}
-              title={t('Picture')}
-              options={[
-                { value: '', label: tc('picture', 'None') },
-                ...pictures.map((p) => ({ value: p.id, label: p.name })),
-                ...(i.image && !pictures.some((p) => p.id === i.image) ? [{ value: i.image, label: t('(missing: {source})', { source: i.image }) }] : []),
-              ]}
-              onChange={(v) => editInput((x) => void (v ? (x.image = v) : delete x.image))}
-            />
-          </Field>
-          <LensSettings input={i} editInput={editInput} />
-        </>
-      )}
-
-      {i.kind !== 'tracking' && (
       <Field label={t('Jitter buffer')}>
         <Dropdown
           value={String(i.buffer ?? 2)}
@@ -539,7 +482,6 @@ function Inspector({
           onChange={(v) => editInput((x) => void (x.buffer = Number(v)))}
         />
       </Field>
-      )}
 
       {isStream(i.kind) && (
         <Group label={t('Decoding: GPU / CPU')}>
@@ -554,139 +496,8 @@ function Inspector({
       )}
 
       <button className="btn small danger" onClick={remove}>
-        <Trash2 size={13} /> {i.kind === 'tracking' ? t('Remove the camera') : t('Remove the input')}
+        <Trash2 size={13} /> {t('Remove the input')}
       </button>
-    </>
-  );
-}
-
-const deg = (v: number) => `${num(v, 1)}°`;
-
-/** A camera's values on its tile. */
-function TrackView({ id }: { id: string }) {
-  const s = useCameras((x) => x.samples[id]);
-  const cells: [string, string][] = [
-    ['Pan', s ? deg(s.pan) : '—'],
-    ['Tilt', s ? deg(s.tilt) : '—'],
-    [t('Focal length'), s?.focal ? `${num(s.focal, 1)} mm` : '—'],
-    [t('Focus'), s?.focus ? `${num(s.focus, 2)} m` : '—'],
-  ];
-  return (
-    <span className="vs-preview vs-track">
-      {cells.map(([k, v]) => (
-        <span key={k}>
-          <small>{k}</small>
-          <strong>{v}</strong>
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** Sensor widths a camera can film with (mm). */
-const FULL_FRAME = 35.6;
-const SUPER_35 = 24.9;
-
-/** What the tracking uses when the camera does not say it: its sensor mode, its optical centre. */
-function LensSettings({ input: i, editInput }: { input: InputConfig; editInput: (fn: (x: InputConfig) => void) => void }) {
-  const s = useCameras((x) => x.samples[i.id]);
-  const sensor = i.sensor ?? 0;
-  const sensorOptions = [
-    ...(s?.sensorSent ? [{ value: '0', label: t('Received from the camera') }] : []),
-    { value: s?.sensorSent ? String(FULL_FRAME) : '0', label: `${t('Full frame')} · ${num(FULL_FRAME, 1)} mm` },
-    { value: String(SUPER_35), label: `Super 35 · ${num(SUPER_35, 1)} mm` },
-  ];
-  const shown = sensor === SUPER_35 ? String(SUPER_35) : s?.sensorSent && sensor === FULL_FRAME ? String(FULL_FRAME) : '0';
-  return (
-    <>
-      <Field label={t('Sensor')}>
-        <Dropdown value={shown} title={t('Sensor')} options={sensorOptions} onChange={(v) => editInput((x) => void (Number(v) ? (x.sensor = Number(v)) : delete x.sensor))} />
-      </Field>
-      <Group label={t('Optical centre')}>
-        {s?.pupilSent ? (
-          <input className="input" value={t('Received · {value}', { value: `${num(s.pupil ?? 0, 2)} m` })} disabled />
-        ) : (
-          <NumberField value={i.pupil ?? 0} min={0} max={1} step={0.01} precision={2} suffix="m" onChange={(v) => editInput((x) => void (v > 0 ? (x.pupil = Math.min(1, v)) : delete x.pupil))} />
-        )}
-      </Group>
-    </>
-  );
-}
-
-/** A camera's values in the inspector. */
-function TrackValues({ id }: { id: string }) {
-  const s = useCameras((x) => x.samples[id]);
-  const cell = (k: string, v: string) => (
-    <div>
-      <small>{k}</small>
-      <strong>{v}</strong>
-    </div>
-  );
-  return (
-    <>
-      <div className="vs-perf">
-        {cell('Pan', s ? deg(s.pan) : '—')}
-        {cell('Tilt', s ? deg(s.tilt) : '—')}
-        {cell('Roll', s ? deg(s.roll) : '—')}
-      </div>
-      <div className="vs-perf">
-        {cell(t('Focal length'), s?.focal ? `${num(s.focal, 1)} mm` : '—')}
-        {cell(t('Focus'), s?.focus ? `${num(s.focus, 2)} m` : '—')}
-        {cell(t('Iris'), s?.iris ? `f/${num(s.iris, 1)}` : '—')}
-      </div>
-      <div className="vs-perf">
-        {cell(t('Distortion'), s?.distortion ? tc('distortion', 'Received') : '—')}
-        {cell(t('Optical centre'), s?.pupilSent ? `${num(s.pupil ?? 0, 2)} m` : '—')}
-        {cell(t('Sensor'), s?.sensorSent ? `${num(s.sensor, 1)} mm` : '—')}
-      </div>
-    </>
-  );
-}
-
-/** The camera's picture with the people found shown, five times a second (looking keeps them found). */
-function PeopleView({ id, info }: { id: string; info?: InputInfo }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    const abort = new AbortController();
-    let after: string | null = null;
-    let shown: string | null = null;
-    void (async () => {
-      while (!abort.signal.aborted) {
-        try {
-          const r: Response = await fetch(`/api/inputs/${encodeURIComponent(id)}/people.jpg${after ? `?after=${after}` : ''}`, { credentials: 'same-origin', signal: abort.signal, cache: 'no-store' });
-          if (r.status === 200) {
-            after = r.headers.get('x-frame');
-            const next = URL.createObjectURL(await r.blob());
-            const old = shown;
-            shown = next;
-            setUrl(next);
-            if (old) setTimeout(() => URL.revokeObjectURL(old), 500);
-          }
-        } catch {
-          if (abort.signal.aborted) break;
-        }
-        await new Promise((res) => setTimeout(res, document.hidden ? 1000 : 200));
-      }
-    })();
-    return () => {
-      abort.abort();
-      if (shown) URL.revokeObjectURL(shown);
-    };
-  }, [id]);
-  const p = info?.people;
-  return (
-    <>
-      <span className="vs-people">{url && <img src={url} alt="" draggable={false} />}</span>
-      <div className="vs-perf">
-        <div>
-          <small>{t('Cut out')}</small>
-          <strong>{p?.ms != null ? `${num(p.ms, 0)} ms` : '—'}</strong>
-        </div>
-        <div>
-          <small>{t('Delay at the mixer')}</small>
-          <strong>{p ? tn(p.delay, '{n} frame', '{n} frames') : '—'}</strong>
-        </div>
-      </div>
     </>
   );
 }
@@ -710,7 +521,7 @@ function Preview({ id, live }: { id: string; live: boolean }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="set-field">
       <span className="set-label">{label}</span>
@@ -720,7 +531,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /** A field holding buttons (a `<label>` would click the first one). */
-function Group({ label, children }: { label: string; children: React.ReactNode }) {
+export function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="set-field">
       <span className="set-label">{label}</span>
@@ -734,7 +545,7 @@ function Hint({ children }: { children: React.ReactNode }) {
 }
 
 /** Pictures received per second against the decoded rate, and those thrown away. */
-function Rate({ m, full }: { m?: InputMetrics; full?: boolean }) {
+export function Rate({ m, full }: { m?: InputMetrics; full?: boolean }) {
   if (!m || !m.live) return null;
   const tone = inputTone(m);
   const title = m.dropped ? `${t('{fps} of {nominal} fps received', { fps: fpsText(m.fps), nominal: fpsText(m.nominal) })} · ${tn(m.dropped, '{n} picture thrown away (10 s)', '{n} pictures thrown away (10 s)')}` : t('{fps} of {nominal} fps received', { fps: fpsText(m.fps), nominal: fpsText(m.nominal) });

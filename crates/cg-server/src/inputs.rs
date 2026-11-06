@@ -111,6 +111,58 @@ pub struct InputConfig {
     /// people the layers pass behind are found ("" = none, see `crate::people`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub image: String,
+    /// Tracking: how the people are cut out of `image`.
+    #[serde(default, skip_serializing_if = "Cut::is_default")]
+    pub cut: Cut,
+}
+
+/// How a tracked camera's people are cut out (see `crate::people`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Cut {
+    /// The graphics card or the processor.
+    pub processor: crate::people_net::Processor,
+    /// The edge moved out (+) or in (−), points of a 1920-wide picture (−10 to 10).
+    pub contour: f32,
+    /// The edge's softness, 0 (sharp) to 100; 40 as found.
+    pub edge: f32,
+    /// How much a still edge is steadied with the pictures before, 0 to 100.
+    pub steady: f32,
+    /// The people of a picture this many frames after (+) or before (−) the
+    /// one the frame shows, when the mixer's delay is not exactly met (−3 to 3).
+    pub shift: i32,
+    /// Only the people inside `zones` are cut (when there are zones).
+    pub zones_on: bool,
+    pub zones: Vec<Zone>,
+}
+
+/// A part of the picture, 0 to 1 from its top left corner.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Zone {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Default for Cut {
+    fn default() -> Self {
+        Self {
+            processor: Default::default(),
+            contour: 0.0,
+            edge: 40.0,
+            steady: 60.0,
+            shift: 0,
+            zones_on: true,
+            zones: Vec::new(),
+        }
+    }
+}
+
+impl Cut {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 fn default_source() -> u8 {
@@ -244,6 +296,9 @@ pub struct InputStatus {
     /// A tracked camera with a picture: the people found in it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub people: Option<crate::people::Status>,
+    /// A tracked camera: frames its picture is to be delayed at the mixer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mixer_delay: Option<u32>,
 }
 
 /// Pictures waiting for their time, and the one on show.
@@ -477,6 +532,7 @@ impl Inputs {
                     fps: *l.rate.lock().unwrap_or_else(|p| p.into_inner()),
                     interlaced: l.interlaced.load(Ordering::Relaxed),
                     people: None,
+                    mixer_delay: None,
                 }
             })
             .collect()
@@ -1265,6 +1321,7 @@ mod tests {
             sensor: 0.0,
             pupil: 0.0,
             image: String::new(),
+            cut: Cut::default(),
         }
     }
 

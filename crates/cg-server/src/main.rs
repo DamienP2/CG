@@ -28,6 +28,7 @@ mod media;
 mod mos;
 mod paths;
 mod people;
+mod people_net;
 mod perf;
 mod prefs;
 mod premiere;

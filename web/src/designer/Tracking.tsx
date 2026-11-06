@@ -18,8 +18,11 @@ import { findLayer, useDesigner } from './designerStore';
  * received, or one moved by hand).
  */
 
-/** The camera the stage shows instead of the received one (null: the received one). */
-export const useTrackPreview = create<{ sim: CameraSample | null }>(() => ({ sim: null }));
+/**
+ * The camera the stage shows: none (the layers where they are drawn), the
+ * one received (`live`), or one moved by hand (`sim`, first).
+ */
+export const useTrackPreview = create<{ sim: CameraSample | null; live: boolean }>(() => ({ sim: null, live: false }));
 
 const SIM: CameraSample = { pan: 0, tilt: 0, roll: 0, focal: 35, sensor: 0 };
 
@@ -71,7 +74,7 @@ function LiveValues({ cam }: { cam?: CameraSample }) {
 export function TemplateTracking({ template }: { template: Template }) {
   const update = useDesigner((s) => s.update);
   const inputs = useTrackingInputs();
-  const sim = useTrackPreview((s) => s.sim);
+  const { sim, live: following } = useTrackPreview();
   const live = useCameras((s) => (template.camera ? s.samples[template.camera] : undefined));
   if (!inputs.length && !template.camera) return null;
   const dot = (on: boolean) => <span className={`tpl-cam-dot ${on ? 'on' : ''}`} />;
@@ -96,9 +99,10 @@ export function TemplateTracking({ template }: { template: Template }) {
         <div className="tpl-field">
           <span className="tpl-label">{t('Preview')}</span>
           <Segmented
-            value={sim ? 'sim' : 'live'}
-            onChange={(v) => useTrackPreview.setState({ sim: v === 'sim' ? { ...SIM, ...useCameras.getState().samples[template.camera!] } : null })}
+            value={sim ? 'sim' : following ? 'live' : 'still'}
+            onChange={(v) => useTrackPreview.setState({ live: v === 'live', sim: v === 'sim' ? { ...SIM, ...useCameras.getState().samples[template.camera!] } : null })}
             options={[
+              { value: 'still', label: tc('trkprev', 'Still') },
               { value: 'live', label: t('Camera') },
               { value: 'sim', label: t('Simulated') },
             ]}
@@ -116,7 +120,7 @@ export function TemplateTracking({ template }: { template: Template }) {
               </KitRow>
             </div>
           ) : (
-            <LiveValues cam={live} />
+            following && <LiveValues cam={live} />
           )}
         </div>
       )}

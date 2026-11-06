@@ -3,9 +3,10 @@
 //!
 //! A tracking input given the video input bringing its picture (`image`)
 //! has two threads finding the people in each picture: MediaPipe's selfie
-//! segmenter (assets/models, Apache 2.0) run by tract on the processor at
-//! 256 × 144, its edges then laid on those of the picture (guided filter at
-//! 480 × 270) and steadied where they only flicker. It works while a
+//! segmenter (assets/models, Apache 2.0) run at 256 × 144 on the graphics
+//! card or the processor (`crate::people_net`), its edges then laid on those
+//! of the picture (guided filter at 480 × 270), steadied where they only
+//! flicker, then worked as the camera's `Cut` says (contour, edge, zones). It works while a
 //! project of a channel has a graphic behind the people on that camera, or
 //! while its preview is looked at.
 //!
@@ -17,20 +18,21 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use serde::{Deserialize, Serialize};
 use tiny_skia::{IntSize, Pixmap};
-use tract_onnx::prelude::*;
 
 use cg_core::tracking::People as Found;
 
-use crate::auth::MaybeUser;
-use crate::inputs::{InputConfig, InputKind, Inputs};
+use crate::auth::{CurrentUser, MaybeUser};
+use crate::inputs::{Cut, InputConfig, InputKind, Inputs};
+use crate::people_net::{Device, Engine, Processor};
 use crate::state::Shared;
 
 const MODEL: &[u8] = include_bytes!("../../../assets/models/people.onnx");
@@ -43,28 +45,8 @@ const H: usize = 270;
 /// Pictures of people kept (the frames take the one of their time).
 const KEPT: usize = 16;
 
-type Net = TypedRunnableModel;
-
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
-}
-
-/// The model, read once.
-fn net() -> Option<Arc<Net>> {
-    static NET: OnceLock<Option<Arc<Net>>> = OnceLock::new();
-    NET.get_or_init(|| {
-        let read = || -> TractResult<Arc<Net>> {
-            tract_onnx::onnx()
-                .model_for_read(&mut &MODEL[..])?
-                .with_input_fact(0, f32::fact([1, 3, IN_H, IN_W]).into())?
-                .into_optimized()?
-                .into_runnable()
-        };
-        read()
-            .map_err(|e| tracing::error!("the people model cannot be read: {e}"))
-            .ok()
-    })
-    .clone()
 }
 
 /// How the finding of the people goes, for the Camera tracking page.
@@ -78,6 +60,9 @@ pub struct Status {
     pub ms: Option<f64>,
     /// Frames the mixer delays the camera by.
     pub delay: u32,
+    /// What finds them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<Device>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub message: String,
 }
@@ -105,10 +90,24 @@ struct Cam {
     /// Frames the mixer delays the camera by (it only grows: the mixer is set once).
     delay: AtomicU32,
     message: Mutex<String>,
+    /// How they are cut out (changed while running).
+    cut: Mutex<Cut>,
+    /// What finds them (once started).
+    device: Mutex<Option<Device>>,
+    /// The newest picture found, as cut: its number, the picture, its people.
+    last: Mutex<Option<Shot>>,
+}
+
+/// A picture with its people, for the page.
+#[derive(Clone)]
+struct Shot {
+    n: u64,
+    picture: Arc<Vec<[f32; 3]>>,
+    found: Arc<Found>,
 }
 
 impl Cam {
-    fn new(image: &str) -> Self {
+    fn new(image: &str, cut: Cut) -> Self {
         Self {
             image: image.to_string(),
             stop: AtomicBool::new(false),
@@ -119,6 +118,9 @@ impl Cam {
             lead: Mutex::new(0.0),
             delay: AtomicU32::new(0),
             message: Mutex::new(String::new()),
+            cut: Mutex::new(cut),
+            device: Mutex::new(None),
+            last: Mutex::new(None),
         }
     }
 
@@ -167,7 +169,10 @@ impl Cam {
     /// The people of the picture `delay` frames before a frame shown at `at`.
     fn for_frame(&self, at: Instant) -> Option<Arc<Found>> {
         let period = *lock(&self.period);
-        let back = Duration::from_secs_f64(period * (self.delay().max(1) - 1) as f64);
+        // The shift asked for: later pictures (+) or earlier ones (−).
+        let shift = lock(&self.cut).shift.clamp(-3, 3);
+        let frames = (self.delay().max(1) as i32 - 1 - shift).max(0);
+        let back = Duration::from_secs_f64(period * frames as f64);
         // Its picture came a frame after it was taken.
         let want = at.checked_sub(back)?;
         let found = lock(&self.found);
@@ -199,24 +204,27 @@ impl People {
     /// Finds the people of the tracking inputs that have a picture: new
     /// and changed ones start, the others stop.
     pub fn apply(&self, configs: &[InputConfig], inputs: &Arc<Inputs>) {
-        let wanted: BTreeMap<&str, &str> = configs
+        let wanted: BTreeMap<&str, (&str, &Cut)> = configs
             .iter()
             .filter(|c| c.enabled && c.kind == InputKind::Tracking && !c.image.is_empty())
-            .map(|c| (c.id.as_str(), c.image.as_str()))
+            .map(|c| (c.id.as_str(), (c.image.as_str(), &c.cut)))
             .collect();
         let mut cams = lock(&self.cams);
         cams.retain(|id, cam| {
-            let keep = wanted.get(id.as_str()) == Some(&cam.image.as_str());
-            if !keep {
-                cam.stop.store(true, Ordering::Relaxed);
+            let keep = wanted
+                .get(id.as_str())
+                .filter(|(image, _)| *image == cam.image);
+            match keep {
+                Some((_, cut)) => *lock(&cam.cut) = (*cut).clone(),
+                None => cam.stop.store(true, Ordering::Relaxed),
             }
-            keep
+            keep.is_some()
         });
-        for (id, image) in wanted {
+        for (id, (image, cut)) in wanted {
             if cams.contains_key(id) {
                 continue;
             }
-            let cam = Arc::new(Cam::new(image));
+            let cam = Arc::new(Cam::new(image, cut.clone()));
             let (c, inputs) = (cam.clone(), inputs.clone());
             let spawned = std::thread::Builder::new()
                 .name(format!("cg-people-{id}"))
@@ -288,38 +296,75 @@ impl People {
     pub fn status(&self, id: &str) -> Option<Status> {
         let c = lock(&self.cams).get(id)?.clone();
         let message = lock(&c.message).clone();
+        let device = lock(&c.device).clone();
         Some(Status {
             running: c.wanted(),
             ms: c.took().map(|(mid, _)| (mid * 10.0).round() / 10.0),
             delay: c.delay(),
+            device,
             message,
         })
     }
 
-    /// The camera's newest picture with its people shown (the rest darker),
-    /// and the number of that picture.
-    pub fn preview(&self, id: &str, inputs: &Inputs) -> Option<(u64, Pixmap)> {
+    /// The camera's newest picture (`View::Image`), or the newest one
+    /// found with its people (shown, or over a band as a graphic behind
+    /// them would be), and the number of that picture.
+    pub fn preview(&self, id: &str, inputs: &Inputs, view: View) -> Option<(u64, Pixmap)> {
         let cam = lock(&self.cams).get(id)?.clone();
         cam.ask();
-        let (n, pic, _) = inputs.latest_at(&cam.image)?;
-        let found = lock(&cam.found).back().map(|(_, f)| f.clone());
-        let rgb = shrink(&pic, W, H);
+        let (n, rgb, found) = match view {
+            View::Image => {
+                let (n, pic, _) = inputs.latest_at(&cam.image)?;
+                (n, Arc::new(shrink(&pic, W, H)), None)
+            }
+            _ => {
+                let shot = lock(&cam.last).clone()?;
+                (shot.n, shot.picture, Some(shot.found))
+            }
+        };
         let mut data = Vec::with_capacity(W * H * 4);
+        let byte = |v: f32| (v * 255.0).round().clamp(0.0, 255.0) as u8;
         for (i, p) in rgb.iter().enumerate() {
-            let m = found.as_ref().map_or(0.0, |f| f.data[i] as f32 / 255.0);
-            let k = 0.28 + 0.72 * m;
-            let tint = 1.0 - k;
-            let c = |v: f32, t: f32| {
-                ((v * k + t * tint * 0.25) * 255.0)
-                    .round()
-                    .clamp(0.0, 255.0) as u8
+            let m = found.as_ref().map_or(1.0, |f| f.data[i] as f32 / 255.0);
+            let px = match view {
+                View::Image => *p,
+                View::Cut => {
+                    // The people as they are, the rest darker and tinted.
+                    let k = 0.28 + 0.72 * m;
+                    let tint = (1.0 - k) * 0.25;
+                    [p[0] * k + 0.35 * tint, p[1] * k, p[2] * k + 0.63 * tint]
+                }
+                View::Result => {
+                    let band = band(i % W, i / W).map_or(*p, |b| {
+                        let a = b[3];
+                        [
+                            p[0] * (1.0 - a) + b[0] * a,
+                            p[1] * (1.0 - a) + b[1] * a,
+                            p[2] * (1.0 - a) + b[2] * a,
+                        ]
+                    });
+                    [
+                        p[0] * m + band[0] * (1.0 - m),
+                        p[1] * m + band[1] * (1.0 - m),
+                        p[2] * m + band[2] * (1.0 - m),
+                    ]
+                }
             };
-            data.extend_from_slice(&[c(p[0], 0.35), c(p[1], 0.0), c(p[2], 0.63), 255]);
+            data.extend_from_slice(&[byte(px[0]), byte(px[1]), byte(px[2]), 255]);
         }
         Some((
             n,
             Pixmap::from_vec(data, IntSize::from_wh(W as u32, H as u32)?)?,
         ))
+    }
+
+    /// Settings tried on a running camera, before they are saved.
+    pub fn try_cut(&self, id: &str, cut: Cut) -> bool {
+        let Some(cam) = lock(&self.cams).get(id).cloned() else {
+            return false;
+        };
+        *lock(&cam.cut) = cut;
+        true
     }
 
     /// Stops every camera (the server stops).
@@ -336,6 +381,39 @@ impl Drop for People {
     }
 }
 
+/// What the preview shows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum View {
+    /// The camera's picture.
+    Image,
+    /// The people found, the rest darker.
+    #[default]
+    Cut,
+    /// The people over a band, as over a graphic behind them.
+    Result,
+}
+
+/// A lower third band in the bottom left of the picture (RGBA), where a
+/// graphic behind the people would be.
+fn band(x: usize, y: usize) -> Option<[f32; 4]> {
+    let (u, v) = (x as f32 / W as f32, y as f32 / H as f32);
+    if !(0.03..0.63).contains(&u) || !(0.69..0.88).contains(&v) {
+        return None;
+    }
+    if v < 0.70 {
+        return Some([1.0, 0.42, 0.1, 1.0]);
+    }
+    // Two lines of "text".
+    let line = |top: f32, bottom: f32, right: f32| {
+        (top..bottom).contains(&v) && (0.06..right).contains(&u)
+    };
+    if line(0.735, 0.79, 0.42) || line(0.815, 0.845, 0.3) {
+        return Some([0.92, 0.94, 1.0, 1.0]);
+    }
+    Some([0.06, 0.09, 0.25, 0.92])
+}
+
 /// A picture on its way: made smaller, the people found roughly.
 struct Rough {
     /// When the camera's picture came, when its finding started.
@@ -349,9 +427,6 @@ struct Rough {
 /// roughly in each new picture, the other lays their edges on the
 /// picture's meanwhile (two pictures at a time: 50 a second on a processor).
 fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
-    let Some(net) = net() else {
-        return cam.say("The people model cannot be read");
-    };
     let (send, edges) = std::sync::mpsc::sync_channel::<Rough>(1);
     let c = cam.clone();
     let spawned = std::thread::Builder::new()
@@ -362,11 +437,33 @@ fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
     }
     let mut last = None;
     let mut came: Option<Instant> = None;
+    // The model, on what the camera asks for (made again when that changes).
+    let mut engine: Option<(Processor, Engine)> = None;
     while !cam.stop.load(Ordering::Relaxed) {
         if !cam.wanted() {
             std::thread::sleep(Duration::from_millis(50));
             continue;
         }
+        let asked = lock(&cam.cut).processor;
+        if engine.as_ref().is_none_or(|(p, _)| *p != asked) {
+            engine = None;
+            match Engine::new(MODEL, IN_W, IN_H, asked) {
+                Ok(e) => {
+                    *lock(&cam.device) = Some(e.device.clone());
+                    // The first pictures on another device are not its pace.
+                    lock(&cam.took).clear();
+                    engine = Some((asked, e));
+                }
+                Err(e) => {
+                    cam.say(e);
+                    std::thread::sleep(Duration::from_millis(500));
+                    continue;
+                }
+            }
+        }
+        let Some((_, net)) = engine.as_mut() else {
+            continue;
+        };
         let Some((n, pic, at)) = inputs.latest_at(&cam.image) else {
             cam.say("No picture");
             std::thread::sleep(Duration::from_millis(100));
@@ -388,7 +485,7 @@ fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
         came = Some(at);
         let started = Instant::now();
         let picture = shrink(&pic, W, H);
-        match rough(&net, &picture) {
+        match rough(net, &picture) {
             Ok(people) => {
                 let r = Rough {
                     came: at,
@@ -411,16 +508,25 @@ fn run(cam: Arc<Cam>, inputs: Arc<Inputs>) {
 /// The second thread: each picture's people, their edges laid, kept for the frames.
 fn refine_all(cam: &Cam, pictures: std::sync::mpsc::Receiver<Rough>) {
     let mut prev: Option<(Instant, Vec<f32>)> = None;
+    let mut n = 0u64;
     for r in pictures {
         // Steadied with the picture before only when it came just before.
         let before = prev
             .as_ref()
             .filter(|(at, _)| r.came.saturating_duration_since(*at) < Duration::from_millis(200))
             .map(|(_, m)| m.as_slice());
-        let (found, mask) = refine(&r.picture, &r.people, before);
+        let cut = lock(&cam.cut).clone();
+        let (found, mask) = refine(&r.picture, &r.people, before, &cut);
         prev = Some((r.came, mask));
+        let found = Arc::new(found);
+        n += 1;
+        *lock(&cam.last) = Some(Shot {
+            n,
+            picture: Arc::new(r.picture),
+            found: found.clone(),
+        });
         let mut f = lock(&cam.found);
-        f.push_back((r.came, Arc::new(found)));
+        f.push_back((r.came, found));
         while f.len() > KEPT {
             f.pop_front();
         }
@@ -439,14 +545,14 @@ fn refine_all(cam: &Cam, pictures: std::sync::mpsc::Receiver<Rough>) {
 /// The people of a picture (and how much of a person each point is, for
 /// the next one).
 #[cfg(test)]
-fn find(net: &Arc<Net>, pic: &Pixmap, prev: Option<&[f32]>) -> TractResult<(Found, Vec<f32>)> {
+fn find(net: &mut Engine, pic: &Pixmap, prev: Option<&[f32]>) -> anyhow::Result<(Found, Vec<f32>)> {
     let picture = shrink(pic, W, H);
     let people = rough(net, &picture)?;
-    Ok(refine(&picture, &people, prev))
+    Ok(refine(&picture, &people, prev, &Cut::default()))
 }
 
 /// How much of a person each point of the model's picture is.
-fn rough(net: &Arc<Net>, picture: &[[f32; 3]]) -> TractResult<Vec<f32>> {
+fn rough(net: &mut Engine, picture: &[[f32; 3]]) -> anyhow::Result<Vec<f32>> {
     // The model's picture: RGB from 0 to 1, colour by colour.
     let small = shrink_rgb(picture, W, H, IN_W, IN_H);
     let n = IN_W * IN_H;
@@ -456,13 +562,7 @@ fn rough(net: &Arc<Net>, picture: &[[f32; 3]]) -> TractResult<Vec<f32>> {
         x[n + i] = p[1];
         x[2 * n + i] = p[2];
     }
-    let input = tract_ndarray::Array4::from_shape_vec((1, 3, IN_H, IN_W), x)?.into_tensor();
-    let out = net.run(tvec!(input.into()))?;
-    let people: Vec<f32> = out[0]
-        .to_plain_array_view::<f32>()?
-        .iter()
-        .copied()
-        .collect();
+    let people = net.run(x, IN_W, IN_H)?;
     if people.len() != n {
         anyhow::bail!("the model gave {} points", people.len());
     }
@@ -470,22 +570,32 @@ fn rough(net: &Arc<Net>, picture: &[[f32; 3]]) -> TractResult<Vec<f32>> {
 }
 
 /// The people's edges laid on those of the picture, steadied where they
-/// only flicker since `prev` (where an edge moves, as found: no trail).
-fn refine(picture: &[[f32; 3]], people: &[f32], prev: Option<&[f32]>) -> (Found, Vec<f32>) {
+/// only flicker since `prev` (where an edge moves, as found: no trail), then
+/// worked as `cut` says. The mask before that is given back for the next one.
+fn refine(
+    picture: &[[f32; 3]],
+    people: &[f32],
+    prev: Option<&[f32]>,
+    cut: &Cut,
+) -> (Found, Vec<f32>) {
     let guide: Vec<f32> = picture
         .iter()
         .map(|p| 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2])
         .collect();
     let rough = stretch(people, IN_W, IN_H, W, H);
     let mut mask = guided(&guide, &rough, W, H, 4, 1e-3);
-    if let Some(prev) = prev.filter(|p| p.len() == mask.len()) {
+    // Steadied: at 60, half the one before where they differ by less than 0.2.
+    let steady = cut.steady.clamp(0.0, 100.0);
+    if let Some(prev) = prev.filter(|p| p.len() == mask.len() && steady > 0.0) {
+        let (near, k) = (steady / 300.0, (steady / 120.0).min(0.85));
         for (m, p) in mask.iter_mut().zip(prev) {
-            if (*m - p).abs() < 0.2 {
-                *m = (*m + p) * 0.5;
+            if (*m - p).abs() < near {
+                *m += (p - *m) * k;
             }
         }
     }
-    let data = mask
+    let worked = work(&mask, cut);
+    let data = worked
         .iter()
         .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
         .collect();
@@ -497,6 +607,89 @@ fn refine(picture: &[[f32; 3]], people: &[f32], prev: Option<&[f32]>) -> (Found,
         },
         mask,
     )
+}
+
+/// The mask as the camera's settings say: its edge moved, made sharper or
+/// softer, kept in the zones.
+fn work(mask: &[f32], cut: &Cut) -> Vec<f32> {
+    let mut m: Vec<f32> = mask.iter().map(|v| v.clamp(0.0, 1.0)).collect();
+    // Contour: points of a 1920-wide picture, at this size.
+    let by = cut.contour.clamp(-10.0, 10.0) * W as f32 / 1920.0;
+    if by.abs() > 0.01 {
+        m = grown(&m, W, H, by);
+    }
+    let edge = cut.edge.clamp(0.0, 100.0);
+    if edge < 40.0 {
+        // Sharper: the half way point stays, the slope steepens.
+        let w = 0.08 + 0.92 * edge / 40.0;
+        for v in &mut m {
+            *v = ((*v - 0.5) / w + 0.5).clamp(0.0, 1.0);
+        }
+    } else if edge > 40.0 {
+        let r = ((edge - 40.0) / 60.0 * 4.0).round() as usize;
+        if r > 0 {
+            m = boxed(&m, W, H, r);
+        }
+    }
+    let zones: Vec<_> = cut
+        .zones
+        .iter()
+        .filter(|z| z.w > 0.0 && z.h > 0.0)
+        .collect();
+    if cut.zones_on && !zones.is_empty() {
+        for (i, v) in m.iter_mut().enumerate() {
+            let (u, t) = (
+                ((i % W) as f32 + 0.5) / W as f32,
+                ((i / W) as f32 + 0.5) / H as f32,
+            );
+            if !zones
+                .iter()
+                .any(|z| u >= z.x && u <= z.x + z.w && t >= z.y && t <= z.y + z.h)
+            {
+                *v = 0.0;
+            }
+        }
+    }
+    m
+}
+
+/// The mask grown (`by` > 0) or shrunk by `by` points: the largest (or
+/// smallest) value around each point, between two whole sizes.
+fn grown(m: &[f32], w: usize, h: usize, by: f32) -> Vec<f32> {
+    let r = by.abs();
+    let (lo, k) = (r.floor() as usize, r.fract());
+    let pick = |a: f32, b: f32| if by > 0.0 { a.max(b) } else { a.min(b) };
+    let around = |r: usize| -> Vec<f32> {
+        if r == 0 {
+            return m.to_vec();
+        }
+        let mut rows = vec![0f32; w * h];
+        for (src, out) in m.chunks_exact(w).zip(rows.chunks_exact_mut(w)) {
+            for (x, o) in out.iter_mut().enumerate() {
+                *o = src[x.saturating_sub(r)..(x + r + 1).min(w)]
+                    .iter()
+                    .copied()
+                    .reduce(pick)
+                    .unwrap_or(0.0);
+            }
+        }
+        let mut out = vec![0f32; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                out[y * w + x] = (y.saturating_sub(r)..(y + r + 1).min(h))
+                    .map(|yy| rows[yy * w + x])
+                    .reduce(pick)
+                    .unwrap_or(0.0);
+            }
+        }
+        out
+    };
+    let a = around(lo);
+    if k < 0.01 {
+        return a;
+    }
+    let b = around(lo + 1);
+    a.iter().zip(&b).map(|(a, b)| a + (b - a) * k).collect()
 }
 
 /// A picture made smaller (each point the average of those it covers), RGB from 0 to 1.
@@ -643,11 +836,31 @@ fn guided(guide: &[f32], p: &[f32], w: usize, h: usize, r: usize, eps: f32) -> V
     (0..w * h).map(|i| ma[i] * guide[i] + mb[i]).collect()
 }
 
+/// `PUT /api/inputs/<id>/cut`: the camera's people cut out so from now on
+/// (the settings keep them once saved), 404 when its people are not found.
+pub async fn try_cut(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    UrlPath(id): UrlPath<String>,
+    Json(cut): Json<Cut>,
+) -> StatusCode {
+    if !me.is_admin() {
+        return StatusCode::FORBIDDEN;
+    }
+    if s.people.try_cut(&id, cut) {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
 #[derive(Deserialize)]
 pub struct PreviewQuery {
     /// The number of the picture the page has: 204 while there is no newer one.
     #[serde(default)]
     after: Option<u64>,
+    #[serde(default)]
+    view: View,
 }
 
 /// `GET /api/inputs/<id>/people.jpg?after=<n>`: the tracked camera's newest
@@ -664,7 +877,7 @@ pub async fn preview(
     }
     let (people, inputs) = (s.people.clone(), s.inputs.clone());
     let shot = tokio::task::spawn_blocking(move || {
-        let (n, pm) = people.preview(&id, &inputs)?;
+        let (n, pm) = people.preview(&id, &inputs, q.view)?;
         if q.after == Some(n) {
             return Some((n, None));
         }
@@ -721,8 +934,8 @@ mod tests {
 
     #[test]
     fn the_people_are_found_and_the_rest_is_not() {
-        let net = net().expect("the model is read");
-        let (found, _) = find(&net, &portrait(), None).unwrap();
+        let mut net = Engine::new(MODEL, IN_W, IN_H, Processor::Cpu).expect("the model is read");
+        let (found, _) = find(&mut net, &portrait(), None).unwrap();
         assert_eq!((found.width, found.height), (W as u32, H as u32));
         // Her face and her suit; the wall behind her.
         let at = |u: f64, v: f64| found.at(u, v);
@@ -765,7 +978,7 @@ mod tests {
 
     #[test]
     fn a_frame_takes_the_people_of_its_picture() {
-        let cam = Cam::new("sdi-1");
+        let cam = Cam::new("sdi-1", Cut::default());
         *lock(&cam.period) = 0.02;
         cam.delay.store(4, Ordering::Relaxed);
         let t0 = Instant::now();
@@ -786,7 +999,7 @@ mod tests {
 
     #[test]
     fn the_delay_counts_the_picture_finding_and_drawing_ahead() {
-        let cam = Cam::new("sdi-1");
+        let cam = Cam::new("sdi-1", Cut::default());
         *lock(&cam.period) = 0.02;
         // Drawn two frames ahead, 12 ms a picture: 1 + ceil((40 + 12) / 20) = 4.
         *lock(&cam.lead) = 0.04;

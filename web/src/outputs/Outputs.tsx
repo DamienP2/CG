@@ -15,6 +15,7 @@ import { t, tc, tn } from '../i18n';
 import { friendlyError } from '../ui/serverError';
 import { InfoTip } from '../ui/InfoTip';
 import { InputsMode } from './Inputs';
+import { TrackingMode } from './Tracking';
 import { useInputs } from '../engine/liveInputs';
 import { OnSwitch } from './OnSwitch';
 import { useMetrics, type OutputMetrics } from '../engine/metrics';
@@ -1032,8 +1033,10 @@ export function Outputs({ mode }: { mode: Mode }) {
   const note = (text: string) => void notes.push(text);
   return (
     <div className="vs-page">
-      {mode !== 'outputs' ? (
-        <InputsMode key={mode} cfg={cfg} saved={info.config} edit={edit} tracking={mode === 'tracking'} />
+      {mode === 'tracking' ? (
+        <TrackingMode cfg={cfg} saved={info.config} edit={edit} />
+      ) : mode !== 'outputs' ? (
+        <InputsMode cfg={cfg} saved={info.config} edit={edit} />
       ) : (
         <div className="outputs-page">
           <aside className="lib-nav">
