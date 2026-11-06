@@ -220,6 +220,10 @@ pub struct Renderer {
     /// frame's size, kept for the frame's other layers (by the address of
     /// those people, the same through a frame).
     behind: Option<(usize, Mask)>,
+    /// Whose frames these are: the widgets' memories from frame to frame
+    /// (a counter's transitions) are this picture's alone. Unique to this
+    /// renderer unless set (the render threads of one picture share theirs).
+    scope: String,
 }
 
 /// Where a frame being drawn is, in its steps (see `cache`).
@@ -604,7 +608,26 @@ impl Renderer {
             mask_only: None,
             sprites_on: true,
             behind: None,
+            scope: {
+                static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+                format!(
+                    "r{}",
+                    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                )
+            },
         }
+    }
+
+    /// The picture these frames are of: renderers drawing frames of the
+    /// same picture (render threads) share what widgets remember between
+    /// frames; any other renderer (thumbnails, previews) keeps its own.
+    pub fn set_scope(&mut self, scope: impl Into<String>) {
+        self.scope = scope.into();
+    }
+
+    /// See `set_scope`.
+    pub(crate) fn scope(&self) -> &str {
+        &self.scope
     }
 
     /// Caches on (the default) or off: with them off every frame is drawn

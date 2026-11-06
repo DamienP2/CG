@@ -523,9 +523,12 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
                         let live = state.inputs.clone();
                         let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
                         let cache = cache.clone();
+                        let scope = format!("{}/{id}", cfg.id);
                         move || {
                             let mut r = Renderer::new(assets);
                             r.set_live(live);
+                            // Its render threads share what widgets remember.
+                            r.set_scope(scope);
                             render_loop(r, out, tz, slate, rx, done, stats, cache)
                         }
                     })

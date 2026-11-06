@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 
 use cg_core::wid::counter::{
     color_for, display, format, group_before, group_sep, int_digits, parts, sign, AffixRaise, Anim,
-    Curve, Mem, Reserve, State, Transition,
+    Curve, Mem, Parts, Reserve, State, Transition,
 };
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{FillRule, Mask, PathBuilder, Transform};
@@ -18,10 +18,26 @@ use super::text::paint;
 use super::{rrect, Draw};
 use crate::text::{self as tx, Chain};
 
-/// What the renderer remembers of each counter's source (by layer id).
-fn mems() -> &'static Mutex<HashMap<String, Mem>> {
-    static M: OnceLock<Mutex<HashMap<String, Mem>>> = OnceLock::new();
+/// What is remembered of each counter's source, by picture (the
+/// renderer's scope) and layer id: a thumbnail of the Designer's draft or a
+/// preview never moves the counter on air.
+fn mems() -> &'static Mutex<HashMap<(String, String), Mem>> {
+    static M: OnceLock<Mutex<HashMap<(String, String), Mem>>> = OnceLock::new();
     M.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The counter's value shown now and its transition, its memory kept.
+fn shown(d: &Draw, p: &Parts<'_>, st: &State) -> (f64, Option<Anim>) {
+    let mut m = mems().lock().unwrap_or_else(|e| e.into_inner());
+    // Counters not drawn for a while (gone, or a renderer dropped) are forgotten.
+    if m.len() > 512 {
+        let now = d.time.now_ms;
+        m.retain(|_, mem| (now - mem.seen).abs() < 60_000);
+    }
+    let mem = m
+        .entry((d.rd.scope().to_string(), d.layer.id.clone()))
+        .or_default();
+    display(p, st, d.data, d.time.now_ms, d.time.age_secs, Some(mem))
 }
 
 /// A run of text with tabular digits (each in a cell of the widest digit).
@@ -129,11 +145,7 @@ pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
     let now = d.time.now_ms;
     // As `draw` (it also keeps the counter's memory up to date while the
     // frames kept are shown instead of drawn).
-    let (v, anim) = {
-        let mut m = mems().lock().unwrap_or_else(|e| e.into_inner());
-        let mem = m.entry(d.layer.id.clone()).or_default();
-        display(&p, st, d.data, now, d.time.age_secs, Some(mem))
-    };
+    let (v, anim) = shown(d, &p, st);
     if anim.is_some_and(|a| a.progress(now) < 1.0) {
         return Some(Motion::Moving);
     }
@@ -151,11 +163,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     };
     let c = p.c;
     let now = d.time.now_ms;
-    let (v, anim) = {
-        let mut m = mems().lock().unwrap_or_else(|e| e.into_inner());
-        let mem = m.entry(d.layer.id.clone()).or_default();
-        display(&p, st, d.data, now, d.time.age_secs, Some(mem))
-    };
+    let (v, anim) = shown(d, &p, st);
     let curve = if anim.is_some_and(|a| a.t0 == now - (d.time.age_secs * 1000.0) as i64) {
         Curve::Out
     } else {
@@ -669,5 +677,58 @@ mod tests {
         state.apply(&project, freeze).unwrap();
         // The freeze stays in the control room: the bar does not change.
         assert_eq!(bar(&mut r, &state), [255, 59, 92]);
+    }
+
+    /// A thumbnail of the Designer's draft (its own value) drawn meanwhile
+    /// never moves the counter on air: no transition to it, no flicker.
+    #[test]
+    fn a_thumbnail_does_not_move_the_counter_on_air() {
+        let mut project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(json!({
+            "id": "ct", "name": "C", "duration": 10.0, "markers": [], "zone": "",
+            "fields": [{"key": "n", "label": "N", "kind": "text", "default": "10"}],
+            "layers": [{
+                "id": "c", "name": "Score", "type": "counter", "from": "0", "to": "{{n}}", "duration": 0.0,
+                "transMs": 1000.0, "easing": "linear", "fontFamily": "Inter", "fontWeight": 700,
+                "props": {"x": 0.0, "y": 0.0, "width": 800.0, "height": 300.0, "fontSize": 200.0, "fill": [1.0, 1.0, 1.0, 1.0]}
+            }]
+        }))
+        .unwrap();
+        project.templates.push(t.clone());
+        let mut state = ChannelState::default();
+        let take = Command::Take {
+            zone: None,
+            layer: Some(90),
+            template_id: "ct".into(),
+            data: Some(serde_json::from_value(json!({"n": "500"})).unwrap()),
+            rundown_id: None,
+        };
+        state.apply(&project, take).unwrap();
+        for _ in 0..30 {
+            state.tick(1.0);
+        }
+        let out = OutputFormat {
+            width: 1280,
+            height: 720,
+        };
+        let dir = std::env::temp_dir().join("cg-render-test-assets");
+        let mut air = Renderer::new(&dir);
+        air.set_scope("ch/main");
+        let mut thumbs = Renderer::new(&dir);
+        // The wall clock, as the thumbnails are drawn at.
+        let t0 = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as f64;
+        let settled = air
+            .render_channel_at(&project, &state, out, "UTC", t0)
+            .data
+            .clone();
+        let draft: cg_core::Data = serde_json::from_value(json!({"n": "10"})).unwrap();
+        for k in 1..8 {
+            thumbs.render_template_scaled(&project, &t, cg_core::MAIN_FORMAT, 0.0, &draft, 320);
+            let f = air.render_channel_at(&project, &state, out, "UTC", t0 + 40.0 * k as f64);
+            assert!(f.data == settled, "frame {k} moved");
+        }
     }
 }
