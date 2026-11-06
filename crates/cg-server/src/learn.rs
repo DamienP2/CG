@@ -193,7 +193,13 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         assert!(projects(&dir).is_empty());
         let mut all = BTreeMap::new();
-        all.insert("u1".to_string(), Training { project: "p1".into(), at: 1 });
+        all.insert(
+            "u1".to_string(),
+            Training {
+                project: "p1".into(),
+                at: 1,
+            },
+        );
         write(&dir, &all).unwrap();
         assert!(is_training(&dir, "p1"));
         assert!(!is_training(&dir, "p2"));
