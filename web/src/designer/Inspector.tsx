@@ -1,6 +1,7 @@
 import { Boundary } from '../ui/Boundary';
 import { useShallow } from 'zustand/react/shallow';
 import { Dropdown } from '../ui/Dropdown';
+import { InListGroup, listFolderOf, RepeatGroup, RollGroup } from './listPanels';
 import { FontPick } from '../ui/FontPick';
 import { AssetLibrary, AssetPicker } from './AssetPicker';
 import { loadLottieAsset } from './lottie';
@@ -120,7 +121,7 @@ export function Section({ title, children, actions }: { title: string; children:
 }
 
 /** Collapsible group of the properties panel (kept for the user). */
-function Group({ id, title, level = 1, defaultOpen = false, children, actions }: { id: string; title: string; level?: 1 | 2; defaultOpen?: boolean; children: React.ReactNode; actions?: React.ReactNode }) {
+export function Group({ id, title, level = 1, defaultOpen = false, children, actions }: { id: string; title: string; level?: 1 | 2; defaultOpen?: boolean; children: React.ReactNode; actions?: React.ReactNode }) {
   const [open, setOpen] = useDisplayPref(`designer.group.${id}`, defaultOpen);
   const toggle = () => setOpen(!open);
   return (
@@ -1017,7 +1018,7 @@ function LayerGeneral({ layer }: { layer: Layer }) {
 }
 
 /** A Repeater (Builder): how many copies, the variable lighting them, side by side how. */
-function RepeatSettings({ layer }: { layer: Layer }) {
+export function RepeatSettings({ layer }: { layer: Layer }) {
   const update = useDesigner((s) => s.update);
   const vars = useDesigner((s) => s.template?.builder?.vars) ?? [];
   const r = layer.repeat!;
@@ -1194,6 +1195,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
   const spec = widgetOf(layer);
   // A folder: its properties only.
   const folder = layer.type === 'group' && layer.lottie === undefined;
+  const inList = template ? listFolderOf(template.layers, layer) : undefined;
   return (
     <DrivenContext.Provider value={driven}>
       <FormatNote layer={layer} />
@@ -1204,6 +1206,14 @@ function LayerInspector({ layer }: { layer: Layer }) {
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
       <OperatorPreview layer={layer} />
+      {/* Builder: a folder repeated per row of a list, going by in its box; an element of such a folder. */}
+      {template?.builder && layer.type === 'group' && folder && (
+        <>
+          <RepeatGroup layer={layer} />
+          <RollGroup layer={layer} />
+        </>
+      )}
+      {template?.builder && inList && <InListGroup layer={layer} folder={inList} />}
       {(layer.type !== 'group' || layer.mask) && <MaskGroup layer={layer} />}
       {spec?.Inspector ? (
         <Boundary resetKey={layer} fallback={<div className="hint wk-note">{t("This widget's settings cannot be shown.")}</div>}>

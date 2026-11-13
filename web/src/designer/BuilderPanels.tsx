@@ -2,7 +2,7 @@
 // its variables, in the toolbar the way back to the template, on the right Element / Options /
 // Controls.
 import { useState } from 'react';
-import { ArrowLeft, Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
+import { ArrowLeft, Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, Rows3, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { setOption } from '../engine/built';
 import { DEFAULTS, newId, propValue } from '../engine/evaluate';
@@ -16,6 +16,7 @@ import { useApp } from '../store';
 import { shareWidget } from '../widgetLibrary';
 import { BUILT_ICONS, BuiltTry } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
+import { RowsVarBody, rowsJson, rowsSummary } from './rowsVar';
 import { closeBuilder, defOf, openControlLogic, openedFromTemplate, varFields } from './builder';
 import { findLayer, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
@@ -31,7 +32,7 @@ const edit = (fn: (b: NonNullable<Template['builder']>, t: Template) => void, ke
 
 // ------------------------------------------------------------------ left --
 
-const VAR_ICONS = { number: Hash, text: Type, list: List, bool: ToggleLeft };
+const VAR_ICONS = { number: Hash, text: Type, list: List, bool: ToggleLeft, rows: Rows3 };
 
 /** The widget (its name, where it is kept) and its variables. */
 export function BuilderLeft() {
@@ -99,7 +100,7 @@ export function BuilderLeft() {
                 </span>
                 <span className="bl-vtext">
                   <span className="mono">{v.name}</span>
-                  <em>{v.list?.length ? v.list.join(' · ') : v.initial || '—'}</em>
+                  <em>{v.kind === 'rows' ? rowsSummary(v) : v.list?.length ? v.list.join(' · ') : v.initial || '—'}</em>
                 </span>
                 <ChevronRight size={13} className="bl-chev" />
               </button>
@@ -128,8 +129,17 @@ export function BuilderLeft() {
                         { value: 'text', label: t('Text') },
                         { value: 'list', label: t('List') },
                         { value: 'bool', label: t('Yes / no') },
+                        { value: 'rows', label: t('List of elements') },
                       ]}
-                      onChange={(k) => setVar(v.name, { kind: k as WidgetVar['kind'], ...(k === 'list' && !v.list?.length ? { list: [v.initial || 'A'] } : {}) })}
+                      onChange={(k) =>
+                        setVar(v.name, {
+                          kind: k as WidgetVar['kind'],
+                          ...(k === 'list' && !v.list?.length ? { list: [v.initial || 'A'] } : {}),
+                          // A list of elements: one column, one row to start with.
+                          ...(k === 'rows' && v.kind !== 'rows' ? { columns: [{ name: 'texte', kind: 'text' as const }], initial: rowsJson([{ texte: v.initial }]) } : {}),
+                          ...(k !== 'rows' && v.kind === 'rows' ? { columns: undefined, initial: '' } : {}),
+                        })
+                      }
                     />
                   </div>
                   {v.kind === 'list' && (
@@ -138,10 +148,14 @@ export function BuilderLeft() {
                       <input defaultValue={(v.list ?? []).join(', ')} onBlur={(e) => setVar(v.name, { list: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} />
                     </label>
                   )}
-                  <label className="bl-row">
-                    <span className="prop-label">{t('At the start')}</span>
-                    <input value={v.initial} onChange={(e) => setVar(v.name, { initial: e.target.value })} />
-                  </label>
+                  {v.kind === 'rows' ? (
+                    <RowsVarBody v={v} set={(patch) => setVar(v.name, patch)} />
+                  ) : (
+                    <label className="bl-row">
+                      <span className="prop-label">{t('At the start')}</span>
+                      <input value={v.initial} onChange={(e) => setVar(v.name, { initial: e.target.value })} />
+                    </label>
+                  )}
                   <div className="bl-row">
                     <span className="prop-label">{t('After air')}</span>
                     <div className="segmented">
@@ -454,9 +468,10 @@ function ControlsPane() {
   };
   const place = (x: BuiltControl) => x.place ?? 'actions';
   const groups: [string, BuiltControl[]][] = [
-    [t('Buttons'), b.controls.filter((x) => place(x) === 'actions')],
-    [t('Rows of buttons'), b.controls.filter((x) => place(x) === 'row')],
-    [t('Settings'), b.controls.filter((x) => place(x) === 'settings')],
+    [t('Buttons'), b.controls.filter((x) => place(x) === 'actions' && x.kind !== 'list')],
+    [t('Rows of buttons'), b.controls.filter((x) => place(x) === 'row' && x.kind !== 'list')],
+    [t('Settings'), b.controls.filter((x) => place(x) === 'settings' && x.kind !== 'list')],
+    [t('Lists'), b.controls.filter((x) => x.kind === 'list')],
   ];
   const def = defOf(tpl);
   return (
@@ -507,14 +522,28 @@ function ControlsPane() {
                     ['button', t('Button')],
                     ['field', t('Field')],
                     ['toggle', t('Switch')],
+                    ['list', t('List')],
                   ] as const
                 ).map(([k, l]) => (
-                  <button key={k} type="button" className={(c.kind ?? 'button') === k ? 'on' : ''} onClick={() => setCtl(c.id, { kind: k === 'button' ? undefined : k })}>
+                  <button
+                    key={k}
+                    type="button"
+                    className={(c.kind ?? 'button') === k ? 'on' : ''}
+                    onClick={() => setCtl(c.id, { kind: k === 'button' ? undefined : k, ...(k === 'list' && !c.list ? { list: b.vars.find((v) => v.kind === 'rows')?.name } : {}) })}
+                  >
                     {l}
                   </button>
                 ))}
               </div>
             </div>
+            {c.kind === 'list' && (
+              <div className="bl-row">
+                <span className="prop-label">{t('List')}</span>
+                <Dropdown value={c.list ?? ''} placeholder={t('Choose a list')} options={b.vars.filter((v) => v.kind === 'rows').map((v) => ({ value: v.name, label: v.name }))} onChange={(list) => setCtl(c.id, { list })} />
+              </div>
+            )}
+            {c.kind !== 'list' && (
+            <>
             <div className="bl-row">
               <span className="prop-label">{t('Place')}</span>
               <div className="segmented">
@@ -565,6 +594,8 @@ function ControlsPane() {
                 {steps(c.id) > 0 && <em>{tn(steps(c.id), '{n} action', '{n} actions')}</em>}
               </span>
             </div>
+            </>
+            )}
             <div className="bl-row">
               <span className="prop-label">{t('Ask on air')}</span>
               <button className={`wk-tog ${c.confirm ? 'on' : ''}`} onClick={() => setCtl(c.id, { confirm: !c.confirm || undefined })}>

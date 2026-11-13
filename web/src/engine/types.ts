@@ -117,6 +117,12 @@ export type Layer = LayerKind & {
   lit?: { key: string; index: number; off?: number };
   /** Builder: this folder is a Repeater — its content is drawn `count` times (the elements of a widget). */
   repeat?: Repeat;
+  /** A folder whose content is drawn once per row of a list (engine/lists.ts, crates/cg-core/src/lists.rs). */
+  list?: ListRepeat;
+  /** A folder whose content goes by in its box (with `list`: the rows go by). Not `scroll`: a text's own. */
+  roll?: Roll;
+  /** Inside a list folder: shown for a row or not, colours from a column. */
+  inList?: InList;
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
@@ -894,8 +900,49 @@ export interface Motion {
   period: number;
   /** The frame from which it moves (the end of the in animation). */
   from: number;
+  /** crawl / step (a scrolling folder's content): along x or y. */
+  axis?: 'x' | 'y';
+  /** crawl: one cycle (px); step: one page (px). */
+  distance?: number;
+  /** crawl: how far the content starts (px), before its first cycle. */
+  lead?: number;
+  /** step: the pages. */
+  steps?: number;
+  /** step: seconds on each page. */
+  pause?: number;
+  /** crawl: one pass, then it stays. */
+  once?: boolean;
 }
-export type MotionKind = 'pulse' | 'blink' | 'swing' | 'float' | 'shake' | 'kenBurns';
+export type MotionKind = 'pulse' | 'blink' | 'swing' | 'float' | 'shake' | 'kenBurns' | 'crawl' | 'step';
+
+/** A folder's content once per row of the list in `data[key]` (a JSON array of objects). */
+export interface ListRepeat {
+  key: string;
+  layout: 'row' | 'column' | 'grid';
+  /** grid: copies per row. */
+  cols?: number;
+  gap: number;
+}
+
+/** A folder's content going by in its box: on and on (continuous), or one page at a time. */
+export interface Roll {
+  mode: 'continuous' | 'one';
+  dir: 'left' | 'up';
+  /** continuous: at a speed (and on and on), or over a duration (once). */
+  by: 'speed' | 'duration';
+  speed: number;
+  duration: number;
+  /** one: seconds on each page. */
+  pause: number;
+  /** Faded over that many px at both ends. */
+  fade: number;
+}
+
+/** An element in a list folder: shown for a row or not, colours from a column. */
+export interface InList {
+  when?: { col: string; test: 'filled' | 'empty' | 'is' | 'isNot'; value?: string };
+  colors?: { prop: Prop; col: string; map: Record<string, string> }[];
+}
 
 // ---------------------------------------------------------------- built widgets --
 // Mirror of crates/cg-core/src/built.rs (the definition the server reads: vars, controls).
@@ -922,7 +969,10 @@ export interface WidgetDef {
 
 export interface WidgetVar {
   name: string;
-  kind?: 'number' | 'text' | 'list' | 'bool';
+  /** rows: a list of elements (its value a JSON array of objects, one key per column). */
+  kind?: 'number' | 'text' | 'list' | 'bool' | 'rows';
+  /** rows: its columns. */
+  columns?: { name: string; kind: 'text' | 'choice' | 'image' | 'color'; choices?: string[] }[];
   /** Its value at the start (the template's start value comes first). */
   initial: string;
   /** The values it goes through (a list: Q1, Q2…). */
@@ -951,7 +1001,10 @@ export interface BuiltControl {
   /** A Lucide icon name (buttons of line 2) or none: its label. */
   icon?: string;
   key?: string;
-  kind?: 'button' | 'field' | 'toggle';
+  /** list: the Operator edits the rows of the variable `list` (a « List of elements »). */
+  kind?: 'button' | 'field' | 'toggle' | 'list';
+  /** list: its variable. */
+  list?: string;
   /** Line 2 (its buttons), a row of buttons (`row`: its label, a team's short name…), or line 3 (settings rows). */
   place?: 'actions' | 'row' | 'settings';
   row?: string;

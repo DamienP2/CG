@@ -117,7 +117,7 @@ export const timerLayer = (l: Layer) => l.type === 'clock' && !!((l as { timerMo
 export const videoLayer = (l: Layer) => l.type === 'image' && !!((l as { video?: boolean }).video || ((l as { frames?: string[] }).frames?.length ?? 0) > 0);
 export const scrollLayer = (l: Layer) => l.type === 'ticker' || l.type === 'credits';
 const TIMED = new Set(['clock', 'ticker', 'roll', 'counter', 'progress', 'typewriter', 'barChart', 'credits', 'slideshow', 'rotator']);
-export const timedLayer = (l: Layer) => TIMED.has(l.type) || videoLayer(l);
+export const timedLayer = (l: Layer) => TIMED.has(l.type) || videoLayer(l) || (l.type === 'group' && !!l.roll);
 
 /** The variables a template sets (its « Set a variable » nodes). */
 export const varNames = (t: Template) => [...new Set((t.logic?.nodes ?? []).flatMap((n) => (n.type === 'setVar' && n.name.trim() ? [n.name.trim()] : [])))];

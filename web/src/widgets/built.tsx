@@ -5,6 +5,8 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { ArrowLeftRight, Check, ChevronsRight, Flag, Minus, Pause, Play, Plus, Puzzle, RefreshCw, RotateCcw, SkipBack, SkipForward, Square, Timer, Trophy, Undo2, X, Zap, type LucideIcon } from 'lucide-react';
 import { regenerate, startValue, varKey, type Forward } from '../engine/built';
 import { placedLogic } from '../engine/widgetLogic';
+import { allRows, rowsJson, type Row as ListRow } from '../designer/rowsVar';
+import { ListEditor } from './builtList';
 import type { BuiltControl, Layer, WidgetDef, WidgetOption } from '../engine/types';
 import { api, useApp } from '../store';
 import { findLayer, useDesigner } from '../designer/designerStore';
@@ -109,14 +111,24 @@ function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorPro
   };
   const ask = (c: BuiltControl) => (item && c.confirm ? t('{name} is on air: {action}?', { name: layer.name, action: c.label.toLowerCase() }) : undefined);
   const value = (name: string) => data[varKey(layer.id, name)] ?? startValue(def, layer, name);
+  // The rows of a list the Operator edits: on air at once, else the take's start values (the Designer: its try-out).
+  const setRows = (c: BuiltControl, rows: ListRow[]) => {
+    const json = rowsJson(rows);
+    if (item) return void act(c.id, { value: json });
+    if (designer) {
+      const k = builder ? c.list! : varKey(layer.id, c.list!);
+      useDesigner.setState((s) => ({ previewData: { ...s.previewData, [k]: json } }));
+    } else setData?.({ [varKey(layer.id, c.list!)]: json });
+  };
+  const lists = def.controls.filter((c) => c.kind === 'list' && c.list && given(c));
   const actions: Line2Item[] = def.controls
-    .filter((c) => (c.place ?? 'actions') === 'actions' && given(c))
+    .filter((c) => (c.place ?? 'actions') === 'actions' && c.kind !== 'list' && given(c))
     .map((c) =>
       c.kind === 'field'
         ? { field: true as const, placeholder: hint(c), title: c.label, onSet: (v: string) => run(c, v) }
         : { icon: BUILT_ICONS[c.icon ?? ''] ?? Square, text: c.icon ? undefined : c.label, label: c.label, key: c.key, main: c.main, tone: c.tone, confirm: ask(c), onClick: () => void run(c) },
     );
-  const rows = byRow(def.controls.filter((c) => c.place === 'row' && given(c))).map(([row, cs]) => (
+  const rows = byRow(def.controls.filter((c) => c.place === 'row' && c.kind !== 'list' && given(c))).map(([row, cs]) => (
     <div key={row} className="cc-team">
       <span className="cc-tn">{row}</span>
       {cs.map((c) => (
@@ -138,7 +150,7 @@ function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorPro
         <span className="cc-txt">{c.label}</span>
       </button>
     );
-  const settings = byRow(def.controls.filter((c) => c.place === 'settings' && given(c))).map(([row, cs]) => {
+  const settings = byRow(def.controls.filter((c) => c.place === 'settings' && c.kind !== 'list' && given(c))).map(([row, cs]) => {
     const chosen = cs.filter((c) => c.choose).map((c) => controlPath(c.id));
     return (
       <Row key={row} label={row} expose={chosen.length ? chosen : undefined} exposeValue={chosen.length > 1 ? Object.fromEntries(chosen.map((p) => [p, true])) : true}>
@@ -148,7 +160,14 @@ function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorPro
   });
   return (
     <Centre name={layer.name} actions={actions} rows={rows.length ? rows : undefined} l3Air>
-      {settings.length ? settings : undefined}
+      {lists.length || settings.length ? (
+        <>
+          {lists.map((c) => (
+            <ListEditor key={c.id} cols={def.vars.find((v) => v.name === c.list)?.columns ?? []} rows={allRows(value(c.list!))} onChange={(r) => setRows(c, r)} />
+          ))}
+          {settings}
+        </>
+      ) : undefined}
     </Centre>
   );
 }

@@ -102,6 +102,8 @@ export function generate(def: WidgetDef, group: Layer): Layer[] {
       if (copy.lit) g.lit = copy.lit;
     }
     delete (g as { repeat?: unknown }).repeat;
+    // A folder repeated per row of a list: the list's value in the template.
+    if (g.list && names.includes(g.list.key)) g.list = { ...g.list, key: varKey(W, g.list.key) };
     out.push(g);
     if (copy) (ofCopy.get(l.id) ?? ofCopy.set(l.id, []).get(l.id)!).push(g);
     if (l.repeat) {

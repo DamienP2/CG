@@ -22142,6 +22142,136 @@ textarea.tx-grow {
   font-style: normal;
   color: var(--text-3);
 }
+/* Builder › a « List of elements »: its columns and its rows at the start. */
+.bl-cols {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bl-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 24px;
+  gap: 4px;
+  align-items: center;
+}
+.bl-col-choices {
+  grid-column: 1 / -1;
+}
+.bl-addcol,
+.bl-addrow-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px dashed var(--line-2);
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.bl-addcol {
+  align-self: flex-start;
+}
+.bl-addcol:hover,
+.bl-addrow-line:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.bl-rows {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.bl-tr {
+  display: grid;
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+.bl-tr:first-child {
+  border-top: 0;
+}
+.bl-tr > input,
+.bl-tr > .dd-btn {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 12px;
+}
+.bl-th {
+  background: var(--panel-2);
+}
+.bl-th span {
+  padding: 5px 8px;
+  color: var(--text-3);
+  font: 500 10.5px var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bl-rows .bl-addrow-line {
+  border: 0;
+  border-top: 1px dashed var(--line);
+  border-radius: 0;
+}
+/* Builder › an element of a list: two choices side by side. */
+.bl-pair {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.bl-pair > * {
+  flex: 1;
+  min-width: 0;
+}
+.bl-val-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The rows of a list the Operator edits. */
+.bl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+.bl-li {
+  display: grid;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+}
+.bl-li > input {
+  min-width: 0;
+}
+.bl-li.off > :not(.wk-tog):not(.bl-grip):not(.icon-btn) {
+  opacity: 0.45;
+}
+.bl-grip {
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  cursor: grab;
+}
+.bl-li-new {
+  border-style: dashed;
+  background: none;
+}
 /* Library › Widgets: a card per widget, drawn as placed; its actions on hover. */
 .wlib-grid {
   grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
