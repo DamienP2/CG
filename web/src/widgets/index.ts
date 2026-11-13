@@ -22,6 +22,7 @@ import qrcode from './qrcode';
 import web from './web';
 import scoreboard from './scoreboard';
 import socialwall from './socialwall';
+import built from './built';
 import socialbadge from './socialbadge';
 
 /** In the order of the spec. */
@@ -36,6 +37,8 @@ export const WIDGETS: Partial<Record<LayerType, WidgetDef>> = Object.fromEntries
  */
 export const widgetOf = (of: LayerType | Layer): WidgetDef | undefined => {
   if (typeof of === 'string') return WIDGETS[of];
+  // A widget built with the Builder: its folder.
+  if (of.type === 'group' && of.widget) return built as unknown as WidgetDef;
   if (of.type === 'clock') return (timed(eff(of, {})) ? time : clock) as unknown as WidgetDef;
   return WIDGETS[of.type];
 };

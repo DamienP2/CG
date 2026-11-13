@@ -280,12 +280,20 @@ export function Row({ label, children, title, lead, tail, expose, exposeValue, e
   );
 }
 
+/** What the Designer's Builder puts in the kit (set by designer/BuilderPanels): no import cycle. */
+export const builderHooks: { OptionToggle?: (p: { layer: Layer; paths: readonly string[]; label?: string; value?: unknown }) => ReactNode } = {};
+
 /** The radio button exposing settings of the layer to the Operator: one click exposes, one click stops. */
 export function ExposeSetting({ paths, label, value, options, range, text }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][]; range?: [number, number]; /** A button with this text (else the row's small icon). */ text?: ReactNode }) {
   const { obj } = useContext(BindContext);
   const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   const layer = obj as Layer | undefined;
   if (!template || !layer?.id || !template.layers.some((l) => l.id === layer.id)) return <span className="wk-gut" />;
+  // In the Builder: published as an option of the widget.
+  if (template.builder) {
+    const O = builderHooks.OptionToggle;
+    return O ? <O layer={layer} paths={paths} label={label} value={value} /> : <span className="wk-gut" />;
+  }
   const sb = layer.settingBindings ?? {};
   const fields = paths.map((p) => template.fields.find((f) => f.key === sb[p]));
   const on = fields.every(Boolean);
@@ -516,7 +524,15 @@ export function useExposable(path: string | undefined, value: string | undefined
   const exposed = !!field && !field.binding?.source;
   const wired = wiredKeys(raw).length > 0 && !exposed;
   const shown = exposed ? field!.default : raw;
-  const change = (x: string) => (exposed ? update((t) => void (t.fields.find((f) => f.key === field!.key)!.default = x), `field-${field!.key}`) : set(x, true));
+  const change = (x: string) =>
+    exposed
+      ? update((t) => {
+          t.fields.find((f) => f.key === field!.key)!.default = x;
+          // In the Builder the field is a variable of the widget: its start value.
+          const v = t.builder?.vars.find((y) => y.name === field!.key);
+          if (v) v.initial = x;
+        }, `field-${field!.key}`)
+      : set(x, true);
   const canExpose = expose !== false && !!path && !!layer.id;
   /** `value`: the exposed field's value (else the content as it is); `also`: more changes in the same step. */
   const toggleExpose = (opts?: { value?: string; also?: (t: Template, l: Layer) => void }) =>
@@ -600,6 +616,26 @@ export function Content(p: {
       },
     });
   };
+  // In the Builder: the content published as an option of the widget; a variable shown as such.
+  const builder = !!tpl?.builder;
+  const Opt = builderHooks.OptionToggle;
+  const layerObj = obj as Layer | undefined;
+  if (builder)
+    return (
+      <Row label={p.label} tail={Opt && layerObj?.id && p.path && !exposed ? <Opt layer={layerObj} paths={[p.path]} label={typeof p.label === 'string' ? p.label : undefined} value={raw} /> : undefined}>
+        <div className="wk-content">
+          {p.rich && !exposed ? <RichInput plain={p.plain} multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} tokens={vars.tokens} /> : <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />}
+          {exposed && (
+            <div className="wk-content-tools">
+              <span className="wk-exposed">
+                {t('Variable')} <b className="mono">{field!.key}</b>
+              </span>
+            </div>
+          )}
+          {vars.panel}
+        </div>
+      </Row>
+    );
   return (
     <Row label={p.label} tail={canExpose && !inline ? <ExposeToggle on={exposed} onClick={() => void expose()} /> : undefined}>
       <div className="wk-content">

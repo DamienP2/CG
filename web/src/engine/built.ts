@@ -264,3 +264,55 @@ export function regenerate(layers: Layer[], folderId: string, def: WidgetDef): L
   const pos = Math.min(at, rest.length);
   return [...rest.slice(0, pos), ...fresh, ...rest.slice(pos)];
 }
+
+/**
+ * The Builder's picture: each Repeater's content drawn its number of times (the copies after the
+ * first `${id}#${i}`, lit by its variable — the Builder's values are keyed by the variable's name).
+ * The first copy keeps the element's id: it is the one selected and edited.
+ */
+export function repeatPreview(layers: Layer[]): Layer[] {
+  const reps = layers.filter((l) => l.type === 'group' && l.repeat);
+  if (!reps.length) return layers;
+  const out = [...layers];
+  const kids = (pid: string) => layers.filter((l) => l.parent === pid);
+  const tree = (id: string): Layer[] => kids(id).flatMap((k) => [k, ...tree(k.id)]);
+  for (const r of reps) {
+    const rep = r.repeat!;
+    const model = kids(r.id);
+    const w = num(String(model[0]?.props.width ?? 0)) ?? 0;
+    const h = num(String(model[0]?.props.height ?? 0)) ?? 0;
+    const cols = Math.max(1, rep.layout === 'row' ? rep.count : rep.layout === 'column' ? 1 : (rep.cols ?? 1));
+    const lit = (i: number) => (rep.lit ? { key: rep.lit, index: i, off: rep.off } : undefined);
+    // The first copy: the elements themselves, lit as the first.
+    for (const m of model) {
+      const at = out.findIndex((l) => l.id === m.id);
+      if (at >= 0 && rep.lit) out[at] = { ...out[at], lit: lit(0) };
+    }
+    const all = model.flatMap((m) => [m, ...tree(m.id)]);
+    const last = out.reduce((a, l, i) => (all.some((x) => x.id === l.id) ? i : a), out.findIndex((l) => l.id === r.id));
+    const copies: Layer[] = [];
+    for (let i = 1; i < Math.max(1, Math.floor(rep.count)); i++) {
+      const dx = (i % cols) * (w + rep.gap);
+      const dy = Math.floor(i / cols) * (h + rep.gap);
+      for (const l of all) {
+        const c = structuredClone(l);
+        c.id = `${l.id}#${i}`;
+        c.parent = l.parent === r.id ? r.id : `${l.parent}#${i}`;
+        if (l.parent === r.id) {
+          c.props = { ...c.props, x: (num(String(c.props.x ?? 0)) ?? 0) + dx, y: (num(String(c.props.y ?? 0)) ?? 0) + dy };
+          if (rep.lit) c.lit = lit(i);
+        }
+        copies.push(c);
+      }
+    }
+    out.splice(last + 1, 0, ...copies);
+  }
+  return out;
+}
+
+/** An element generated inside a built widget (its controls are the widget's). */
+export function insideWidget(layers: Layer[], l: Layer): boolean {
+  const byId = new Map(layers.map((x) => [x.id, x]));
+  for (let p = l.parent ? byId.get(l.parent) : undefined; p; p = p.parent ? byId.get(p.parent) : undefined) if (p.widget) return true;
+  return false;
+}

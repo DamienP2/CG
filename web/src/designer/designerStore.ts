@@ -47,6 +47,8 @@ interface DesignerStore {
   widgetRun: Record<string, WidgetRun>;
   /** Try-out state of the spec widgets (the Operator controls in the inspector), by layer id. */
   widgetState: Record<string, unknown>;
+  /** The Builder is open on a widget: its id and the template to go back to. */
+  builder: { defId: string; back: string | null } | null;
 
   load: (t: Template | null) => void;
   /** Shows a newer version of the open template (read only) without resetting the view. */
@@ -107,6 +109,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   edits: 0,
   widgetRun: {},
   widgetState: {},
+  builder: null,
 
   load(t) {
     const base = t ? structuredClone(t) : null;

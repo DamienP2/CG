@@ -5,6 +5,7 @@ import { Dropdown } from '../ui/Dropdown';
 import { FontPick } from '../ui/FontPick';
 import { Row, SliderNum } from '../widgets/kit';
 import { widgetOf } from '../widgets';
+import { insideWidget } from '../engine/built';
 import { ICONS } from '../designer/LayersPanel';
 import { AssetPicker } from '../designer/AssetPicker';
 import { parseHex, toHex } from '../engine/evaluate';
@@ -42,6 +43,11 @@ export function exposedFields(fields: Field[], layers: Layer[]): { content: Fiel
   const owned = new Set<string>();
   const out: ExposedLayer[] = [];
   for (const l of layers) {
+    // A built widget's elements: its options are the widget's (on its folder).
+    if (insideWidget(layers, l)) {
+      for (const k of [...Object.values(l.bindings ?? {}), ...Object.values(l.settingBindings ?? {})]) if (k) owned.add(k);
+      continue;
+    }
     const at = new Map<Path, Field>();
     for (const [p, k] of Object.entries(l.bindings ?? {})) {
       const f = k ? byKey.get(k) : undefined;
@@ -52,7 +58,7 @@ export function exposedFields(fields: Field[], layers: Layer[]): { content: Fiel
       const f = byKey.get(k);
       if (!f) continue;
       // Buttons of its control centre: neither a value nor a property.
-      if (buttons.includes(p)) owned.add(f.key);
+      if (buttons.includes(p) || p.startsWith('widget.controls.')) owned.add(f.key);
       else if (!CONTENT_SETTINGS.has(p) && f.kind !== 'table' && f.kind !== 'credits') at.set(p, f);
     }
     if (!at.size) continue;

@@ -1,3 +1,5 @@
+import { openBuilder } from './builder';
+import { repeatPreview } from '../engine/built';
 import { useTableEditor } from '../widgets/table-editor-store';
 import { TrackContext } from '../engine/tracking';
 import { useTrackPreview } from './Tracking';
@@ -202,6 +204,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   // Bound fields show their live value, like on air.
   const bound = useBoundData(template, previewData);
   const data = useMemo(() => ({ ...bound, ...settingDefaults(template) }), [bound, template]);
+  // The Builder: its Repeaters' copies drawn too.
+  const builderShown = useMemo(() => (template?.builder ? { ...template, layers: repeatPreview(template.layers) } : undefined), [template]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   // Fitted to the canvas area (Auto), or as set by hand (StageZoom).
@@ -640,7 +644,16 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
 
   // The layer under the pointer: the one drawn there, else one whose box is there but which its group's
   // mask cuts (not drawn outside it, so not under the pointer for the page).
-  const layerAt = (e: { target: EventTarget; clientX: number; clientY: number }) => {
+  const layerAt = (e: { target: EventTarget; clientX: number; clientY: number }) => owner(layerAtRaw(e));
+  // An element of a built widget: the widget (its elements are edited in the Builder); a Repeater's copy: its model.
+  const owner = (id: string | undefined) => {
+    const tpl = useDesigner.getState().template;
+    if (!id || !tpl) return id;
+    let top: string | undefined;
+    for (let l = findLayer(tpl, id); l; l = l.parent ? findLayer(tpl, l.parent) : undefined) if (l.widget) top = l.id;
+    return top ?? (findLayer(tpl, id) ? id : id.replace(/#\d+$/, ''));
+  };
+  const layerAtRaw = (e: { target: EventTarget; clientX: number; clientY: number }) => {
     const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]');
     if (hit) return hit.dataset.layerId;
     const els = [...(sceneRef.current?.querySelectorAll<HTMLElement>('[data-layer-id]') ?? [])];
@@ -680,6 +693,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     const st = useDesigner.getState();
     const l = id && st.template ? findLayer(st.template, id) : undefined;
     if (l?.type === 'table' && !l.locked) useTableEditor.getState().open(l.id);
+    // A built widget: the Builder.
+    if (l?.widget) openBuilder(l.widget.def);
   };
 
   // Program, fill or key, for the whole stage (canvas toolbar).
@@ -726,7 +741,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
                 {!zonesEdit && (
                   <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
                     <TrackContext.Provider value={trackStage}>
-                      <Scene template={template} frame={frame} data={data} interactive />
+                      <Scene template={builderShown ?? template} frame={frame} data={data} interactive />
                     </TrackContext.Provider>
                   </div>
                 )}
@@ -740,7 +755,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
               <i style={{ left: W, top: Math.max(0, vis.y0), width: Math.max(0, vis.x1 - W), height: Math.max(0, Math.min(H, vis.y1) - Math.max(0, vis.y0)) }} />
             </div>
             <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
-            {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
+            {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && !template.builder && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
             {view.frames && !zonesEdit && ghosts.map((b) => (
               <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
             ))}

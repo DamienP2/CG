@@ -21895,3 +21895,225 @@ textarea.tx-grow {
   gap: 8px;
   margin-top: 12px;
 }
+
+/* ------------------------------------------------------------ Builder --
+   A widget being made (designer/BuilderPanels.tsx), and the + menu's groups. */
+.add-sect + .add-sect {
+  border-top: 1px solid var(--line);
+}
+.add-mh {
+  padding: 10px 16px 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.add-grid button.add-new {
+  border: 1px dashed var(--line-2);
+}
+.bl-crumb .bl-sep {
+  color: var(--text-3);
+  align-self: center;
+}
+.bl-crumb button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.bl-name {
+  width: 100%;
+  font-size: 15px;
+  font-weight: 600;
+}
+.bl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+.bl-row > .prop-label {
+  flex: 0 0 96px;
+}
+.bl-row > :not(.prop-label) {
+  flex: 1;
+  min-width: 0;
+}
+.project-panel .bl-row {
+  margin-top: 8px;
+}
+.bl-var {
+  margin: 1px 6px;
+  border-radius: 6px;
+}
+.bl-var.open {
+  background: var(--panel-2);
+}
+.bl-var-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.bl-var-head:hover {
+  background: var(--panel-2);
+}
+.bl-vic {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+}
+.bl-vtext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bl-vtext em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bl-chev {
+  color: var(--text-3);
+  transition: transform 0.15s;
+}
+.bl-var.open .bl-chev {
+  transform: rotate(90deg);
+}
+.bl-var-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 10px 10px;
+}
+.bl-var-body .btn.danger {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+.bl-tabs {
+  display: flex;
+  margin: 10px 12px 2px;
+}
+.bl-tabs button {
+  flex: 1;
+}
+.bl-empty {
+  padding: 18px 16px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.bl-optrow {
+  align-items: flex-start;
+}
+.bl-optname {
+  width: 110px;
+  font-weight: 600;
+}
+.bl-optrow .wk-ctl {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.bl-optgroup {
+  font-size: 12px;
+}
+.bl-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.bl-link {
+  font-size: 11px;
+}
+.bl-ctl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 12px);
+  margin: 1px 6px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.bl-ctl:hover {
+  background: var(--panel-2);
+}
+.bl-ctl.sel {
+  background: var(--accent-soft);
+}
+.bl-ctl .prop-label {
+  flex: 0 0 120px;
+}
+.bl-ic {
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+}
+.bl-act {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.bl-addrow {
+  padding: 8px 16px 12px;
+}
+.bl-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 4px 8px;
+}
+.bl-form .btn.danger {
+  align-self: flex-start;
+}
+.bl-action-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.bl-val {
+  width: 72px;
+}
+.bl-key {
+  width: 64px;
+  flex: none !important;
+  text-align: center;
+}
+.pp-op.bl-opt.on {
+  color: var(--accent-2);
+}
+.wk-wbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 16px 10px;
+}

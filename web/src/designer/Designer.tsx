@@ -32,6 +32,8 @@ import { friendlyError } from '../ui/serverError';
 import { t, tn } from '../i18n';
 import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
+import { defOf } from './builder';
+import { BuilderCrumb, BuilderLeft, BuilderRight } from './BuilderPanels';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -93,7 +95,12 @@ function useAutosave() {
     clearTimeout(timer.current);
     const list = [...pending.current.values()];
     pending.current.clear();
-    for (const p of list) await saveTemplate(p.template, p.project);
+    for (const p of list) {
+      // The Builder's template is a widget.
+      const def = defOf(p.template);
+      if (def) await useApp.getState().saveWidget(def, p.project);
+      else await saveTemplate(p.template, p.project);
+    }
     setState('saved');
   };
   useEffect(() => {
@@ -610,8 +617,14 @@ export const Designer = memo(function Designer() {
     >
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={320} onChange={(v) => setLayout('left', v)} />
-        <ProjectPanel project={project} readOnly={lock.state.status === 'held'} onLogic={() => setLogicOpen('project')} />
-        <TemplateList project={project} />
+        {template?.builder ? (
+          <BuilderLeft />
+        ) : (
+          <>
+            <ProjectPanel project={project} readOnly={lock.state.status === 'held'} onLogic={() => setLogicOpen('project')} />
+            <TemplateList project={project} />
+          </>
+        )}
       </aside>
       <main className="center">
         <div className="toolbar">
@@ -629,9 +642,9 @@ export const Designer = memo(function Designer() {
               </>,
               topSlot,
             )}
-          <FormatBar project={project} />
+          {template?.builder ? <BuilderCrumb /> : <FormatBar project={project} />}
           <div className="spacer" />
-          {template && (
+          {template && !template.builder && (
             <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen('template')} title={t('Events, triggers, actions, variables')}>
               <Link2 size={13} /> {t('Logic')}
             </button>
@@ -657,7 +670,7 @@ export const Designer = memo(function Designer() {
       </main>
       <aside className="panel right">
         <Splitter axis="x" className="edge-left" sign={-1} value={layout.right} min={300} max={620} reset={380} onChange={(v) => setLayout('right', v)} />
-        {zonesEdit && project ? <ZonesPanel project={project} /> : <Inspector />}
+        {zonesEdit && project ? <ZonesPanel project={project} /> : template?.builder ? <BuilderRight /> : <Inspector />}
       </aside>
       <div className="timeline-wrap">
         <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={140} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />

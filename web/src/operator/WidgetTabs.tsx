@@ -4,6 +4,7 @@ import { api, useApp } from '../store';
 import { defaultData } from '../engine/evaluate';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
+import { insideWidget } from '../engine/built';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import { CentreModeContext, KeyScope, type CentreMode } from '../widgets/kit';
 import { Centre, OperatorBound } from '../widgets/centre';
@@ -65,7 +66,8 @@ const partsCache = new WeakMap<Template, Parts>();
 export function widgetParts(tpl: Template): Parts {
   const hit = partsCache.get(tpl);
   if (hit) return hit;
-  const layers = tpl.layers.filter((l) => l.visible !== false);
+  // A built widget's elements: its controls are the widget's.
+  const layers = tpl.layers.filter((l) => l.visible !== false && !insideWidget(tpl.layers, l));
   const defaults = defaultData(tpl);
   const { content, layers: exposed } = exposedFields(tpl.fields, tpl.layers);
   const json = new Map(layers.map((l) => [l.id, JSON.stringify(l)]));

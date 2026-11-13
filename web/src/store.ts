@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
 import { setDefaultTz } from './engine/expr';
-import { designView, type ChannelInfo, type ChannelState, type Command, type DataStatus, type Project, type ProjectSummary, type RundownItem, type Template, type User, type Zone } from './engine/types';
+import { designView, type ChannelInfo, type ChannelState, type Command, type DataStatus, type Project, type ProjectSummary, type RundownItem, type Template, type User, type WidgetDef, type Zone } from './engine/types';
 
 type ServerEvent =
   | { type: 'hello'; user: User | null; serverName: string; serverTime: number; timezone: string; channels: ChannelInfo[]; projects: ProjectSummary[] }
@@ -115,6 +115,8 @@ interface AppStore {
   /** False when not saved (already toasted). */
   /** Saved in `projectId` (default: the open project). */
   saveTemplate: (t: Template, projectId?: string) => Promise<boolean>;
+  /** Saves a widget built with the Builder in the project. */
+  saveWidget: (w: WidgetDef, projectId?: string) => Promise<boolean>;
   deleteTemplate: (id: string) => Promise<void>;
   saveRundown: (r: RundownItem[]) => Promise<void>;
   saveZones: (z: Zone[]) => Promise<boolean>;
@@ -457,6 +459,25 @@ export const useApp = create<AppStore>((set, get) => {
       if (!pid) return false;
       try {
         await api('PUT', `/api/projects/${encodeURIComponent(pid)}/templates/${encodeURIComponent(tpl.id)}`, tpl);
+        return true;
+      } catch (e) {
+        get().toast(t('Save failed: {error}', { error: errText(e) }), 'error');
+        return false;
+      }
+    },
+
+    async saveWidget(w, projectId) {
+      const pid = projectId ?? get().projectId;
+      if (!pid) return false;
+      // At once in the open project: its templates and the Operator read it.
+      const full = get().full[pid];
+      if (full) {
+        const widgets = [...(full.widgets ?? []).filter((x) => x.id !== w.id), w];
+        const next = { ...get().full, [pid]: { ...full, widgets } };
+        set({ full: next, ...(get().projectId === pid ? select(pid, next) : {}) });
+      }
+      try {
+        await api('PUT', `/api/projects/${encodeURIComponent(pid)}/widgets/${encodeURIComponent(w.id)}`, w);
         return true;
       } catch (e) {
         get().toast(t('Save failed: {error}', { error: errText(e) }), 'error');

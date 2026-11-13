@@ -39,6 +39,8 @@ import {
   Unlock,
   Video,
   MoreHorizontal,
+  Puzzle,
+  Repeat2,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -56,6 +58,10 @@ import { confirmDialog } from '../ui/dialogs';
 import { clearKeyframes, clearSelectedKeys, copyAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { t, tc, tn } from '../i18n';
+import { useApp } from '../store';
+import { BUILT_ICONS } from '../widgets/built';
+import { PREBUILT } from '../widgets/prebuilt';
+import { addWidget, newWidget } from './builder';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
 const PROP_ROWS: {
@@ -102,7 +108,8 @@ function flatten(t: Template): { layer: Layer; depth: number }[] {
     for (const l of [...(tree.get(pid) ?? [])].reverse()) {
       if (l.id === mask) continue;
       out.push({ layer: l, depth });
-      walk(l.id, depth + 1);
+      // A built widget is one layer here (its elements are edited in the Builder).
+      if (!l.widget) walk(l.id, depth + 1);
     }
   };
   walk(null, 0);
@@ -480,7 +487,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     const isSel = selected.includes(layer.id) || selected.includes(row.id);
     const Icon = layerIcon(layer);
     const dropCls = drop?.id === row.id ? `drop-${drop.pos}` : '';
-    const isFolder = row.type === 'group';
+    const isFolder = row.type === 'group' && !row.widget;
     const isFolded = isFolder && !!folded[row.id];
     const kids = isFolder ? descendants(template, row.id).filter((id) => id !== layer.id).map((id) => findLayer(template, id)!).filter(Boolean) : [];
     labels.push(
@@ -1024,11 +1031,18 @@ const LOREM_PARAGRAPH = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit
 
 /** Shapes on hand above the layers; the rest behind "+". */
 function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
+  const builder = useDesigner((s) => !!s.template?.builder);
   return (
     <div className="tl-insert" style={{ width }}>
       <button className="add-btn folder" title={t('New folder (group)')} onClick={() => onAdd('group')}>
         <FolderPlus size={14} />
       </button>
+      {/* The Builder: a Repeater (its content drawn several times, lit by a variable). */}
+      {builder && (
+        <button className="add-btn folder" title={t('Repeater')} onClick={() => onAdd('group', { clip: false, repeat: { count: 5, layout: 'row', gap: 8, off: 0.25 } }, t('Repeater'))}>
+          <Repeat2 size={14} />
+        </button>
+      )}
       <span className="tl-pipe" />
       <button className="tool" title={t('Rectangle')} onClick={() => onAdd('rect')}>
         <Square size={15} />
@@ -1084,6 +1098,12 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       <button className="tool" title={t('Pen')} onClick={() => onAdd('pen')}>
         <PenTool size={15} />
       </button>
+      <button className="tool" title={t('Video')} onClick={() => onAdd('image', { video: true, fit: 'contain', src: '' }, t('Video'))}>
+        <Video size={15} />
+      </button>
+      <button className="tool" title={t('Animation (Lottie)')} onClick={() => onAdd('group', { lottie: '', clip: true }, t('Animation (Lottie)'))}>
+        <Sparkles size={15} />
+      </button>
     </div>
   );
 }
@@ -1099,37 +1119,41 @@ type MenuItem = {
   soon?: boolean;
 };
 
-/** The + menu: one list of widgets, in this order. */
-const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Video; patch?: Record<string, unknown>; action?: 'video' | 'lottie'; hint?: string; preset?: string }[] = [
-  { type: 'ticker', label: 'Ticker' },
-  { type: 'credits', label: 'Credits' },
-  { widget: 'clock', label: 'Clock' },
-  { widget: 'time', label: 'Time' },
-  { type: 'table', label: 'Table' },
+/** The + menu: the base widgets (drawn by the engine), then the pre-built ones not yet made with the Builder. */
+const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Video; patch?: Record<string, unknown>; action?: 'video' | 'lottie'; hint?: string; preset?: string; built?: boolean }[] = [
   { type: 'counter', label: 'Counter' },
-  { type: 'chart', label: 'Chart' },
-  { type: 'typewriter', label: 'Typewriter' },
+  { widget: 'time', label: 'Time' },
+  { widget: 'clock', label: 'Clock' },
   { type: 'progress', label: 'Progress bar' },
-  { type: 'map', label: 'Map' },
+  { type: 'typewriter', label: 'Typewriter' },
   { type: 'qrCode', label: 'QR code' },
-  { label: 'Video', soon: Video, action: 'video', hint: 'A video file (mp4, mov, webm…), at most a minute' },
+  { type: 'map', label: 'Map' },
+  { type: 'chart', label: 'Chart' },
   { type: 'web', label: 'Iframe', soon: Code, hint: 'A web page or your HTML code (HTML5 outputs)' },
-  { label: 'Animation (Lottie)', soon: Sparkles, action: 'lottie', hint: 'A Lottie / Bodymovin file (.json, .zip, .lottie) added as layers' },
-  { type: 'scoreboard', label: 'Scoreboard' },
-  { type: 'socialWall', label: 'Social wall' },
-  { type: 'socialBadge', label: 'Social badge' },
+  { type: 'socialWall', label: 'Social wall', built: true },
+  { type: 'socialBadge', label: 'Social badge', built: true },
+  { type: 'table', label: 'Table', built: true },
+  { type: 'credits', label: 'Credits', built: true },
+  { type: 'ticker', label: 'Ticker', built: true },
 ];
-type Menu = MenuItem & { action?: 'video' | 'lottie' };
+type Menu = MenuItem & { action?: 'video' | 'lottie'; built?: boolean };
 const menu = (): Menu[] =>
   MENU.map((m) => {
     // A widget by its id (a type drawn by two widgets: the Clock and the Time) comes with its own settings.
     const w = m.widget ? WIDGET_LIST.find((x) => x.id === m.widget) : m.type ? WIDGET_LIST.find((x) => x.type === m.type) : undefined;
     const patch = m.widget && w ? (w.create() as Record<string, unknown>) : m.patch;
-    return { label: m.label, icon: m.soon && !w ? m.soon : (w?.icon ?? m.soon ?? Square), type: w?.type, patch, hint: m.hint, preset: m.preset, action: m.action, soon: !w && !m.action && !m.preset };
+    return { label: m.label, icon: m.soon && !w ? m.soon : (w?.icon ?? m.soon ?? Square), type: w?.type, patch, hint: m.hint, preset: m.preset, action: m.action, soon: !w && !m.action && !m.preset, built: m.built };
   });
+
+const NO_WIDGETS: never[] = [];
 
 function AddMenu({ onAdd }: { onAdd: AddLayer }) {
   const [open, setOpen] = useState<{ left: number; bottom: number } | null>(null);
+  const builder = useDesigner((s) => !!s.template?.builder);
+  const mine = useApp((s) => s.project?.widgets) ?? NO_WIDGETS;
+  const width = useApp((s) => s.project?.width ?? 1920);
+  const height = useApp((s) => s.project?.height ?? 1080);
+  const size = { width, height };
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(null);
@@ -1191,17 +1215,56 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
             top: 'auto',
           }}
         >
-          <div className="add-grid">
-            {menu().map((it) => (
-              <button key={it.label} disabled={it.soon} title={it.soon ? t('Coming soon') : it.hint && t(it.hint)} onClick={() => pick(it)}>
-                <span className="add-icon">
-                  <it.icon size={15} />
-                </span>
-                {tc('widget', it.label)}
-                {it.soon && <em>{t('soon')}</em>}
-              </button>
-            ))}
-          </div>
+          {(builder ? [[t('Base'), menu()] as const] : [[t('Base'), menu().filter((it) => !it.built)] as const, [t('Pre-built'), menu().filter((it) => it.built)] as const]).map(([title, list]) => (
+            <div key={title} className="add-sect">
+              <div className="add-mh">{title}</div>
+              <div className="add-grid">
+                {title === t('Pre-built') &&
+                  PREBUILT.map((p) => {
+                    const made = p.make();
+                    return (
+                      <button key={p.id} onClick={() => (setOpen(null), void addWidget(p.id, size))}>
+                        <span className="add-icon">{(() => { const I = BUILT_ICONS[made.icon ?? ''] ?? Puzzle; return <I size={15} />; })()}</span>
+                        {made.name}
+                      </button>
+                    );
+                  })}
+                {list.map((it) => (
+                  <button key={it.label} disabled={it.soon} title={it.soon ? t('Coming soon') : it.hint && t(it.hint)} onClick={() => pick(it)}>
+                    <span className="add-icon">
+                      <it.icon size={15} />
+                    </span>
+                    {tc('widget', it.label)}
+                    {it.soon && <em>{t('soon')}</em>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {!builder && (
+            <div className="add-sect">
+              <div className="add-mh">{t('My widgets')}</div>
+              <div className="add-grid">
+                {mine.map((w) => {
+                  const I = BUILT_ICONS[w.icon ?? ''] ?? Puzzle;
+                  return (
+                    <button key={w.id} onClick={() => (setOpen(null), void addWidget(w.id, size))}>
+                      <span className="add-icon">
+                        <I size={15} />
+                      </span>
+                      {w.name}
+                    </button>
+                  );
+                })}
+                <button className="add-new" onClick={() => (setOpen(null), void newWidget())}>
+                  <span className="add-icon">
+                    <Plus size={15} />
+                  </span>
+                  {t('New widget')}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

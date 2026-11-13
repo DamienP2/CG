@@ -368,6 +368,8 @@ export interface Template {
   markerModel?: number;
   /** The tracking input whose camera its anchored layers follow. */
   camera?: string;
+  /** The Builder: this is a widget being made (its definition but its layers, which are the template's); never saved as a template. */
+  builder?: Omit<WidgetDef, 'layers'>;
 }
 
 /** Where a tracked camera looks (mirror of cg_core::tracking::CameraSample; OpenTrackIO: degrees, mm, m). */

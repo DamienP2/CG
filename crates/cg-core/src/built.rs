@@ -507,7 +507,7 @@ mod tests {
         let (d, l) = (def(), layer());
         let mut data = start_data(&d, &l);
         data.insert("other".into(), "x".into());
-        let k = kept(&[d.clone()], &[l.clone()], &data);
+        let k = kept(std::slice::from_ref(&d), std::slice::from_ref(&l), &data);
         assert!(k.contains_key(&var_key("W", "score_1")));
         assert!(!k.contains_key(&var_key("W", "tir")));
         assert!(!k.contains_key("other"));

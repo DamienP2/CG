@@ -26,7 +26,7 @@ import { TemplatePublish } from './Collab';
 import { LayerAnchor, TemplateTracking } from './Tracking';
 import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, SliderNum, Toggle, Warnings, wiredKeys } from '../widgets/kit';
+import { Bound, builderHooks, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, SliderNum, Toggle, Warnings, wiredKeys } from '../widgets/kit';
 import { maskFolderOf } from './masks';
 import { t, tc, tn } from '../i18n';
 import { useDisplayPref } from '../displayPrefs';
@@ -260,6 +260,9 @@ export function setRatioLock(tpl: Template, layerId: string, lock: 'scaleLock' |
 export function ExposeButton({ layer, props: all, locked }: { layer: Layer; props: Prop[]; /** The pair keeps its proportions: one field, the other value follows. */ locked?: boolean }) {
   const { update, template } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template })));
   if (!template) return <span className="pp-op-space" />;
+  // In the Builder: published as an option of the widget.
+  const O = builderHooks.OptionToggle;
+  if (template.builder) return O ? <O layer={layer} paths={(locked ? all.slice(0, 1) : all).map((p) => `props.${p}`)} label={PROP_LABELS[all[0]] ? t(PROP_LABELS[all[0]]) : all[0]} /> : <span className="pp-op-space" />;
   const props = locked ? all.slice(0, 1) : all;
   const bound = all.map((p) => layer.bindings[p]).filter((k): k is string => !!k);
   const on = bound.length > 0;
@@ -1007,8 +1010,57 @@ function LayerGeneral({ layer }: { layer: Layer }) {
         </>
       )}
       {layer.type === 'group' && layer.lottie !== undefined && <LottieSource layer={layer} />}
+      {layer.type === 'group' && layer.repeat && <RepeatSettings layer={layer} />}
       {layer.type !== 'text' && layer.type !== 'image' && layer.type !== 'group' && !isTimed(layer) && <p className="hint">{t(LABELS[layer.type])}</p>}
     </div>
+  );
+}
+
+/** A Repeater (Builder): how many copies, the variable lighting them, side by side how. */
+function RepeatSettings({ layer }: { layer: Layer }) {
+  const update = useDesigner((s) => s.update);
+  const vars = useDesigner((s) => s.template?.builder?.vars) ?? [];
+  const r = layer.repeat!;
+  const set = (patch: Partial<NonNullable<Layer['repeat']>>, key?: string) => update((tpl) => void (findLayer(tpl, layer.id)!.repeat = { ...r, ...patch }), key);
+  return (
+    <>
+      <div className="row">
+        <span className="prop-label">{t('Copies')}</span>
+        <NumberField value={r.count} min={1} max={50} onChange={(v) => set({ count: Math.max(1, Math.round(v)) }, `rep-n-${layer.id}`)} />
+      </div>
+      <div className="row">
+        <span className="prop-label">{t('Lit by')}</span>
+        <Dropdown value={r.lit ?? ''} options={[{ value: '', label: t('All lit') }, ...vars.map((v) => ({ value: v.name, label: v.name }))]} onChange={(v) => set({ lit: v || undefined })} />
+      </div>
+      <div className="row">
+        <span className="prop-label">{t('Layout')}</span>
+        <Segmented
+          value={r.layout}
+          options={[
+            { value: 'row', label: t('Row') },
+            { value: 'column', label: t('Column') },
+            { value: 'grid', label: t('Grid') },
+          ]}
+          onChange={(v) => set({ layout: v as 'row' | 'column' | 'grid' })}
+        />
+      </div>
+      {r.layout === 'grid' && (
+        <div className="row">
+          <span className="prop-label">{t('Per row')}</span>
+          <NumberField value={r.cols ?? 3} min={1} max={20} onChange={(v) => set({ cols: Math.max(1, Math.round(v)) }, `rep-c-${layer.id}`)} />
+        </div>
+      )}
+      <div className="row">
+        <span className="prop-label">{t('Gap')}</span>
+        <NumberField value={r.gap} suffix="px" onChange={(v) => set({ gap: v }, `rep-g-${layer.id}`)} />
+      </div>
+      {r.lit && (
+        <div className="row">
+          <span className="prop-label">{t('Unlit')}</span>
+          <NumberField value={Math.round(r.off * 100)} min={0} max={100} suffix="%" onChange={(v) => set({ off: Math.max(0, Math.min(100, v)) / 100 }, `rep-o-${layer.id}`)} />
+        </div>
+      )}
+    </>
   );
 }
 

@@ -1,3 +1,4 @@
+import { insideWidget } from '../engine/built';
 import { withSettings } from '../engine/settings';
 import { RichInput } from '../ui/RichText';
 import { paragraphField, plain, richField } from '../engine/rich';
@@ -2306,7 +2307,7 @@ function AirControls({ project, zone, item, command, widget, bare, lead }: { pro
         </div>
       )}
       {tpl.layers
-        .filter((l) => l.visible && !!widgetOf(l)?.Operator && hasControls(l, item.data))
+        .filter((l) => l.visible && !!widgetOf(l)?.Operator && hasControls(l, item.data) && !insideWidget(tpl.layers, l))
         .map((l) => {
           const key = `${zone.id}:${l.id}`;
           return (
