@@ -937,6 +937,12 @@ pub fn is_timed(kind: &LayerKind) -> bool {
     }
 }
 
+/// Layers the operator starts, pauses and resets: the timed widgets, and
+/// the list folders whose rows go by (`Layer::roll`).
+pub fn is_clocked(l: &Layer) -> bool {
+    is_timed(&l.kind) || (matches!(l.kind, LayerKind::Group { .. }) && l.roll.is_some())
+}
+
 impl PlayoutItem {
     /// The frame the layers of a Lottie group are drawn at: the template's,
     /// unless the operator controls the group (paused, played, restarted, or
@@ -990,8 +996,9 @@ impl PlayoutItem {
 
     /// Time on air of one layer, in frames: the item's age, unless the
     /// operator paused, reset or has yet to start (manual start) the widget.
+    /// A list folder's roll group (`lists`) runs on its folder's clock.
     pub fn layer_age(&self, layer: &Layer) -> f64 {
-        match self.clocks.get(&layer.id) {
+        match self.clocks.get(crate::lists::clock_id(&layer.id)) {
             Some(c) => (c.paused_at.unwrap_or(self.age) - c.offset).max(0.0),
             None if layer.manual_start => 0.0,
             None => self.age,
@@ -1013,7 +1020,7 @@ impl PlayoutItem {
                 fps: fps.max(1.0),
                 data: &data,
             };
-            if is_timed(&l.kind)
+            if is_clocked(l)
                 && l.manual_start
                 && l.start_on.as_deref() != Some("trigger")
                 && !self.clocks.contains_key(&l.id)
@@ -1046,7 +1053,7 @@ impl PlayoutItem {
                 fps: fps.max(1.0),
                 data: &data,
             };
-            if is_timed(&l.kind)
+            if is_clocked(l)
                 && l.manual_start
                 && l.start_on.as_deref() == Some("trigger")
                 && crate::wid::same_trigger(&l.start_trigger, name)
@@ -2050,7 +2057,7 @@ impl ChannelState {
                     .layers
                     .iter()
                     .filter(|l| {
-                        is_timed(&l.kind)
+                        is_clocked(l)
                             && (all || l.id == target || l.name.eq_ignore_ascii_case(target.trim()))
                     })
                     .collect();
@@ -2089,6 +2096,20 @@ impl ChannelState {
                 let fps = project.frame_rate.as_f64().max(1.0);
                 // A widget built with the Builder: its control changes its
                 // variables (values of the graphic) and tells its Temps.
+                // A list the Operator edits (a control of kind `list`): its rows, at once.
+                if let Some(var) = crate::built::def_of(&project.widgets, l)
+                    .and_then(|d| d.controls.iter().find(|c| c.id == op))
+                    .filter(|c| c.rest.get("kind").and_then(|k| k.as_str()) == Some("list"))
+                    .and_then(|c| c.rest.get("list").and_then(|v| v.as_str()))
+                {
+                    let rows = match args.get("value") {
+                        Some(serde_json::Value::String(s)) => s.clone(),
+                        Some(v) => v.to_string(),
+                        None => String::new(),
+                    };
+                    item.data.insert(crate::built::var_key(&l.id, var), rows);
+                    return Ok(());
+                }
                 // With its Logic: the press starts its flows at the next tick
                 // (with what was typed, for `$value`).
                 if let Some(logic) = l.widget.as_ref().and_then(|w| w.logic.as_ref()) {
@@ -3845,6 +3866,34 @@ mod tests {
     }
 
     #[test]
+    fn a_list_control_sets_its_rows_on_air() {
+        let mut p = project();
+        let w: crate::model::Layer = serde_json::from_value(serde_json::json!({
+            "id": "W", "name": "Ticker", "type": "group",
+            "widget": { "def": "t", "snap": {
+                "id": "t", "name": "Ticker", "vars": [{ "name": "infos", "initial": "[]" }],
+                "controls": [{ "id": "liste", "kind": "list", "list": "infos" }]
+            } }
+        }))
+        .unwrap();
+        p.templates[0].layers.push(w);
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        ch.apply(
+            &p,
+            Command::Act {
+                zone: None,
+                layer: Some(1),
+                target: "W".into(),
+                op: "liste".into(),
+                args: serde_json::json!({ "value": "[{\"texte\":\"Une\"}]" }),
+            },
+        )
+        .unwrap();
+        assert_eq!(ch.layers[&1].data["w_W_infos"], "[{\"texte\":\"Une\"}]");
+    }
+
+    #[test]
     fn a_widgets_button_on_air_runs_its_logic() {
         let mut p = project();
         // A built widget « W »: « +1 » adds one to its score, « Undo » puts it back.
@@ -4873,6 +4922,47 @@ mod tests {
         assert_eq!(at(&ch, hold), 4.0);
         // The Out plays the template's frames.
         assert_eq!(at(&ch, hold + 5.0), hold + 5.0);
+    }
+
+    #[test]
+    fn a_rolling_list_runs_on_its_folders_clock() {
+        let mut p = crate::sample::demo_project();
+        let t = p.templates.iter_mut().find(|t| t.id == "ticker").unwrap();
+        let folder: Layer = serde_json::from_str(
+            r#"{"id":"news","name":"News","type":"group","props":{"width":600,"height":60},
+                "list":{"key":"items","layout":"row","gap":20},
+                "roll":{"mode":"continuous","dir":"left","by":"speed","speed":100}}"#,
+        )
+        .unwrap();
+        assert!(is_clocked(&folder) && !is_timed(&folder.kind));
+        t.layers.push(folder);
+        let data = crate::anim::Data::from([("items".to_string(), "A\nB".to_string())]);
+        let laid = crate::lists::expand(&t.layers, &data, &mut |_, s| s.len() as f64).unwrap();
+        let roll = laid.iter().find(|l| l.id == "news~roll").unwrap().clone();
+        let mut ch = ChannelState::default();
+        ch.apply(&p, Command::take("ticker", "ticker")).unwrap();
+        let key = *ch.layers.keys().next().unwrap();
+        let age = |ch: &ChannelState| ch.layers[&key].layer_age(&roll);
+        ch.tick(10.0);
+        assert_eq!(age(&ch), 10.0);
+        let ctl = |control| Command::Widget {
+            zone: None,
+            layer: Some(key),
+            target: "News".into(),
+            control,
+        };
+        // Paused: its rows stand still while the graphic plays on.
+        ch.apply(&p, ctl(WidgetControl::Pause)).unwrap();
+        ch.tick(5.0);
+        assert_eq!(age(&ch), 10.0);
+        ch.apply(&p, ctl(WidgetControl::Start)).unwrap();
+        ch.tick(5.0);
+        assert_eq!(age(&ch), 15.0);
+        ch.apply(&p, ctl(WidgetControl::Restart)).unwrap();
+        ch.tick(2.0);
+        assert_eq!(age(&ch), 2.0);
+        // Its own clock is the folder's.
+        assert!(ch.layers[&key].clocks.contains_key("news"));
     }
 
     #[test]

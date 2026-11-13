@@ -372,6 +372,7 @@ fn prepared<'p>(
     data: &Data,
     frame: f64,
     clock: cg_core::logic::Clock,
+    fonts: &mut FontStore,
 ) -> std::borrow::Cow<'p, Template> {
     use std::borrow::Cow;
     let set = match t.in_format(format) {
@@ -385,9 +386,69 @@ fn prepared<'p>(
         }
     };
     // The contents its Logic sets.
-    match cg_core::logic::patched(&set, frame, data, clock) {
+    let patched = match cg_core::logic::patched(&set, frame, data, clock) {
         Some(p) => Cow::Owned(p),
         None => set,
+    };
+    with_lists(patched, data, fonts)
+}
+
+/// `t` with its list folders' children repeated once per row of their list
+/// (`cg_core::lists`).
+fn with_lists<'p>(
+    t: std::borrow::Cow<'p, Template>,
+    data: &Data,
+    fonts: &mut FontStore,
+) -> std::borrow::Cow<'p, Template> {
+    let mut measure = |l: &cg_core::Layer, s: &str| line_width(fonts, l, s, data);
+    match cg_core::lists::expand(&t.layers, data, &mut measure) {
+        Some(layers) => {
+            let mut t = t.into_owned();
+            t.layers = layers;
+            std::borrow::Cow::Owned(t)
+        }
+        None => t,
+    }
+}
+
+/// The width of `text` on one line in the font of the text layer `l` (its
+/// size, letter spacing and case as set; other values from `data`), px.
+fn line_width(fonts: &mut FontStore, l: &cg_core::Layer, text: &str, data: &Data) -> f64 {
+    let LayerKind::Text {
+        font_family,
+        font_weight,
+        uppercase,
+        transform,
+        ..
+    } = &l.kind
+    else {
+        return 0.0;
+    };
+    let mut content = interpolate_text(text, data);
+    if cg_core::rich::has_markup(&content) {
+        content = cg_core::rich::plain(&content);
+    }
+    content = if *uppercase {
+        content.to_uppercase()
+    } else {
+        transform.apply(&content)
+    };
+    let num = |p: Prop| {
+        l.props
+            .get(&p)
+            .copied()
+            .unwrap_or_else(|| cg_core::anim::layer_default(l, p))
+            .as_number()
+            .unwrap_or(0.0)
+    };
+    match fonts.font(font_family, *font_weight) {
+        Some(f) if !content.is_empty() => text::text_width(
+            &f,
+            &content,
+            num(Prop::FontSize) as f32,
+            num(Prop::LetterSpacing) as f32,
+        ) as f64,
+        _ => 0.0,
     }
 }
 
@@ -934,9 +995,16 @@ impl Renderer {
                     secs: a.item.age / fps,
                     now_ms: now,
                 };
-                let t = a
-                    .set
-                    .get_or_init(|| prepared(a.template, format, &a.data, a.item.frame, clock));
+                let t = a.set.get_or_init(|| {
+                    prepared(
+                        a.template,
+                        format,
+                        &a.data,
+                        a.item.frame,
+                        clock,
+                        &mut self.fonts,
+                    )
+                });
                 let logic = match a.logic.get() {
                     Some(l) => l,
                     None => {
@@ -1186,7 +1254,14 @@ impl Renderer {
                     secs: item.age / fps,
                     now_ms: now,
                 };
-                let t_old = prepared(on_air[i].template, format, &old_data, item.frame, clock);
+                let t_old = prepared(
+                    on_air[i].template,
+                    format,
+                    &old_data,
+                    item.frame,
+                    clock,
+                    &mut self.fonts,
+                );
                 let logic = self.logic_values(&t_old, item.frame, &old_data, clock);
                 let old_ctx = Ctx {
                     template: &t_old,
@@ -1218,7 +1293,14 @@ impl Renderer {
                         secs: item.age / fps,
                         now_ms: now,
                     };
-                    let t_old = prepared(on_air[i].template, format, old_data, item.frame, clock);
+                    let t_old = prepared(
+                        on_air[i].template,
+                        format,
+                        old_data,
+                        item.frame,
+                        clock,
+                        &mut self.fonts,
+                    );
                     let logic = self.logic_values(&t_old, item.frame, old_data, clock);
                     let old_ctx = Ctx {
                         template: &t_old,
@@ -1364,6 +1446,8 @@ impl Renderer {
         let data = computed.as_ref().unwrap_or(data);
         let patched = cg_core::logic::patched(template, frame, data, clock);
         let template = patched.as_ref().unwrap_or(template);
+        let listed = with_lists(std::borrow::Cow::Borrowed(template), data, &mut self.fonts);
+        let template = &*listed;
         let logic = self.logic_values(template, frame, data, clock);
         let ctx = Ctx {
             template,
@@ -1578,6 +1662,13 @@ impl Renderer {
             // A folder under full opacity: its layers drawn together, then laid
             // at its opacity (they do not show through each other, as in CSS).
             let faded = is_group && r.num(Prop::Opacity) < 0.999;
+            // A folder whose rows go by in its box (`Layer::roll`), faded at both
+            // ends: drawn with its layers, then laid through its faded box.
+            let fade_edges = layer
+                .roll
+                .as_ref()
+                .filter(|ro| clip_children && ro.fade > 0.0)
+                .map(|ro| (ro.dir == cg_core::RollDir::Left, ro.fade as f32));
             // Pseudo-3D: drawn flat with its layers, then seen turned.
             let projected = lifted(&r);
             // A mask folder: its children drawn through its mask (one step, drawn each frame).
@@ -1596,7 +1687,7 @@ impl Renderer {
                 continue;
             }
             if planning {
-                if shadowed || projected || (faded && masked.is_none()) {
+                if shadowed || projected || ((faded || fade_edges.is_some()) && masked.is_none()) {
                     // The layer and its children are one step (drawn together).
                     let outer = self.steps.plan.replace(Vec::new());
                     let (own, then) = self.layer_motion(pm, ctx, &r, tf, opacity);
@@ -1644,6 +1735,7 @@ impl Renderer {
             // (its own motion, that of its second step when drawn in two)
             let sprite = (self.sprites_on
                 && !faded
+                && fade_edges.is_none()
                 && !projected
                 && !own_drawn
                 && !self.in_sprite
@@ -1705,9 +1797,11 @@ impl Renderer {
                 self.steps.whole -= 1;
                 continue;
             }
-            if faded {
+            if faded || fade_edges.is_some() {
                 self.steps.whole += 1;
-                self.draw_faded(pm, ctx, &r, tf, opacity, mask, own_rect);
+                let edges = fade_edges.and_then(|e| self.faded_box(pm, (w, h), e, tf, mask));
+                let laid = edges.as_deref().or(mask);
+                self.draw_faded(pm, ctx, &r, tf, opacity, laid, own_rect);
                 self.steps.whole -= 1;
                 continue;
             }
@@ -2395,6 +2489,63 @@ impl Renderer {
         if self.caching {
             self.scratch = Some(content);
         }
+    }
+
+    /// The box (`w` × `h`) of a folder whose rows go by, its ends faded over
+    /// `fade` px along x (`horiz`) or y, inside `parent`: kept while it does
+    /// not move (`mask::Kept`).
+    fn faded_box(
+        &mut self,
+        pm: &Pixmap,
+        (w, h): (f32, f32),
+        (horiz, fade): (bool, f32),
+        tf: Transform,
+        parent: Option<&Mask>,
+    ) -> Option<Arc<Mask>> {
+        let r = Rect::from_xywh(0.0, 0.0, w.max(0.01), h.max(0.01))?;
+        let (fw, fh) = (pm.width(), pm.height());
+        let region = scaled::device_bounds(r, tf, fw, fh)
+            .and_then(|b| {
+                tiny_skia::IntRect::from_ltrb(
+                    (b.left() - 3).max(0),
+                    (b.top() - 3).max(0),
+                    (b.right() + 3).min(fw as i32),
+                    (b.bottom() + 3).min(fh as i32),
+                )
+            })
+            .unwrap_or_else(|| tiny_skia::IntRect::from_xywh(0, 0, 1, 1).expect("a pixel"));
+        let nums = [w, h, fade, tf.sx, tf.ky, tf.kx, tf.sy, tf.tx, tf.ty];
+        let key = mask::Kept::key(fw, fh, &nums, horiz, parent, region);
+        self.masks.get_or_make(key, || {
+            let len = if horiz { w } else { h };
+            let f = (fade / len.max(1.0)).clamp(0.0, 0.5);
+            let end = if horiz {
+                tiny_skia::Point::from_xy(w, 0.0)
+            } else {
+                tiny_skia::Point::from_xy(0.0, h)
+            };
+            let (c0, c1) = (
+                tiny_skia::Color::from_rgba8(0, 0, 0, 0),
+                tiny_skia::Color::from_rgba8(0, 0, 0, 255),
+            );
+            let mut paint = Paint::default();
+            paint.set_color_rgba8(0, 0, 0, 255);
+            if let Some(sh) = tiny_skia::LinearGradient::new(
+                tiny_skia::Point::from_xy(0.0, 0.0),
+                end,
+                vec![
+                    tiny_skia::GradientStop::new(0.0, c0),
+                    tiny_skia::GradientStop::new(f, c1),
+                    tiny_skia::GradientStop::new(1.0 - f, c1),
+                    tiny_skia::GradientStop::new(1.0, c0),
+                ],
+                tiny_skia::SpreadMode::Pad,
+                Transform::identity(),
+            ) {
+                paint.shader = sh;
+            }
+            mask::painted(fw, fh, r, &paint, tf, parent)
+        })
     }
 
     /// A folder and its layers drawn on their own, then laid at `opacity`
@@ -4574,5 +4725,78 @@ mod tests {
         // Frozen at frame 50 (x = 500) while the template is at frame 80.
         assert_eq!(alpha(550, 50), 255);
         assert_eq!(alpha(850, 50), 0);
+    }
+
+    /// A list folder whose rows go by: a 100 px chip per row, crawling at
+    /// 100 px/s in a box of 600 × 60 at (200, 100), faded over 50 px at its
+    /// ends; frames drawn with the cache are the frames drawn whole.
+    #[test]
+    fn the_rows_of_a_list_go_by_in_their_box() {
+        let mut project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "news", "name": "T", "duration": 10.0, "markers": [], "zone": "", "fields": [],
+            "layers": [
+                {"id": "g", "name": "News", "type": "group",
+                 "props": {"x": 200.0, "y": 100.0, "width": 600.0, "height": 60.0},
+                 "list": {"key": "items", "layout": "row", "gap": 20.0},
+                 "roll": {"mode": "continuous", "dir": "left", "by": "speed", "speed": 100.0, "fade": 50.0}},
+                {"id": "chip", "name": "Chip", "type": "rect", "parent": "g",
+                 "props": {"x": 0.0, "y": 0.0, "width": 100.0, "height": 60.0, "fill": [1.0, 0.0, 0.0, 1.0]}}
+            ]
+        }))
+        .unwrap();
+        project.templates.push(t);
+        let project = Arc::new(project);
+        let mut state = ChannelState::default();
+        let take = Command::Take {
+            zone: None,
+            layer: Some(50),
+            template_id: "news".into(),
+            data: Some(Data::from([(
+                "items".to_string(),
+                r#"[{"a":"1"},{"a":"2"}]"#.to_string(),
+            )])),
+            rundown_id: None,
+        };
+        state.apply(&project, take).unwrap();
+        let dir = std::env::temp_dir().join("cg-render-test-assets");
+        let mut whole = Renderer::new(&dir);
+        whole.set_cache(false);
+        let mut cached = Renderer::new(&dir);
+        let cache = FrameCache::new();
+        let ms = 1_800_000_000_000.0;
+        let mut frames = Vec::new();
+        // Ages 1 s and 3 s (50 fps), and frames next to them.
+        for age in 0..=150 {
+            if age > 0 {
+                state.tick(1.0);
+            }
+            if ![0, 1, 2, 49, 50, 51, 150].contains(&age) {
+                continue;
+            }
+            let want = whole.render_channel_at(&project, &state, OUT, "UTC", ms);
+            let got = cached.render_channel_cached(&project, &state, OUT, "UTC", ms, &cache);
+            assert!(got.data == want.data, "frame {age} differs with the cache");
+            if age == 50 || age == 150 {
+                frames.push(want);
+            }
+        }
+        let alpha = |f: &Frame, x: usize| f.data[(130 * 1920 + x) * 4 + 3];
+        // At 1 s: 500 px from where it ends (the box's left): the first chip
+        // at 700..800, faded at the box's right end; nothing left of it.
+        let a = &frames[0];
+        assert_eq!(alpha(a, 720), 255);
+        assert_eq!(alpha(a, 650), 0);
+        assert!((20..120).contains(&alpha(a, 790)), "{}", alpha(a, 790));
+        assert_eq!(alpha(a, 820), 0, "the second chip is cut by the box");
+        // At 3 s: 300 px; the chips at 500..600 and 620..720, then the rows
+        // again 240 px further (740..840, cut at 800).
+        let b = &frames[1];
+        assert_eq!(alpha(b, 550), 255);
+        assert_eq!(alpha(b, 610), 0);
+        assert_eq!(alpha(b, 700), 255);
+        assert_eq!(alpha(b, 730), 0);
+        assert!(alpha(b, 760) > 200);
+        assert_ne!(a.data, b.data);
     }
 }

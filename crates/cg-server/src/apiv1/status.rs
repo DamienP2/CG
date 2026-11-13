@@ -214,7 +214,7 @@ fn paused(t: &Template, it: &PlayoutItem) -> bool {
 fn widgets(t: &Template, it: &PlayoutItem) -> Vec<WidgetStatus> {
     t.layers
         .iter()
-        .filter(|l| cg_core::playout::is_timed(&l.kind))
+        .filter(|l| cg_core::playout::is_clocked(l))
         .map(|l| WidgetStatus {
             id: l.id.clone(),
             name: l.name.clone(),

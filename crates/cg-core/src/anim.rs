@@ -178,7 +178,8 @@ impl ResolvedLayer<'_> {
     }
 }
 
-fn binding_value(prop: Prop, raw: &str) -> Option<Value> {
+/// A data value read for `prop`: a colour (`#rrggbb[aa]`) or a number.
+pub(crate) fn binding_value(prop: Prop, raw: &str) -> Option<Value> {
     if prop.is_color() {
         Color::from_hex(raw).map(Value::Color)
     } else {
@@ -524,6 +525,56 @@ pub fn apply_motion(
             set(Prop::ScaleX, &|v| v * (1.0 + 0.08 * swell));
             set(Prop::ScaleY, &|v| v * (1.0 + 0.08 * swell));
         }
+        K::Crawl | K::Step => {
+            let d = travel(m, t);
+            let p = match m.axis {
+                crate::MotionAxis::X => Prop::X,
+                crate::MotionAxis::Y => Prop::Y,
+            };
+            set(p, &|v| v + d);
+        }
+    }
+}
+
+/// How far a crawl or a step has moved its layer `t` seconds after its
+/// start, px (negative: left or up).
+pub fn travel(m: &crate::Motion, t: f64) -> f64 {
+    let t = t.max(0.0);
+    match m.kind {
+        crate::MotionKind::Crawl => {
+            let speed = m.distance / m.period;
+            let s = speed * t;
+            if s < m.lead {
+                return m.lead - s;
+            }
+            let u = s - m.lead;
+            if m.once {
+                -u.min(m.distance)
+            } else if m.distance > 0.0 {
+                -(u % m.distance)
+            } else {
+                0.0
+            }
+        }
+        crate::MotionKind::Step => {
+            use crate::lists::STEP_SLIDE as SLIDE;
+            let page = m.pause + SLIDE;
+            if page <= 0.0 {
+                return 0.0;
+            }
+            let n = (t / page).floor();
+            let k = n % f64::from(m.steps.max(1));
+            let f = (((t % page) - m.pause) / SLIDE).clamp(0.0, 1.0);
+            // Eased in and out (cubic).
+            let g = -2.0 * f + 2.0;
+            let f = if f < 0.5 {
+                4.0 * f * f * f
+            } else {
+                1.0 - g * g * g / 2.0
+            };
+            -(k + f) * m.distance
+        }
+        _ => 0.0,
     }
 }
 
@@ -566,9 +617,8 @@ mod motion_tests {
     #[test]
     fn a_loop_moves_on_the_age_after_its_start() {
         let m = Motion {
-            kind: MotionKind::Pulse,
-            period: 2.0,
             from: 25.0,
+            ..Motion::new(MotionKind::Pulse, 2.0)
         };
         let base = || {
             BTreeMap::from([
@@ -588,5 +638,74 @@ mod motion_tests {
         let mut v = base();
         apply_motion(&mut v, &m, 25.0, 50.0, 2.5);
         assert!((v[&Prop::ScaleX].as_number().unwrap() - 1.0).abs() < 1e-9);
+    }
+
+    /// `got` is `want`, or the same place one cycle of `cycle` px away.
+    fn near(got: f64, want: f64, cycle: f64) -> bool {
+        [want, want - cycle, want + cycle]
+            .iter()
+            .any(|w| (got - w).abs() < 1e-6)
+    }
+
+    #[test]
+    fn a_crawl_comes_in_then_goes_round() {
+        // Shared test vector 2 (lists spec): distance 320, lead 600, 100 px/s.
+        let m = Motion {
+            distance: 320.0,
+            lead: 600.0,
+            ..Motion::new(MotionKind::Crawl, 3.2)
+        };
+        let x = |age: f64| {
+            let mut v = BTreeMap::from([(Prop::X, Value::Number(100.0))]);
+            apply_motion(&mut v, &m, 0.0, 50.0, age);
+            v[&Prop::X].as_number().unwrap() - 100.0
+        };
+        assert!(near(x(0.0), 600.0, 0.0));
+        assert!(near(x(6.0), 0.0, 0.0));
+        assert!(near(x(7.0), -100.0, 0.0));
+        assert!(near(x(9.2), 0.0, 320.0), "{}", x(9.2));
+    }
+
+    #[test]
+    fn a_crawl_once_stays_at_its_end() {
+        // Shared test vector 3: up, distance 100, lead 60, 16 px/s, once.
+        let m = Motion {
+            axis: crate::MotionAxis::Y,
+            distance: 100.0,
+            lead: 60.0,
+            once: true,
+            ..Motion::new(MotionKind::Crawl, 6.25)
+        };
+        let y = |age: f64| {
+            let mut v = BTreeMap::from([(Prop::X, Value::Number(5.0))]);
+            apply_motion(&mut v, &m, 0.0, 50.0, age);
+            assert_eq!(v[&Prop::X], Value::Number(5.0));
+            v[&Prop::Y].as_number().unwrap()
+        };
+        assert!(near(y(0.0), 60.0, 0.0));
+        assert!(near(y(10.0), -100.0, 0.0));
+        assert!(near(y(20.0), -100.0, 0.0));
+    }
+
+    #[test]
+    fn a_step_turns_the_pages() {
+        // Shared test vector 4: pages of 60 px, 3 of them, 4 s each.
+        let m = Motion {
+            distance: 60.0,
+            steps: 3,
+            pause: 4.0,
+            ..Motion::new(MotionKind::Step, 4.6)
+        };
+        let x = |age: f64| travel(&m, age);
+        assert!(near(x(2.0), 0.0, 0.0));
+        assert!(near(x(4.3), -30.0, 0.0), "{}", x(4.3));
+        assert!(near(x(5.0), -60.0, 0.0));
+        // Page 3 is page 0 again (laid after the last one).
+        assert!(near(x(13.8), 0.0, 180.0), "{}", x(13.8));
+        // From its start frame on.
+        let late = Motion { from: 50.0, ..m };
+        let mut v = BTreeMap::new();
+        apply_motion(&mut v, &late, 60.0, 50.0, 5.0 + 1.0);
+        assert!(near(v[&Prop::X].as_number().unwrap(), -60.0, 0.0));
     }
 }

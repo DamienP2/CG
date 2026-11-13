@@ -853,6 +853,148 @@ pub struct Layer {
     /// its index.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lit: Option<Lit>,
+    /// A folder whose children are drawn once per row of a list held in the
+    /// data ([`crate::lists`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list: Option<ListRepeat>,
+    /// A list folder whose rows go by in its box ([`crate::lists`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roll: Option<Roll>,
+    /// Inside a list folder: shown for a row or not, colours from a column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_list: Option<InList>,
+}
+
+/// A folder's children once per row of the list in the value `key` (a JSON
+/// array of objects).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRepeat {
+    pub key: String,
+    #[serde(default)]
+    pub layout: ListLayout,
+    /// Grid: copies per row (3 when unset).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cols: Option<u32>,
+    /// Between two copies, px.
+    #[serde(default)]
+    pub gap: f64,
+}
+
+/// How the copies of a list folder are laid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ListLayout {
+    /// Side by side (along x).
+    #[default]
+    Row,
+    /// One under the other (along y).
+    Column,
+    /// In rows of `cols`.
+    Grid,
+}
+
+/// A list folder's rows going by in its box: on and on, or a page at a time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Roll {
+    #[serde(default)]
+    pub mode: RollMode,
+    #[serde(default)]
+    pub dir: RollDir,
+    /// Continuous: at a speed (on and on), or over a duration (once).
+    #[serde(default)]
+    pub by: RollBy,
+    /// px/s.
+    #[serde(default = "default_list_roll_speed")]
+    pub speed: f64,
+    /// Seconds.
+    #[serde(default = "default_list_roll_duration")]
+    pub duration: f64,
+    /// One: seconds on each page.
+    #[serde(default = "default_four")]
+    pub pause: f64,
+    /// Faded over that many px at both ends of the box.
+    #[serde(default)]
+    pub fade: f64,
+}
+
+fn default_list_roll_speed() -> f64 {
+    120.0
+}
+fn default_list_roll_duration() -> f64 {
+    30.0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RollMode {
+    /// The rows go by without a stop.
+    #[default]
+    Continuous,
+    /// A box of rows at a time, then the next.
+    One,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RollDir {
+    /// From right to left.
+    #[default]
+    Left,
+    /// From bottom to top.
+    Up,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RollBy {
+    #[default]
+    Speed,
+    Duration,
+}
+
+/// What an element of a list folder takes from its row.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InList {
+    /// Shown only for the rows passing this test.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<RowTest>,
+    /// Colours chosen by the value of a column.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub colors: Vec<RowColor>,
+}
+
+/// A test on the value of a column of a row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowTest {
+    pub col: String,
+    pub test: RowTestKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RowTestKind {
+    /// Not empty (spaces aside).
+    Filled,
+    Empty,
+    Is,
+    IsNot,
+}
+
+/// A colour property set by the value of a column (value → `#rrggbb[aa]`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowColor {
+    /// The property (`fill`, `stroke`…); one this side does not know is left.
+    pub prop: String,
+    pub col: String,
+    #[serde(default)]
+    pub map: BTreeMap<String, String>,
 }
 
 /// A built widget placed in a template (see [`crate::built`]).
@@ -915,6 +1057,64 @@ pub struct Motion {
     /// animation); before, the layer is as set.
     #[serde(default)]
     pub from: f64,
+    /// Crawl, step: along x or y.
+    #[serde(default, skip_serializing_if = "MotionAxis::is_x")]
+    pub axis: MotionAxis,
+    /// Crawl: one cycle (px); step: one page (px).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub distance: f64,
+    /// Crawl: how far the content starts (px), before its first cycle.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lead: f64,
+    /// Step: the pages.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub steps: u32,
+    /// Step: seconds on each page.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pause: f64,
+    /// Crawl: one pass, then it stays.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub once: bool,
+}
+
+impl Motion {
+    /// A movement of `kind` over `period` seconds from frame 0, its other
+    /// settings unset.
+    pub fn new(kind: MotionKind, period: f64) -> Self {
+        Motion {
+            kind,
+            period,
+            from: 0.0,
+            axis: MotionAxis::X,
+            distance: 0.0,
+            lead: 0.0,
+            steps: 0,
+            pause: 0.0,
+            once: false,
+        }
+    }
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
+
+/// The axis a crawl or a step moves along.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum MotionAxis {
+    #[default]
+    X,
+    Y,
+}
+
+impl MotionAxis {
+    pub fn is_x(&self) -> bool {
+        *self == MotionAxis::X
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -932,6 +1132,10 @@ pub enum MotionKind {
     Shake,
     /// A slow zoom in and out (pictures).
     KenBurns,
+    /// Goes by along its axis, on and on (or once): a list folder's rows.
+    Crawl,
+    /// Goes a page at a time along its axis: a list folder's pages.
+    Step,
 }
 
 /// A stretch of a template's timeline: from (shown) to (gone), in frames.

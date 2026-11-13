@@ -5,6 +5,7 @@ pub mod anim;
 pub mod built;
 pub mod datapath;
 pub mod easing;
+pub mod lists;
 pub mod logic;
 pub mod lottie;
 pub mod model;
