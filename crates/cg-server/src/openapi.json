@@ -5438,6 +5438,37 @@
     }
    }
   },
+  "/api/widgets/press": {
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Press a control of a built widget outside the air",
+    "description": "Runs the widget's Logic once, as on air (the Operator's preview, the Builder's try-out). Body: `{ logic, widget, control, value?, data, states }`.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`{ set, states, forward }`: the values changed, the widgets' states, what goes to its elements.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/widgets/{wid}": {
    "parameters": [
     {

@@ -872,6 +872,10 @@ pub struct WidgetInstance {
     /// on the library (shared widgets, edits waiting for Publish).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snap: Option<Box<crate::built::Def>>,
+    /// Its Logic as placed here (node ids under the folder's, its buttons as
+    /// triggers): run with the template's on air.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logic: Option<crate::logic::Logic>,
 }
 
 /// A copy made by a Repeater: drawn in full while the number in the value

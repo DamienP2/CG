@@ -347,9 +347,241 @@ pub fn act(
     Ok(out)
 }
 
-/// The values of the template's built widgets kept after the graphic has been
-/// on air (variables marked to keep), by data key: what its rundown item
-/// keeps for the next take.
+/// The trigger a button of the widget placed as `widget` fires (its Logic
+/// starts there: a `Control` node of the Builder becomes a trigger with this
+/// name in the template).
+pub fn control_trigger(widget: &str, control: &str) -> String {
+    format!("__w:{widget}:{control}")
+}
+
+/// The pulse that keeps what was typed in a field of the widget `widget`
+/// for the press's flow (`$value`).
+pub fn typed_key(widget: &str) -> String {
+    format!("wv:{widget}")
+}
+
+/// A variable's new value: `op` (add, set, toggle, next, prev, cycle, reset)
+/// on `cur`, with `value`; `list` its values, `start` its start value.
+pub fn op_value(
+    cur: &str,
+    op: &str,
+    value: &str,
+    list: &[String],
+    start: &str,
+) -> Result<String, String> {
+    Ok(match op {
+        "add" => {
+            let by = num(value).ok_or_else(|| format!("“{value}” is not a number"))?;
+            fmt_num(num(cur).unwrap_or(0.0) + by)
+        }
+        "set" => value.to_string(),
+        "toggle" => (!truthy(cur)).to_string(),
+        "next" | "prev" | "cycle" => {
+            let back = op == "prev";
+            if list.is_empty() {
+                fmt_num(num(cur).unwrap_or(0.0) + if back { -1.0 } else { 1.0 })
+            } else {
+                let len = list.len() as i64;
+                let at = list.iter().position(|x| x == cur).map_or(-1, |i| i as i64);
+                let to = if op == "cycle" {
+                    (at + 1).rem_euclid(len)
+                } else if back {
+                    (at - 1).max(0)
+                } else {
+                    (at + 1).min(len - 1)
+                };
+                list[to as usize].clone()
+            }
+        }
+        "reset" => start.to_string(),
+        other => return Err(format!("unknown change “{other}”")),
+    })
+}
+
+/// What goes with an element's action `op` asked by a widget's Logic: the
+/// seconds to add (adjust), else the value (a time to set…).
+pub fn element_args(op: &str, arg: &str) -> Value {
+    if arg.trim().is_empty() {
+        return Value::Null;
+    }
+    match (op, num(arg)) {
+        ("adjust", Some(s)) => serde_json::json!({ "seconds": s }),
+        _ => serde_json::json!({ "value": arg }),
+    }
+}
+
+/// The values of a press before it changed them, per widget: one Undo step
+/// each once the press is done ([`end_steps`]).
+pub type Steps = BTreeMap<String, BTreeMap<String, String>>;
+
+/// « Change a variable » of a widget's Logic: `op` on the variable `key` (on
+/// every variable of `all` when `key` is empty: Reset all), its old value
+/// kept in `steps` for Undo. `value` is already what was typed (`$value`).
+#[allow(clippy::too_many_arguments)]
+pub fn change_var(
+    data: &mut Data,
+    steps: &mut Steps,
+    widget: &str,
+    key: &str,
+    op: &str,
+    value: &str,
+    list: &[String],
+    start: &str,
+    all: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let keys: Vec<(&str, &str)> = if key.is_empty() {
+        all.iter().map(|(k, s)| (k.as_str(), s.as_str())).collect()
+    } else {
+        vec![(key, start)]
+    };
+    let step = steps.entry(widget.to_string()).or_default();
+    for (k, start) in keys {
+        let cur = data.get(k).cloned().unwrap_or_else(|| start.to_string());
+        let v = op_value(&cur, op, value, list, start)?;
+        step.entry(k.to_string()).or_insert(cur);
+        data.insert(k.to_string(), v);
+    }
+    Ok(())
+}
+
+/// The press is done: one Undo step per widget it changed.
+pub fn end_steps(states: &mut BTreeMap<String, Value>, steps: Steps) {
+    for (w, before) in steps {
+        let st = states.entry(w).or_insert(Value::Null);
+        push_step(st, before);
+    }
+}
+
+/// What pressing the control `control` of the widget placed as `widget` does
+/// through its Logic `logic` (as placed: [`control_trigger`]s), at once, on
+/// the values `data` and the widgets' states `states` (Undo): the changes of
+/// values, and what goes to its elements. The Operator's preview and the
+/// Builder's try-out; on air the same flows run with the template's.
+pub fn press(
+    logic: &crate::logic::Logic,
+    widget: &str,
+    control: &str,
+    typed: &str,
+    data: &Data,
+    states: &mut BTreeMap<String, Value>,
+) -> Result<(Data, Vec<Forward>), String> {
+    use crate::logic::flow::{run, Act, Tick};
+    use crate::logic::{event_key, NodeKind};
+    let logic = crate::logic::current(logic);
+    let logic = logic.as_ref();
+    let name = control_trigger(widget, control);
+    let mut tick = data.clone();
+    let mut any = false;
+    for n in &logic.nodes {
+        if let NodeKind::TriggerIn { name: n2 } = &n.kind {
+            if n2.trim().eq_ignore_ascii_case(&name) {
+                tick.insert(event_key(&n.id), "1".into());
+                any = true;
+            }
+        }
+    }
+    if !any {
+        return Err(format!("no control “{control}”"));
+    }
+    let acts = run(
+        logic,
+        &Tick {
+            data: &tick,
+            secs: 0.0,
+            now_ms: 0,
+        },
+        &mut BTreeMap::new(),
+        &mut BTreeMap::new(),
+    );
+    let mut out = data.clone();
+    let mut steps = Steps::new();
+    let mut forward = Vec::new();
+    let typed_of = |raw: &str| {
+        if raw.trim() == "$value" {
+            typed.to_string()
+        } else {
+            raw.to_string()
+        }
+    };
+    for a in acts {
+        match a {
+            Act::Wvar {
+                key,
+                op,
+                value,
+                list,
+                start,
+                all,
+                widget,
+            } => change_var(
+                &mut out,
+                &mut steps,
+                &widget,
+                &key,
+                &op,
+                &typed_of(&value),
+                &list,
+                &start,
+                &all,
+            )?,
+            Act::Wundo { widget } => {
+                let st = states.entry(widget).or_insert(Value::Null);
+                undo(&mut out, st);
+            }
+            Act::Widget {
+                layer,
+                control,
+                arg,
+            } => {
+                let args = element_args(&control, &typed_of(&arg));
+                forward.push(Forward {
+                    layer,
+                    op: control,
+                    args,
+                });
+            }
+            _ => {}
+        }
+    }
+    end_steps(states, steps);
+    let changed = out
+        .into_iter()
+        .filter(|(k, v)| data.get(k) != Some(v))
+        .collect();
+    Ok((changed, forward))
+}
+
+/// One Undo step of a widget (the values before a press), in its operator
+/// state.
+pub fn push_step(state: &mut Value, before: BTreeMap<String, String>) {
+    if before.is_empty() {
+        return;
+    }
+    let mut st: State = serde_json::from_value(state.clone()).unwrap_or_default();
+    st.hist.push(before);
+    if st.hist.len() > UNDO_STEPS {
+        st.hist.remove(0);
+    }
+    if let Ok(v) = serde_json::to_value(&st) {
+        *state = v;
+    }
+}
+
+/// Puts back the values before the widget's last press. False: nothing to undo.
+pub fn undo(data: &mut Data, state: &mut Value) -> bool {
+    let mut st: State = serde_json::from_value(state.clone()).unwrap_or_default();
+    let Some(last) = st.hist.pop() else {
+        return false;
+    };
+    for (k, v) in last {
+        data.insert(k, v);
+    }
+    if let Ok(v) = serde_json::to_value(&st) {
+        *state = v;
+    }
+    true
+}
+
 /// The definition of the widget placed as `l`: the one it was made from
 /// (its snapshot), else the project's.
 pub fn def_of<'a>(defs: &'a [Def], l: &'a Layer) -> Option<&'a Def> {
@@ -359,6 +591,9 @@ pub fn def_of<'a>(defs: &'a [Def], l: &'a Layer) -> Option<&'a Def> {
         .or_else(|| defs.iter().find(|d| d.id == w.def))
 }
 
+/// The values of the template's built widgets kept after the graphic has been
+/// on air (variables marked to keep), by data key: what its rundown item
+/// keeps for the next take.
 pub fn kept(defs: &[Def], layers: &[Layer], data: &Data) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for l in layers {
@@ -549,5 +784,55 @@ mod tests {
         assert!(inside_widget(&layers, &layers[2]));
         assert!(!inside_widget(&layers, &layers[0]));
         assert!(!inside_widget(&layers, &layers[3]));
+    }
+
+    /// A widget's Logic: « +1 » adds one to its score, « Undo » puts it back,
+    /// « Set » takes what was typed; « Start » tells its Temps.
+    fn press_logic() -> crate::logic::Logic {
+        serde_json::from_value(serde_json::json!({
+            "nodes": [
+                { "id": "W/a", "type": "triggerIn", "name": "__w:W:plus" },
+                { "id": "W/b", "type": "wvar", "var": "w_W_score", "op": "add", "value": "1", "start": "0", "widget": "W" },
+                { "id": "W/c", "type": "triggerIn", "name": "__w:W:undo" },
+                { "id": "W/d", "type": "wundo", "widget": "W" },
+                { "id": "W/e", "type": "triggerIn", "name": "__w:W:set" },
+                { "id": "W/f", "type": "wvar", "var": "w_W_score", "op": "set", "value": "$value", "widget": "W" },
+                { "id": "W/g", "type": "triggerIn", "name": "__w:W:go" },
+                { "id": "W/h", "type": "widget", "layer": "W/clock", "control": "start" }
+            ],
+            "edges": [
+                { "from": "W/a", "to": "W/b", "port": "run" },
+                { "from": "W/c", "to": "W/d", "port": "run" },
+                { "from": "W/e", "to": "W/f", "port": "run" },
+                { "from": "W/g", "to": "W/h", "port": "run" }
+            ]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_press_runs_the_widgets_logic() {
+        let logic = press_logic();
+        let mut data = Data::new();
+        let mut states = BTreeMap::new();
+        for _ in 0..2 {
+            let (set, _) = press(&logic, "W", "plus", "", &data, &mut states).unwrap();
+            data.extend(set);
+        }
+        assert_eq!(data["w_W_score"], "2");
+        let (set, _) = press(&logic, "W", "undo", "", &data, &mut states).unwrap();
+        data.extend(set);
+        assert_eq!(data["w_W_score"], "1");
+        let (set, _) = press(&logic, "W", "set", "7", &data, &mut states).unwrap();
+        data.extend(set);
+        assert_eq!(data["w_W_score"], "7");
+        let (set, fwd) = press(&logic, "W", "go", "", &data, &mut states).unwrap();
+        assert!(set.is_empty());
+        assert_eq!(fwd.len(), 1);
+        assert_eq!(
+            (fwd[0].layer.as_str(), fwd[0].op.as_str()),
+            ("W/clock", "start")
+        );
+        assert!(press(&logic, "W", "nope", "", &data, &mut states).is_err());
     }
 }

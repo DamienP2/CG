@@ -677,7 +677,20 @@ const WANT_RESUME: &str = "fl:want:resume:";
 
 /// A received trigger or Continue: true for one tick.
 fn is_pulse(k: &str) -> bool {
-    k == CONTINUE_FLAG || k.starts_with("trigger:")
+    k == CONTINUE_FLAG || k.starts_with("trigger:") || k.starts_with("wv:")
+}
+
+/// `$value` in what a widget's Logic asks: what was typed in the field
+/// pressed (the widget `widget`, or the one an element is in).
+fn typed(item: &PlayoutItem, widget: &str, raw: &str) -> String {
+    if raw.trim() != "$value" {
+        return raw.to_string();
+    }
+    let w = widget.split('/').next().unwrap_or(widget);
+    item.watch
+        .get(&crate::built::typed_key(w))
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// Sets a variable of the graphic; a number glides there over `transition` s.
@@ -2076,6 +2089,29 @@ impl ChannelState {
                 let fps = project.frame_rate.as_f64().max(1.0);
                 // A widget built with the Builder: its control changes its
                 // variables (values of the graphic) and tells its Temps.
+                // With its Logic: the press starts its flows at the next tick
+                // (with what was typed, for `$value`).
+                if let Some(logic) = l.widget.as_ref().and_then(|w| w.logic.as_ref()) {
+                    let name = crate::built::control_trigger(&l.id, &op);
+                    let known = logic.nodes.iter().any(|n| {
+                        matches!(&n.kind, crate::logic::NodeKind::TriggerIn { name: x }
+                            if x.trim().eq_ignore_ascii_case(&name))
+                    });
+                    if !known {
+                        return Err(PlayoutError::Widget(format!(
+                            "{}: no control “{op}”",
+                            l.name
+                        )));
+                    }
+                    item.watch.insert(trigger_flag(&name), "1".into());
+                    let typed = match args.get("value") {
+                        Some(serde_json::Value::String(s)) => s.clone(),
+                        Some(serde_json::Value::Null) | None => String::new(),
+                        Some(v) => v.to_string(),
+                    };
+                    item.watch.insert(crate::built::typed_key(&l.id), typed);
+                    return Ok(());
+                }
                 if l.widget.is_some() {
                     let def = crate::built::def_of(&project.widgets, l)
                         .ok_or_else(|| PlayoutError::UnknownWidget(target.clone()))?;
@@ -2582,7 +2618,12 @@ impl ChannelState {
                 }
                 Act::Sound(ask) => self.sounds.0.push(ask),
                 // A graphic's own actions: none in the project's Logic.
-                Act::Out(_) | Act::Resume(_) | Act::NextRow(_) | Act::Widget { .. } => {}
+                Act::Out(_)
+                | Act::Resume(_)
+                | Act::NextRow(_)
+                | Act::Widget { .. }
+                | Act::Wvar { .. }
+                | Act::Wundo { .. } => {}
             }
         }
         for ask in asks {
@@ -2794,6 +2835,9 @@ impl ChannelState {
         // Another graphic in or out, on the output of the one whose Logic says so.
         let mut takes: Vec<(String, bool, u32, Option<How>)> = Vec::new();
         let mut widgets: Vec<(u32, String, WidgetControl)> = Vec::new();
+        // Actions of widgets with an argument (layer, target, op, value).
+        let mut element_acts: Vec<(u32, String, String, String)> = Vec::new();
+        let mut steps = crate::built::Steps::new();
         let mut asks: Vec<PlaylistAsk> = Vec::new();
         let mut clear_all: Option<Option<How>> = None;
         let mut animations: Vec<(String, String, Vec<PropSet>, Option<How>)> = Vec::new();
@@ -2827,11 +2871,21 @@ impl ChannelState {
                 continue;
             }
             // One graph: the Logic (and the Triggers of a template not saved since).
+            // …and the flows of its built widgets (their buttons, their variables).
             let merged;
-            let graph = if t.triggers.nodes.is_empty() {
+            let widgets_logic: Vec<&crate::logic::Logic> = t
+                .layers
+                .iter()
+                .filter_map(|l| l.widget.as_ref()?.logic.as_ref())
+                .collect();
+            let graph = if t.triggers.nodes.is_empty() && widgets_logic.is_empty() {
                 crate::logic::current(&t.logic)
             } else {
-                merged = crate::logic::merged(&t.logic, &t.triggers);
+                let mut all = crate::logic::merged(&t.logic, &t.triggers);
+                for w in widgets_logic {
+                    all = crate::logic::merged(&all, w);
+                }
+                merged = all;
                 crate::logic::current(&merged)
             };
             let graph = &*graph;
@@ -2932,15 +2986,62 @@ impl ChannelState {
                         }
                     }
                     Act::Sound(ask) => sounds.push(ask),
-                    Act::Widget { layer: l, control } => {
-                        if let Ok(control) = serde_json::from_value::<WidgetControl>(
-                            serde_json::Value::String(control),
-                        ) {
-                            widgets.push((*layer, l, control));
+                    Act::Widget {
+                        layer: l,
+                        control,
+                        arg,
+                    } => {
+                        let simple = arg
+                            .is_empty()
+                            .then(|| {
+                                serde_json::from_value::<WidgetControl>(serde_json::Value::String(
+                                    control.clone(),
+                                ))
+                                .ok()
+                            })
+                            .flatten();
+                        match simple {
+                            Some(c) => widgets.push((*layer, l, c)),
+                            // Any action of the widget (a Temps set to a time…).
+                            None => {
+                                let arg = typed(item, &l, &arg);
+                                element_acts.push((*layer, l, control, arg));
+                            }
                         }
+                    }
+                    Act::Wvar {
+                        key,
+                        op,
+                        value,
+                        list,
+                        start,
+                        all,
+                        widget,
+                    } => {
+                        let value = typed(item, &widget, &value);
+                        let _ = crate::built::change_var(
+                            &mut item.data,
+                            &mut steps,
+                            &widget,
+                            &key,
+                            &op,
+                            &value,
+                            &list,
+                            &start,
+                            &all,
+                        );
+                    }
+                    Act::Wundo { widget } => {
+                        let st = item
+                            .widgets
+                            .entry(widget)
+                            .or_insert(serde_json::Value::Null);
+                        crate::built::undo(&mut item.data, st);
                     }
                 }
             }
+            // One Undo step per widget and press.
+            crate::built::end_steps(&mut item.widgets, std::mem::take(&mut steps));
             // Asked to go out: once the in animation is over.
             if item.watch.contains_key(WANT_OUT) {
                 match item.phase {
@@ -3036,6 +3137,18 @@ impl ChannelState {
                     layer: Some(layer),
                     target,
                     control,
+                },
+            );
+        }
+        for (layer, target, op, value) in element_acts {
+            let _ = self.apply(
+                project,
+                Command::Act {
+                    zone: None,
+                    layer: Some(layer),
+                    target,
+                    args: crate::built::element_args(&op, &value),
+                    op,
                 },
             );
         }
@@ -3729,6 +3842,63 @@ mod tests {
             .insert("status".into(), "final".into());
         assert_eq!(ch.event_resumes(&p, "UTC", &mut w).len(), 1);
         assert_eq!(ch.layers[&1].phase, Phase::Out);
+    }
+
+    #[test]
+    fn a_widgets_button_on_air_runs_its_logic() {
+        let mut p = project();
+        // A built widget « W »: « +1 » adds one to its score, « Undo » puts it back.
+        let w: crate::model::Layer = serde_json::from_value(serde_json::json!({
+            "id": "W", "name": "Score", "type": "group",
+            "widget": { "def": "sb", "logic": {
+                "nodes": [
+                    { "id": "W/a", "type": "triggerIn", "name": "__w:W:plus" },
+                    { "id": "W/b", "type": "wvar", "var": "w_W_score", "op": "add", "value": "1", "start": "0", "widget": "W" },
+                    { "id": "W/c", "type": "triggerIn", "name": "__w:W:undo" },
+                    { "id": "W/d", "type": "wundo", "widget": "W" }
+                ],
+                "edges": [
+                    { "from": "W/a", "to": "W/b", "port": "run" },
+                    { "from": "W/c", "to": "W/d", "port": "run" }
+                ]
+            } }
+        }))
+        .unwrap();
+        p.templates[0].layers.push(w);
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        let mut m = EstimatedWidth;
+        let press = |ch: &mut ChannelState, op: &str| {
+            ch.apply(
+                &p,
+                Command::Act {
+                    zone: None,
+                    layer: Some(1),
+                    target: "W".into(),
+                    op: op.into(),
+                    args: serde_json::Value::Null,
+                },
+            )
+        };
+        // A tick sees the press, the next one its end.
+        let mut tick = |ch: &mut ChannelState| {
+            ch.event_resumes(&p, "UTC", &mut m);
+            ch.event_resumes(&p, "UTC", &mut m);
+        };
+        for _ in 0..2 {
+            press(&mut ch, "plus").unwrap();
+            tick(&mut ch);
+        }
+        assert_eq!(ch.layers[&1].data["w_W_score"], "2");
+        press(&mut ch, "undo").unwrap();
+        tick(&mut ch);
+        assert_eq!(ch.layers[&1].data["w_W_score"], "1");
+        assert!(press(&mut ch, "nope").is_err());
+        // The press lasts one tick.
+        assert!(!ch.layers[&1]
+            .watch
+            .keys()
+            .any(|k| k.starts_with("trigger:") || k.starts_with("wv:")));
     }
 
     #[test]

@@ -185,6 +185,70 @@ pub async fn host(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> ApiR
     Ok(Json(Host { id: HOST }))
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PressQuery {
+    /// The widget's Logic as placed ([`cg_core::built::control_trigger`]s).
+    logic: cg_core::logic::Logic,
+    /// The widget's folder id in the template.
+    widget: String,
+    control: String,
+    /// What was typed in the field pressed (`$value`).
+    #[serde(default)]
+    value: String,
+    #[serde(default)]
+    data: BTreeMap<String, String>,
+    /// The widgets' states (Undo), by layer id.
+    #[serde(default)]
+    states: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Serialize)]
+pub struct Forwarded {
+    layer: String,
+    op: String,
+    args: serde_json::Value,
+}
+
+#[derive(Serialize)]
+pub struct Pressed {
+    /// The values changed.
+    set: BTreeMap<String, String>,
+    states: BTreeMap<String, serde_json::Value>,
+    /// What goes to its elements (a Temps started…).
+    forward: Vec<Forwarded>,
+}
+
+/// A control of a widget pressed outside the air (the Operator's preview,
+/// the Builder's try-out): its Logic run as on air.
+pub async fn press(
+    CurrentUser(_me): CurrentUser,
+    Json(q): Json<PressQuery>,
+) -> ApiResult<Json<Pressed>> {
+    let mut states = q.states;
+    let (set, forward) = cg_core::built::press(
+        &q.logic,
+        &q.widget,
+        &q.control,
+        &q.value,
+        &q.data,
+        &mut states,
+    )
+    .map_err(bad)?;
+    Ok(Json(Pressed {
+        set,
+        states,
+        forward: forward
+            .into_iter()
+            .map(|f| Forwarded {
+                layer: f.layer,
+                op: f.op,
+                args: f.args,
+            })
+            .collect(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

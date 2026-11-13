@@ -201,6 +201,7 @@ pub fn router() -> Router<Shared> {
         )
         .route("/api/widgets", get(crate::widgets::list))
         .route("/api/widgets/host", post(crate::widgets::host))
+        .route("/api/widgets/press", post(crate::widgets::press))
         .route(
             "/api/widgets/{wid}",
             put(crate::widgets::put).delete(crate::widgets::delete),

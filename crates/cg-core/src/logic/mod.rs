@@ -451,10 +451,48 @@ pub enum NodeKind {
         sound: String,
     },
     /// Starts, pauses, resets… a widget of the graphic (`control`: start,
-    /// pause, toggle, reset, restart).
+    /// pause, toggle, reset, restart; with `arg`, any action of the widget:
+    /// set a Temps to `arg`…).
     Widget {
         layer: String,
         control: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        arg: String,
+    },
+    /// A button of a widget being built (the Builder): its press starts the
+    /// flow. In a template it is a trigger of the widget placed
+    /// ([`crate::built::control_trigger`]).
+    Control {
+        #[serde(default)]
+        control: String,
+    },
+    /// Changes a variable of a built widget (`var`: its data key in the
+    /// template; its name in the Builder): add, set, toggle, next, prev,
+    /// cycle, reset (`var` empty: all of them, `all` key → start value);
+    /// `value` (or the input `value`, `$value`: what was typed); `list` its
+    /// values, `start` its start value; `widget`: the widget placed (one
+    /// Undo step per press).
+    Wvar {
+        #[serde(default)]
+        var: String,
+        #[serde(default)]
+        op: String,
+        #[serde(default)]
+        value: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        list: Vec<String>,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        start: String,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        all: BTreeMap<String, String>,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        widget: String,
+    },
+    /// Puts back the variables of a built widget as they were before its
+    /// last press.
+    Wundo {
+        #[serde(default)]
+        widget: String,
     },
 
     // ── Older graphs, made over by [`upgrade`] when a template loads ───
@@ -494,6 +532,7 @@ impl NodeKind {
         match self {
             NodeKind::Event { .. }
             | NodeKind::TriggerIn { .. }
+            | NodeKind::Control { .. }
             | NodeKind::Continue {}
             | NodeKind::Start {}
             | NodeKind::Every { .. }
@@ -538,6 +577,8 @@ impl NodeKind {
                 | NodeKind::PlaySound { .. }
                 | NodeKind::StopSound { .. }
                 | NodeKind::Widget { .. }
+                | NodeKind::Wvar { .. }
+                | NodeKind::Wundo { .. }
         )
     }
 }
@@ -866,7 +907,7 @@ pub fn input_ports(k: &NodeKind) -> Vec<String> {
         }
         NodeKind::Layer { rows, .. } => rows.iter().map(|r| r.key.clone()).collect(),
         NodeKind::Wait { .. } => vec!["seconds".into()],
-        NodeKind::SetVar { .. } => vec!["value".into()],
+        NodeKind::SetVar { .. } | NodeKind::Wvar { .. } => vec!["value".into()],
         _ => Vec::new(),
     }
 }

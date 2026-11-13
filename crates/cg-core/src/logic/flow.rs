@@ -49,6 +49,21 @@ pub enum Act {
     Widget {
         layer: String,
         control: String,
+        arg: String,
+    },
+    /// A variable of a built widget changed (see [`super::NodeKind::Wvar`]).
+    Wvar {
+        key: String,
+        op: String,
+        value: String,
+        list: Vec<String>,
+        start: String,
+        all: BTreeMap<String, String>,
+        widget: String,
+    },
+    /// A built widget's variables back to before its last press.
+    Wundo {
+        widget: String,
     },
 }
 
@@ -123,7 +138,10 @@ pub fn run(
         }
         let id = n.id.as_str();
         match &n.kind {
-            NodeKind::Event { .. } | NodeKind::TriggerIn { .. } | NodeKind::Continue {} => {
+            NodeKind::Event { .. }
+            | NodeKind::TriggerIn { .. }
+            | NodeKind::Control { .. }
+            | NodeKind::Continue {} => {
                 let now = tick.data.get(&event_key(id)).is_some_and(|v| v == "1");
                 if rising(watch, format!("fl:lv:{id}"), now) {
                     fire(&mut queue, id, "out");
@@ -400,10 +418,47 @@ pub fn run(
                 }),
                 &mut queue,
             ),
-            NodeKind::Widget { layer, control } => act(
+            NodeKind::Widget {
+                layer,
+                control,
+                arg,
+            } => act(
                 Act::Widget {
                     layer: layer.clone(),
                     control: control.clone(),
+                    arg: arg.clone(),
+                },
+                &mut queue,
+            ),
+            NodeKind::Wvar {
+                var,
+                op,
+                value,
+                list,
+                start,
+                all,
+                widget,
+            } if !op.is_empty() && (!var.is_empty() || !all.is_empty()) => {
+                let v = match g.input(&id, "value", cx!(), 0) {
+                    Some(v) => expr::text(&v),
+                    None => value.clone(),
+                };
+                act(
+                    Act::Wvar {
+                        key: var.clone(),
+                        op: op.clone(),
+                        value: v,
+                        list: list.clone(),
+                        start: start.clone(),
+                        all: all.clone(),
+                        widget: widget.clone(),
+                    },
+                    &mut queue,
+                )
+            }
+            NodeKind::Wundo { widget } => act(
+                Act::Wundo {
+                    widget: widget.clone(),
                 },
                 &mut queue,
             ),
