@@ -428,25 +428,27 @@ const ICON_NAMES: Record<string, string> = {
   puzzle: 'Puzzle',
 };
 
-const OPS: [CtlAction['op'], string][] = [
-  ['add', 'Add to'],
-  ['set', 'Set'],
-  ['toggle', 'Switch'],
-  ['next', 'Next value of'],
-  ['prev', 'Previous value of'],
-  ['cycle', 'Next value (round) of'],
-  ['reset', 'Back to the start'],
-  ['undo', 'Undo'],
-  ['timer', 'Temps'],
+/** What an action does (the list, in the interface's language). */
+const OPS = (): [CtlAction['op'], string][] => [
+  ['add', t('Add to')],
+  ['set', t('Give the value')],
+  ['toggle', t('Invert')],
+  ['next', t('Next value of')],
+  ['prev', t('Previous value of')],
+  ['cycle', t('Next value (round) of')],
+  ['reset', t('Back to the start')],
+  ['undo', t('Undo')],
+  ['timer', t('Temps')],
 ];
-const TIMER_OPS: [string, string][] = [
-  ['toggle', 'Play / Pause'],
-  ['start', 'Play'],
-  ['pause', 'Pause'],
-  ['reset', 'Reset'],
-  ['restart', 'Restart'],
-  ['adjust', '± seconds'],
-  ['set', 'Set to'],
+/** What an action does to a Temps. */
+const TIMER_OPS = (): [string, string][] => [
+  ['toggle', t('Play / Pause')],
+  ['start', t('Play it')],
+  ['pause', t('Pause')],
+  ['reset', t('Reset')],
+  ['restart', t('Restart')],
+  ['adjust', t('± seconds')],
+  ['set', t('Set to')],
 ];
 
 /** The widget's controls: the Operator's buttons, rows and fields, and what each does. */
@@ -567,34 +569,37 @@ function ControlsPane() {
                 <input value={c.row ?? ''} onChange={(e) => setCtl(c.id, { row: e.target.value })} />
               </label>
             )}
-            {c.actions.map((a, i) => (
-              <div key={i} className="bl-row bl-action">
-                <span className="prop-label">{i ? '' : t('Does')}</span>
-                <div className="bl-action-ctl">
-                  <Dropdown value={a.op} options={OPS.map(([v, l]) => ({ value: v, label: t(l) }))} onChange={(op) => setAct(i, { op: op as CtlAction['op'] })} />
-                  {a.op === 'timer' ? (
-                    <>
-                      <Dropdown value={a.layer ?? ''} options={temps.map((l) => ({ value: l.id, label: l.name }))} onChange={(v) => setAct(i, { layer: v })} />
-                      <Dropdown value={a.value ?? 'toggle'} options={TIMER_OPS.map(([v, l]) => ({ value: v, label: t(l) }))} onChange={(v) => setAct(i, { value: v })} />
-                      {(a.value === 'adjust' || a.value === 'set') && <input className="bl-val" value={a.arg ?? ''} placeholder={c.kind === 'field' ? '$value' : a.value === 'adjust' ? '10' : '0:30'} onChange={(e) => setAct(i, { arg: e.target.value })} />}
-                    </>
-                  ) : a.op === 'undo' ? null : (
-                    <>
-                      <Dropdown value={a.var ?? ''} options={a.op === 'reset' ? [{ value: '', label: t('All') }, ...vars] : vars} onChange={(v) => setAct(i, { var: v })} />
-                      {(a.op === 'add' || a.op === 'set') && <input className="bl-val" value={a.value ?? ''} placeholder={c.kind === 'field' ? '$value' : '1'} onChange={(e) => setAct(i, { value: e.target.value })} />}
-                    </>
-                  )}
-                  <button className="icon-btn ghost" title={t('Remove')} onClick={() => setCtl(c.id, { actions: c.actions.filter((_, j) => j !== i) })}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
+            {/* What it does: its actions, one after the other. */}
+            <div className="bl-row bl-row-top">
+              <span className="prop-label">{t('Does')}</span>
+              <div className="bl-acts">
+                {c.actions.map((a, i) => (
+                  <div key={i} className="bl-act-card">
+                    <span className="bl-act-n">{i + 1}</span>
+                    <div className="bl-act-body">
+                      <Dropdown value={a.op} options={OPS().map(([v, l]) => ({ value: v, label: l }))} onChange={(op) => setAct(i, { op: op as CtlAction['op'] })} />
+                      {a.op === 'timer' ? (
+                        <div className="bl-act-args">
+                          <Dropdown value={a.layer ?? ''} options={temps.map((l) => ({ value: l.id, label: l.name }))} onChange={(v) => setAct(i, { layer: v })} />
+                          <Dropdown value={a.value ?? 'toggle'} options={TIMER_OPS().map(([v, l]) => ({ value: v, label: l }))} onChange={(v) => setAct(i, { value: v })} />
+                          {(a.value === 'adjust' || a.value === 'set') && <input className="bl-val" value={a.arg ?? ''} placeholder={c.kind === 'field' ? '$value' : a.value === 'adjust' ? '10' : '0:30'} onChange={(e) => setAct(i, { arg: e.target.value })} />}
+                        </div>
+                      ) : a.op === 'undo' ? null : (
+                        <div className="bl-act-args">
+                          <Dropdown value={a.var ?? ''} options={a.op === 'reset' ? [{ value: '', label: t('All') }, ...vars] : vars} onChange={(v) => setAct(i, { var: v })} />
+                          {(a.op === 'add' || a.op === 'set') && <input className="bl-val" value={a.value ?? ''} placeholder={c.kind === 'field' ? '$value' : '1'} onChange={(e) => setAct(i, { value: e.target.value })} />}
+                        </div>
+                      )}
+                    </div>
+                    <button className="icon-btn ghost" title={t('Remove')} onClick={() => setCtl(c.id, { actions: c.actions.filter((_, j) => j !== i) })}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button className="btn small ghost" onClick={() => setCtl(c.id, { actions: [...c.actions, { op: 'add', var: b.vars[0]?.name ?? '', value: '1' }] })}>
+                  <Plus size={13} /> {t('Action')}
+                </button>
               </div>
-            ))}
-            <div className="bl-row">
-              <span className="prop-label">{c.actions.length ? '' : t('Does')}</span>
-              <button className="btn small ghost" onClick={() => setCtl(c.id, { actions: [...c.actions, { op: 'add', var: b.vars[0]?.name ?? '', value: '1' }] })}>
-                <Plus size={13} /> {t('Action')}
-              </button>
             </div>
             <div className="bl-row">
               <span className="prop-label">{t('Ask on air')}</span>
@@ -621,8 +626,8 @@ function ControlsPane() {
 /** What an action does, in a few words. */
 function actionText(a: CtlAction, tpl: Template): string {
   if (a.op === 'timer') {
-    const op = TIMER_OPS.find(([v]) => v === a.value)?.[1];
-    return `${(a.layer && findLayer(tpl, a.layer)?.name) || a.layer || ''} : ${op ? t(op) : (a.value ?? '')}${a.arg ? ` ${a.arg}` : ''}`;
+    const op = TIMER_OPS().find(([v]) => v === a.value)?.[1];
+    return `${(a.layer && findLayer(tpl, a.layer)?.name) || a.layer || ''} : ${op ?? a.value ?? ''}${a.arg ? ` ${a.arg}` : ''}`;
   }
   if (a.op === 'add') return a.value?.startsWith('-') ? `${a.var} − ${a.value.slice(1)}` : `${a.var} + ${a.value}`;
   if (a.op === 'set') return `${a.var} = ${a.value}`;

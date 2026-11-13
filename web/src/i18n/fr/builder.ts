@@ -68,4 +68,13 @@ export const builder: Record<string, string> = {
   'Shows the variable {name} · click to stop': 'Affiche la variable {name} · cliquer pour arrêter',
   'Show a variable of the widget': 'Afficher une variable du widget',
   Option: 'Option',
+  'Add to': 'Ajouter à',
+  'Give the value': 'Mettre la valeur',
+  Invert: 'Inverser',
+  'Next value of': 'Valeur suivante de',
+  'Previous value of': 'Valeur précédente de',
+  'Next value (round) of': 'Valeur suivante en boucle de',
+  Temps: 'Temps',
+  'Play it': 'Lire',
+  '± seconds': '± secondes',
 };

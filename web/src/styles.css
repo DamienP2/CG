@@ -22094,12 +22094,6 @@ textarea.tx-grow {
 .bl-form .btn.danger {
   align-self: flex-start;
 }
-.bl-action-ctl {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
 .bl-val {
   width: 72px;
 }
@@ -22137,4 +22131,60 @@ textarea.tx-grow {
 }
 .bl-link button + button:hover {
   opacity: 1;
+}
+/* Builder › a control's actions, in their order. */
+.bl-row-top {
+  align-items: flex-start;
+}
+.bl-row-top > .prop-label {
+  padding-top: 8px;
+}
+.bl-acts {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bl-acts > .btn {
+  align-self: flex-start;
+}
+.bl-act-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.bl-act-n {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  color: var(--text-3);
+  font: 600 10.5px var(--mono);
+}
+.bl-act-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bl-act-args {
+  display: flex;
+  gap: 6px;
+}
+.bl-act-args > * {
+  flex: 1;
+  min-width: 0;
+}
+.bl-act-args > .bl-val {
+  flex: 0 0 64px;
 }
