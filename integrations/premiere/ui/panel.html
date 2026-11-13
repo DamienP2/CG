@@ -1,107 +1,60 @@
-<!-- 1 · Projects -->
-<section id="scr-projects" class="scr">
-  <header class="hd">
-    <span class="logo">S</span><b class="ttl">Strata Graphics</b><span class="sp"></span>
-    <span id="conn" class="conn"><i></i><span id="connTxt"></span></span>
-    <button id="gear" class="ib" title="Settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-    </button>
-  </header>
-  <div class="bar">
-    <input id="pSearch" class="grow" placeholder="Search projects…" />
-    <button id="syncNow" class="ib round" title="Sync now">⟳</button>
-  </div>
-  <div id="projects" class="list"></div>
-  <footer class="ft">
-    <span id="srvTxt" class="ell"></span><span class="sp"></span>
-    <span class="ft-l">Auto-sync</span><button id="autoSync" class="sw" title="Auto-sync"><i></i></button>
-  </footer>
-</section>
+<div id="pp" class="pp-root">
+  <nav class="topbar pp-top">
+    <button id="back" class="icon-btn ghost pp-back pp-off" title="Séquence"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-left" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
+    <div id="brand" class="brand pp-brand" aria-label="Strata Graphics, Le Figaro AudioVisuel" title="Séquence"><span class="brand-lockup"><svg class="brand-f-lead" viewBox="93.8 -0.2 52.3 52.95" width="23.7" height="24" aria-hidden="true"><path fill="currentColor" d="M145.93,22.93v-10.33h-35.97c2.12,2.08,7.43,7.77,7.92,13.05-.05-.42-.28-1.57-1.25-3.27-.98-1.72-2.72-4-5.8-6.66-.03-.03-.06-.05-.09-.08-1.11-.96-2.39-1.98-3.87-3.03C98.07,5.95,95.14,2.38,94.38.01c0,0-2.69,9.66,4.5,17.36,0,0-1.74-.36-3.41-1.02,0,0,2.98,7.41,11.12,11.33,0,0-2.11.07-3.92-.14,0,0,1.93,2.92,7.66,5.88v8.46c0,.57-.46,1.04-1.04,1.04h-3.97v7.83h24.8v-7.85h-3.76c-.57,0-1.04-.46-1.04-1.04v-3.41c1.19.21,4.51,1.95,5.96,3.12,3.92,3.17,8.11,8.05,8.11,8.05l1.83,1.13s-5.07-6.05-8.33-9.3c-2.27-2.27-6.1-6.1-6.1-6.1l-.2-.22h9.57v-7.19h-10.82v-7.51l9.78-.04c.58,0,1.04.46,1.04,1.04v1.5h9.8-.03Z"></path></svg><span class="brand-name">Strata</span><span class="brand-module">Graphics</span></span></div>
+    <span class="spacer"></span>
+    <button id="pill" class="ux1-pill wait" aria-live="polite" title="Réglages"><i class="ux1-dot"></i> <span id="pillTxt"></span></button>
+  </nav>
 
-<!-- 2 · Templates -->
-<section id="scr-templates" class="scr hidden">
-  <header class="hd">
-    <span class="logo">S</span><b id="projTitle" class="ttl"></b><span class="sp"></span>
-    <button class="back" data-go="projects">‹ Projects</button>
-  </header>
-  <div class="bar wrap">
-    <input id="tSearch" class="grow" placeholder="Search templates…" />
-    <div id="zones" class="chips"></div>
-  </div>
-  <div id="templates" class="list tgrid"></div>
-</section>
+  <!-- 1 · Séquence -->
+  <section id="scr-seq" class="pp-scr">
+    <section class="opx-pane grow pp-fill">
+      <div id="seqTabs" class="opx-pltabs"><div class="opx-pltabs-scroll" role="tablist"><div class="opx-pl on" role="tab"><span id="seqName" class="opx-name-cell"></span><span id="seqN" class="opx-pl-n"></span></div></div></div>
+      <header id="seqHead" class="opx-head"><span class="opx-title">Séquence</span><span id="seqFmt" class="muted small pp-ell"></span><span class="spacer"></span><button id="seqAdd" class="opx-add" title="Ajouter un graphique"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></button></header>
+      <div id="rows" class="opx-scroll"></div>
+    </section>
+    <footer id="seqFoot" class="ux1-transport pp-foot pp-off"><div class="opx-upd pp-grow"><button id="updAll" class="opx-upd-go"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg> TOUT METTRE À JOUR <span id="updN" class="opx-upd-n"></span></button></div></footer>
+  </section>
 
-<!-- 3 · Clip -->
-<section id="scr-clip" class="scr hidden">
-  <header class="hd">
-    <span class="logo">S</span><b id="tplTitle" class="ttl"></b><span class="sp"></span>
-    <button id="backTpl" class="back" data-go="templates"></button>
-  </header>
-  <div class="clip">
-    <div class="col">
-      <div id="pv" class="pv"><iframe id="pvFrame" title="" tabindex="-1"></iframe></div>
-      <div class="transport">
-        <button id="play" class="ib" title="Play">▶</button>
-        <button id="loop" class="ib on" title="Loop">⟲</button>
-        <span id="pvTc" class="tc"></span>
+  <!-- 2 · Modèles -->
+  <section id="scr-tpl" class="pp-scr pp-off">
+    <section class="project-panel"><header><span>Projet</span></header><div class="pjp-body"><button id="pjName" class="pjp-name" title="Changer de projet"><span id="pjNameTxt"></span><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button></div></section>
+    <div id="tplList" class="template-list pp-fill"></div>
+  </section>
+
+  <!-- 3 · Clip sélectionné, 4 · Nouveau clip -->
+  <section id="scr-clip" class="pp-scr pp-off">
+    <div id="clipScroll" class="pp-fill pp-scroll">
+      <section class="opx-pane">
+        <header class="opx-head opx-mon-head"><span class="opx-title">Aperçu</span><span id="monName" class="opx-mon-name"><input id="monNameIn" class="opx-name" readonly tabindex="-1" /></span><span class="spacer"></span><button id="eye" class="icon-btn ghost opx-mon-eye" aria-pressed="true" title="Masquer l’image"></button></header>
+        <div id="mon" class="opx-monitor pp-mon"><div id="screen" class="opx-screen"><div id="vp" class="op-viewport"><iframe id="pvFrame" title="" tabindex="-1"></iframe></div></div></div>
+      </section>
+      <div class="tpl-props pp-props">
+        <div id="fPlace" class="tpl-field"><span class="tpl-label">Placement</span><div id="place" class="segmented"><button type="button" data-place="playhead">Tête de lecture</button><button type="button" data-place="range">Entrée → Sortie</button></div><span id="placeInfo" class="muted small pp-range"></span></div>
+        <div id="fDur" class="tpl-field"><span class="tpl-label">Durée</span><div class="dur-field"><div class="dur-main"><button id="durMinus" class="dur-step" title="− 1 seconde (Maj : − 1 image)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-left" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button><input id="durTc" class="dur-tc" title="Minutes:secondes:images, ou tapez 5, 5s, 2:10" spellcheck="false" /><button id="durPlus" class="dur-step" title="+ 1 seconde (Maj : + 1 image)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button></div><div class="dur-units"><span>min</span><span>s</span><span>images</span></div><div id="durPresets" class="dur-presets"><button data-sec="3">3s</button><button data-sec="5">5s</button><button data-sec="8">8s</button><button data-sec="10">10s</button><button data-sec="15">15s</button><button data-sec="30">30s</button></div></div></div>
+        <div class="tpl-field"><span class="tpl-label">Déroulé<button id="addAct" type="button" class="dd-btn pp-addact pp-off" title="Ajouter une action"><span class="dd-label">+ Action</span><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button></span><div id="ruler" class="tl-ruler pp-ruler"><div id="rTime" class="tl-time"></div><div id="rMarks" class="tl-marks"></div><div id="rHead" class="playhead"></div></div><div id="acts" class="opx-tcol pp-acts"></div></div>
       </div>
-      <div class="blk">
-        <div class="blk-h">
-          <span class="cap">Durations</span><span class="sp"></span>
-          <label class="tot"><span>Total</span><input id="total" type="number" min="0.1" max="300" step="0.1" /><i>s</i></label>
-          <button id="origin" class="pill"></button>
-        </div>
-        <div id="tl" class="tl">
-          <div id="ruler" class="ruler"></div>
-          <div id="track" class="track"></div>
-          <div id="labels" class="labels"></div>
-          <div id="ph" class="ph"></div>
-        </div>
+      <div id="valsHead" class="tpl-props pp-props"><div class="tpl-field"><span class="tpl-label">Valeurs</span></div></div>
+      <section class="opx-sect"><div class="opx-sect-b "><div id="vals" class="opx-tcol"></div></div></section>
+    </div>
+    <footer class="ux1-transport pp-foot">
+      <div id="updBox" class="opx-upd pp-grow"><button id="upd" class="opx-upd-go"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg> <span id="updTxt">METTRE À JOUR</span></button></div>
+      <button id="ins" class="opx-btn big red pp-grow"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward" aria-hidden="true"><path d="M21 4v16"></path><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"></path></svg> INSÉRER<span id="insTrack" class="opx-next-name"></span></button>
+      <button id="insAll" class="opx-btn big pp-all pp-off"></button>
+    </footer>
+  </section>
+
+  <!-- 5 · Réglages -->
+  <section id="scr-set" class="pp-scr pp-off">
+    <div class="pp-fill pp-scroll">
+      <div class="tpl-props pp-props">
+        <div class="tpl-field"><span class="tpl-label">Serveur</span><input id="server" placeholder="http://strata-server:8080" spellcheck="false" /></div>
+        <div class="tpl-field"><span class="tpl-label">Clé d’API</span><div class="pp-line"><input id="key" class="pp-grow-in" type="password" placeholder="pcg_…" spellcheck="false" /><button id="paste" type="button" class="btn small">Coller</button></div></div>
+        <div class="tpl-field"><div class="pp-line"><button id="test" type="button" class="btn small">Tester la connexion</button><span id="testState" class="muted small pp-ell"></span></div></div>
+        <div class="tpl-field"><span class="tpl-label">Version</span><div class="pp-line"><span id="ver" class="pp-ver"></span><span id="verState" class="muted small pp-ell"></span><span class="spacer"></span><button id="check" type="button" class="btn small">Vérifier</button></div></div>
       </div>
     </div>
-    <div class="col">
-      <div id="paramsCap" class="cap pad">Exposed parameters</div>
-      <div id="fields" class="fields"></div>
-    </div>
-  </div>
-  <footer class="ft act">
-    <button id="update" class="btn primary hidden">Update clip</button>
-    <button id="insert" class="btn primary" title="Insert at playhead">Insert</button>
-  </footer>
-</section>
+  </section>
 
-<!-- 4 · Settings -->
-<section id="scr-settings" class="scr hidden">
-  <header class="hd">
-    <span class="logo">S</span><b class="ttl">Settings</b><span class="sp"></span>
-    <button class="back" data-go="projects">‹ Projects</button>
-  </header>
-  <div class="list set">
-    <div class="cap pad">Server</div>
-    <div class="rows">
-      <label class="row"><span class="lab">URL</span><input id="server" class="grow" placeholder="http://strata-server:8080" spellcheck="false" /></label>
-      <label class="row"><span class="lab">API key</span><input id="key" class="grow" type="password" placeholder="pcg_…" spellcheck="false" /><button id="paste" class="pill" type="button">Paste</button></label>
-      <div class="row"><button id="test" class="pill">Test connection</button><span id="testState" class="state ell"></span></div>
-    </div>
-    <div class="cap pad">Sync</div>
-    <div class="rows">
-      <div class="row">
-        <span class="lab">Auto-sync</span><button id="autoSync2" class="sw"><i></i></button>
-        <select id="every">
-          <option value="10">10 s</option>
-          <option value="30">30 s</option>
-          <option value="60">1 min</option>
-          <option value="300">5 min</option>
-        </select>
-      </div>
-      <div class="row"><span class="lab">Last</span><span id="lastAgo" class="val ell"></span><button id="syncNow2" class="pill">⟳ Now</button></div>
-    </div>
-    <div class="cap pad">Panel</div>
-    <div class="rows">
-      <div class="row"><span class="lab">Version</span><span id="ver" class="val ell"></span><span id="verState" class="state"></span></div>
-      <div class="row"><span class="lab"></span><button id="check" class="pill">Check for updates</button></div>
-    </div>
-  </div>
-</section>
-
-<div id="toast" class="toast"></div>
+  <div id="toasts" class="toasts"></div>
+</div>

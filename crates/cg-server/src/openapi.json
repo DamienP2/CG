@@ -2414,7 +2414,7 @@
      "Post-production"
     ],
     "summary": "Render a graphic to a video file with alpha",
-    "description": "QuickTime (.mov), PNG codec with alpha (Premiere, After Effects, Resolve, Avid). The clip plays the template like on air: animation in, `hold` seconds on air, then the out animation (`includeOut`), or the clip timeline given by `timing`. The project format closest to width × height is used (9:16 sequences get the 9:16 layout). At most 300 s.\n\n**Rights:** everyone but viewers.",
+    "description": "QuickTime (.mov), PNG codec with alpha (Premiere, After Effects, Resolve, Avid). The clip plays the template like on air: animation in, `hold` seconds on air, then the out animation (`includeOut`), or the clip timeline given by `timing`. The project format closest to width × height is used (9:16 sequences get the 9:16 layout). The values given win over the data sources (read now otherwise). At most 300 s.\n\n**Rights:** everyone but viewers.",
     "requestBody": {
      "required": true,
      "content": {
@@ -2479,6 +2479,45 @@
             "type": "number",
             "example": 30
            }
+          }
+         },
+         "events": {
+          "type": "array",
+          "description": "What an operator would do on air, at a second of the clip: a widget started (`widget`), a widget's control (`act`), a trigger (`trigger`), Continue (`continue`). The command is the one of `POST /api/channels/{id}/command`, on the clip's graphic.",
+          "items": {
+           "type": "object",
+           "required": [
+            "at",
+            "command"
+           ],
+           "properties": {
+            "at": {
+             "type": "number",
+             "example": 2.5
+            },
+            "command": {
+             "type": "object",
+             "example": {
+              "action": "widget",
+              "target": "timer-3",
+              "control": "start"
+             }
+            }
+           }
+          }
+         },
+         "clock": {
+          "type": "number",
+          "description": "The time of day at the clip's start (Unix ms): what its clocks show. Default: now."
+         },
+         "rows": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "integer"
+          },
+          "description": "The row shown of each data set (its key → 1 = first).",
+          "example": {
+           "guests": 3
           }
          }
         }
@@ -5549,6 +5588,186 @@
      }
     }
    }
+  },
+  "/api/render/values": {
+   "post": {
+    "tags": [
+     "Post-production"
+    ],
+    "summary": "Values of a clip",
+    "description": "The values a clip of the template shows now (defaults, data sets on their row, data sources), the rows of its data sets (one line each) and the server's time: what a client keeps so that the clip renders the same again.\n\n**Rights:** everyone but viewers.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "projectId",
+         "templateId"
+        ],
+        "properties": {
+         "projectId": {
+          "type": "string"
+         },
+         "templateId": {
+          "type": "string"
+         },
+         "rows": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Values",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "data": {
+           "$ref": "#/components/schemas/Data"
+          },
+          "datasets": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "key": {
+              "type": "string"
+             },
+             "name": {
+              "type": "string"
+             },
+             "rows": {
+              "type": "array",
+              "items": {
+               "type": "string"
+              }
+             }
+            }
+           }
+          },
+          "now": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/render/jobs": {
+   "post": {
+    "tags": [
+     "Post-production"
+    ],
+    "summary": "Start rendering a clip",
+    "description": "The request of `POST /api/render`; the clip renders in the background (one at a time), its progress at `GET /api/render/jobs/{id}`, the file at `GET /api/render/jobs/{id}/file`.\n\n**Rights:** everyone but viewers.",
+    "requestBody": {
+     "$ref": "#/paths/~1api~1render/post/requestBody"
+    },
+    "responses": {
+     "200": {
+      "description": "The job",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "id": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/render/jobs/{id}": {
+   "get": {
+    "tags": [
+     "Post-production"
+    ],
+    "summary": "Progress of a clip",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Progress",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "progress": {
+           "type": "number",
+           "description": "0 → 1"
+          },
+          "done": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/render/jobs/{id}/file": {
+   "get": {
+    "tags": [
+     "Post-production"
+    ],
+    "summary": "The rendered clip",
+    "description": "Once done: the QuickTime file; the job is then forgotten.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The clip",
+      "content": {
+       "video/quicktime": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -6243,7 +6462,7 @@
      },
      "target": {
       "type": "string",
-      "description": "widget: layer id or name of a timed widget (timer, stopwatch, ticker, roll, counter…), or `*` for all of them"
+      "description": "widget: layer id or name of a timed widget (timer, stopwatch, counter, a list going by…), or `*` for all of them"
      },
      "control": {
       "type": "string",

@@ -26,6 +26,28 @@ pub fn bundled(path: &str) -> Option<std::borrow::Cow<'static, [u8]>> {
     WebApp::get(path).map(|f| f.data)
 }
 
+/// The web app's stylesheet (`static/index-….css`): the Premiere panel is
+/// drawn with it.
+pub fn app_css() -> Option<Vec<u8>> {
+    let is_css = |p: &str| p.starts_with("static/index-") && p.ends_with(".css");
+    if let Some(dir) = WEB_DIR.get() {
+        if let Ok(files) = std::fs::read_dir(dir.join("static")) {
+            for f in files.flatten() {
+                let name = format!("static/{}", f.file_name().to_string_lossy());
+                if is_css(&name) {
+                    if let Ok(b) = std::fs::read(f.path()) {
+                        return Some(b);
+                    }
+                }
+            }
+        }
+    }
+    WebApp::iter()
+        .find(|p| is_css(p))
+        .and_then(|p| WebApp::get(&p))
+        .map(|f| f.data.into_owned())
+}
+
 /// The folder of `--web-dir`.
 pub static WEB_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 

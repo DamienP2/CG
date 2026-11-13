@@ -150,6 +150,10 @@ pub fn router() -> Router<Shared> {
                 .layer(axum::extract::DefaultBodyLimit::max(256 * 1024 * 1024)),
         )
         .route("/api/render", post(render_video))
+        .route("/api/render/values", post(render_values))
+        .route("/api/render/jobs", post(start_render))
+        .route("/api/render/jobs/{id}", get(render_job))
+        .route("/api/render/jobs/{id}/file", get(render_job_file))
         .route("/api/station", get(this_station))
         .route("/api/stations", get(list_stations).post(declare_station))
         .route(
@@ -2409,18 +2413,115 @@ async fn render_video(
         .collect();
     let assets = s.assets_dir();
     let tz = s.config.load().timezone.clone();
+    let store = s.data.store();
     let started = std::time::Instant::now();
-    let mov =
-        tokio::task::spawn_blocking(move || crate::render::render_clip(&p, &req, assets, &tz))
-            .await
-            .map_err(internal)?
-            .map_err(bad)?;
+    let mov = tokio::task::spawn_blocking(move || {
+        let progress = std::sync::atomic::AtomicU32::new(0);
+        crate::render::render_clip(&p, &req, assets, &tz, &store, &progress)
+    })
+    .await
+    .map_err(internal)?
+    .map_err(bad)?;
     tracing::info!(
         user = me.username,
         bytes = mov.len(),
         ms = started.elapsed().as_millis() as u64,
         "clip rendered"
     );
+    let disposition = format!("attachment; filename=\"{name}.mov\"");
+    Ok((
+        [
+            (header::CONTENT_TYPE, "video/quicktime".to_string()),
+            (header::CONTENT_DISPOSITION, disposition),
+        ],
+        mov,
+    )
+        .into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ValuesQuery {
+    project_id: String,
+    template_id: String,
+    #[serde(default)]
+    rows: BTreeMap<String, u32>,
+}
+
+/// The values a clip of a template shows (defaults, data sets on their row,
+/// the data sources now), its data sets' rows, the server's time: what a
+/// post-production clip keeps so that it renders the same again.
+async fn render_values(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(q): Json<ValuesQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require(me.role != Role::Viewer)?;
+    let p = visible_project(&s, &me, &q.project_id).await?;
+    let t = p
+        .template(&q.template_id)
+        .ok_or_else(|| not_found("template"))?;
+    let data = crate::render::values(t, &q.rows, &s.data.store());
+    let datasets = crate::render::dataset_rows(t, &data);
+    Ok(Json(serde_json::json!({
+        "data": data,
+        "datasets": datasets,
+        "now": crate::state::now_ms(),
+    })))
+}
+
+/// Starts rendering a clip (`POST /api/render`'s request); its progress is
+/// read at `/api/render/jobs/{id}`, the file at `…/file`.
+async fn start_render(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(req): Json<crate::render::RenderRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require(me.role != Role::Viewer)?;
+    let p = visible_project(&s, &me, &req.project_id).await?;
+    let name = p
+        .template(&req.template_id)
+        .ok_or_else(|| not_found("template"))?
+        .name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let assets = s.assets_dir();
+    let tz = s.config.load().timezone.clone();
+    let store = s.data.store();
+    let user = me.username.clone();
+    let id = crate::render::start_job(&me.username, name, move |progress| {
+        let started = std::time::Instant::now();
+        let r = crate::render::render_clip(&p, &req, assets, &tz, &store, progress);
+        if let Ok(mov) = &r {
+            tracing::info!(
+                user,
+                bytes = mov.len(),
+                ms = started.elapsed().as_millis() as u64,
+                "clip rendered"
+            );
+        }
+        r
+    });
+    Ok(Json(serde_json::json!({ "id": id })))
+}
+
+async fn render_job(
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<crate::render::JobState>> {
+    crate::render::job_state(&id, &me.username)
+        .map(Json)
+        .ok_or_else(|| not_found("render"))
+}
+
+async fn render_job_file(
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let (name, mov) = crate::render::take_job(&id, &me.username)
+        .ok_or_else(|| not_found("render"))?
+        .map_err(bad)?;
     let disposition = format!("attachment; filename=\"{name}.mov\"");
     Ok((
         [

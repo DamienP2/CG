@@ -31,7 +31,23 @@ pub fn router<S: Clone + Send + Sync + 'static>() -> Router<S> {
         .route("/premiere/manifest.json", get(manifest))
         .route("/premiere/extension.json", get(extension))
         .route("/premiere/strata-premiere.zip", get(download))
+        .route("/premiere/app.css", get(app_css))
         .route("/premiere/{*path}", get(file))
+}
+
+/// The web app's stylesheet: the panel uses the app's own components.
+async fn app_css() -> Response {
+    match crate::web::app_css() {
+        Some(css) => (
+            [
+                (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            css,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// `LOADER_VERSION` of loader.js: the loader updates itself when it is behind.

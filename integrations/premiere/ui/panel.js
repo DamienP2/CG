@@ -1,26 +1,29 @@
 /* Strata panel for Premiere Pro (CEP).
  *
- * Four screens, one gesture each:
- *  - Projects: the server's projects, kept in sync (auto-sync), search.
- *  - Templates: a project's templates (still picture from the server, zone,
- *    duration), search and zone filters; + (or a drag to the sequence)
- *    inserts one as it is at the playhead.
- *  - Clip: one template. An animated preview (the server's HTML5 renderer,
- *    /embed/preview) with play, loop and a playhead to scrub. Its timeline
- *    in the clip: total duration, the on-air point (IN / OUT, one marker as
- *    in the Designer), the pauses, the end. A new total moves every marker
- *    proportionally; each one can then be dragged anywhere. Its exposed
- *    parameters, then Insert at the playhead, or Update clip when a Strata
- *    clip of this template is selected in the sequence.
- *  - Settings (gear of the Projects screen): server, API key, sync, version.
+ * Post-production: Premiere's timeline is the reference. The panel is made
+ * of the web app's own components (its stylesheet, <server>/premiere/app.css,
+ * is linked before panel.css).
  *
- * The server renders the clip at the active sequence's size and frame rate
- * (QuickTime, PNG with alpha, POST /api/render with the clip timing) and the
- * panel lays it on the first free video track above V1. A clip keeps its
- * values in a sidecar file (<clip>.pcg.json): selecting it in the timeline
- * opens it here, and Update clip replaces it in place.
+ *  - Séquence (home): the Strata clips of the active sequence, in time
+ *    order, as the Operator's rundown. The square moves Premiere's playhead
+ *    to the clip and selects it; a click on the row opens it. An orange dot:
+ *    the clip must be rendered again (trimmed in Premiere, or its template
+ *    published since); TOUT METTRE À JOUR renders them again in place.
+ *  - Modèles: the templates of a project of the server; + inserts one as it
+ *    is at the playhead, a click opens a new clip.
+ *  - Clip (selected in the sequence, or new): the animated preview, its
+ *    length (Durée), its timeline (Déroulé: IN, the pauses, the actions the
+ *    operator would do live, OUT at the end), its values. METTRE À JOUR
+ *    renders it again in place; INSÉRER lays it on the first free track
+ *    (at the playhead, or between the In and Out points); TOUTES LES LIGNES
+ *    lays one clip per row of its data set on the sequence markers.
+ *  - Réglages: server, API key, version.
  *
- * Written for CEP 9+ (Chromium 61): no optional chaining, no `??`.
+ * The server renders the clip at the sequence's size and frame rate
+ * (QuickTime PNG + alpha, POST /api/render/jobs). Each clip keeps what made
+ * it in <clip>.mov.pcg.json, next to it.
+ *
+ * Written for CEP 9+ (Chromium 61, Node 8): ES2015, no optional chaining, no `??`.
  */
 (function () {
   'use strict';
@@ -33,6 +36,7 @@
   var path = node ? require('path') : null;
   var os = node ? require('os') : null;
   var crypto = node ? require('crypto') : null;
+  var noop = function () {};
 
   var store = {
     get: function (k, d) {
@@ -52,39 +56,39 @@
 
   /** Seconds on air of a template that holds until Take out. */
   var DEFAULT_HOLD = 5;
+  /** Seconds on a pause that waits for Continue or a trigger. */
+  var DEFAULT_PAUSE = 2;
   /** Longest clip the server renders. */
   var MAX_SECONDS = 300;
+  /** The sequence is read this often (ms), the projects every SYNC_MS. */
+  var POLL_MS = 1500;
+  var SYNC_MS = 15000;
 
   var S = {
     server: '',
     key: '',
     folder: store.get('folder', ''),
     online: null,
-    screen: 'projects',
-    projects: [],
-    full: {},
-    sync: store.get('syncState', {}),
-    syncing: null,
-    lastSync: 0,
-    autoSync: store.get('autoSync', true),
-    every: store.get('syncEvery', 30),
-    q: '',
-    tq: '',
-    zone: 'all',
-    project: null,
-    template: null,
-    model: null,
-    origin: null,
-    timing: null,
-    data: {},
-    seq: null,
-    selection: null,
-    selectedPath: '',
-    editing: null,
-    busy: {},
     update: null,
     test: null,
+    screen: 'seq',
+    prev: 'seq',
+    seq: null,
+    clips: [],
+    selKey: '',
+    quietSel: '',
+    full: {},
+    sig: {},
+    loading: {},
+    projects: [],
+    pid: store.get('project', ''),
+    E: null,
+    jobs: [],
+    skew: 0,
+    lastDefault: store.get('lastDefault', {}),
   };
+
+  // ----------------------------------------------------------------- utils
 
   var esc = function (s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -92,49 +96,145 @@
     });
   };
   var enc = encodeURIComponent;
-
-  /** "4.0 s" in lists; "10 s" / "10.5 s" on the timeline. */
-  function secs(x, fixed) {
-    if (fixed) return x.toFixed(1) + ' s';
-    return (Math.abs(x - Math.round(x)) < 0.005 ? String(Math.round(x)) : x.toFixed(1)) + ' s';
-  }
-
-  function ago(ts) {
-    if (!ts) return '—';
-    var s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-    if (s < 10) return 'just now';
-    if (s < 60) return s + ' s ago';
-    if (s < 3600) return Math.round(s / 60) + ' min ago';
-    if (s < 86400) return Math.round(s / 3600) + ' h ago';
-    return Math.round(s / 86400) + ' d ago';
-  }
+  var clamp = function (x, a, b) {
+    return Math.max(a, Math.min(b, x));
+  };
+  var pad2 = function (n) {
+    return (n < 10 ? '0' : '') + n;
+  };
+  /** "9,5" */
+  var dec = function (x, digits) {
+    return x.toFixed(digits).replace('.', ',');
+  };
+  /** "32 s", "9,5 s" */
+  var secs = function (x) {
+    return (Math.abs(x - Math.round(x)) < 0.05 ? String(Math.round(x)) : dec(x, 1)) + ' s';
+  };
 
   function hash(text) {
     var h = 5381;
     for (var i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
     return (h >>> 0).toString(36) + ':' + text.length;
   }
-
-  var toastTimer = 0;
-  function toast(msg, kind) {
-    var el = $('toast');
-    el.textContent = msg || '';
-    el.className = 'toast ' + (msg ? 'on ' : '') + (kind || '');
-    clearTimeout(toastTimer);
-    if (msg) {
-      toastTimer = setTimeout(function () {
-        el.className = 'toast ' + (kind || '');
-      }, kind === 'err' ? 6000 : 2500);
+  var tplHashes = typeof WeakMap === 'function' ? new WeakMap() : null;
+  /** A template's fingerprint: it changes when the template is published again. */
+  function tplHash(t) {
+    var h = tplHashes && tplHashes.get(t);
+    if (!h) {
+      h = hash(JSON.stringify(t));
+      if (tplHashes) tplHashes.set(t, h);
     }
+    return h;
+  }
+
+  /** #rrggbb → rgba(), for the zone pills where color-mix() is missing. */
+  function rgba(hex, a) {
+    var m = /^#?([0-9a-f]{6})/i.exec(String(hex || ''));
+    if (!m) return '';
+    var n = parseInt(m[1], 16);
+    return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function plain(v) {
+    return String(v == null ? '' : v)
+      .replace(/<[^>]*>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  var svg = function (name, size, body, fill) {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="' + (fill || 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-' + name + '" aria-hidden="true">' + body + '</svg>';
+  };
+  var I = {
+    plus: svg('plus', 15, '<path d="M5 12h14"></path><path d="M12 5v14"></path>'),
+    plus13: svg('plus', 13, '<path d="M5 12h14"></path><path d="M12 5v14"></path>'),
+    check: svg('check', 12, '<path d="M20 6 9 17l-5-5"></path>'),
+    x: svg('x', 13, '<path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>'),
+    chevDown: svg('chevron-down', 12, '<path d="m6 9 6 6 6-6"></path>'),
+    eye: svg('eye', 15, '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle>'),
+    eyeOff: svg('eye-off', 15, '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path><path d="m2 2 20 20"></path>'),
+    listPlus: svg('list-plus', 18, '<path d="M16 5H3"></path><path d="M11 12H3"></path><path d="M16 19H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path>'),
+    film: svg('film', 18, '<rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M7 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 3v18"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path>'),
+    rows: svg('rows-3', 15, '<rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path>'),
+  };
+
+  function toast(msg, err) {
+    var box = $('toasts');
+    var el = document.createElement('div');
+    el.className = 'toast' + (err ? ' error' : '');
+    el.textContent = msg;
+    box.appendChild(el);
+    while (box.children.length > 3) box.removeChild(box.firstChild);
+    setTimeout(function () {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, err ? 6000 : 2600);
+  }
+
+  function needNode() {
+    if (node) return true;
+    toast('Node.js est désactivé dans ce panneau', true);
+    return false;
+  }
+
+  // ------------------------------------------------------------- timecodes
+
+  function seqFps() {
+    return S.seq ? S.seq.fps : 25;
+  }
+
+  /** HH:MM:SS:FF of a time of the sequence. */
+  function tc(sec) {
+    var fps = seqFps();
+    var r = Math.round(fps);
+    var f = Math.max(0, Math.round(((S.seq ? S.seq.zero : 0) + sec) * fps));
+    var x = Math.floor(f / r);
+    return pad2(Math.floor(x / 3600)) + ':' + pad2(Math.floor(x / 60) % 60) + ':' + pad2(x % 60) + ':' + pad2(f % r);
+  }
+
+  /** Frames as MM:SS:FF (the Designer's duration field). */
+  function durTc(frames, r) {
+    var x = Math.floor(frames / r);
+    return pad2(Math.floor(x / 60)) + ':' + pad2(x % 60) + ':' + pad2(frames % r);
+  }
+
+  /** "5" or "5s" seconds, "2:10" seconds and frames, "1:02:10" minutes too → frames. */
+  function parseDur(text, fps) {
+    var r = Math.round(fps);
+    var t = String(text).trim().replace(/s$/i, '');
+    if (/^\d+([.,]\d+)?$/.test(t)) return Math.round(parseFloat(t.replace(',', '.')) * r);
+    var parts = t.split(':').map(function (x) {
+      return parseInt(x, 10);
+    });
+    if (parts.length < 2 || parts.length > 3) return null;
+    if (
+      parts.some(function (x) {
+        return isNaN(x) || x < 0;
+      })
+    )
+      return null;
+    if (parts.length === 2) parts.unshift(0);
+    return (parts[0] * 60 + parts[1]) * r + parts[2];
+  }
+
+  /** Seconds of a frame count of the sequence, and back. */
+  var framesToSec = function (f) {
+    return f / seqFps();
+  };
+  var secToFrames = function (s) {
+    return Math.round(s * seqFps());
+  };
+
+  function fpsLabel(fps) {
+    return Math.abs(fps - Math.round(fps)) < 0.001 ? String(Math.round(fps)) : String(+fps.toFixed(3)).replace('.', ',');
   }
 
   // ------------------------------------------------------------------ host
 
   function evalScript(script) {
     return new Promise(function (resolve, reject) {
-      if (!window.__adobe_cep__) return reject(new Error('Not running inside Premiere Pro'));
+      if (!window.__adobe_cep__) return reject(new Error('Hors de Premiere Pro'));
       window.__adobe_cep__.evalScript(script, function (res) {
-        if (typeof res !== 'string' || res.indexOf('OK:') !== 0) reject(new Error(String(res).replace(/^ERR:/, '') || 'Premiere script error'));
+        if (typeof res !== 'string' || res.indexOf('OK:') !== 0) reject(new Error(String(res).replace(/^ERR:/, '') || 'Erreur de script Premiere'));
         else resolve(res.slice(3));
       });
     });
@@ -142,28 +242,6 @@
   var jsx = function (s) {
     return JSON.stringify(String(s));
   };
-
-  /** Size, frame rate and playhead of the active sequence (seconds). */
-  function readSequence() {
-    return evalScript('pcg_sequenceInfo()').then(function (r) {
-      var p = r.split('|');
-      var fps = parseFloat(p[2]);
-      return { width: +p[0], height: +p[1], fps: fps, rate: rateOf(fps), playhead: +p[3], name: p[4], tracks: +p[5] };
-    });
-  }
-
-  function refreshSequence() {
-    return readSequence().then(
-      function (s) {
-        S.seq = s;
-        return s;
-      },
-      function (e) {
-        S.seq = null;
-        throw e;
-      },
-    );
-  }
 
   function rateOf(fps) {
     var ntsc = [
@@ -176,6 +254,52 @@
     return { num: Math.round(fps * 1000), den: 1000 };
   }
 
+  /** The sequence line of pcg_state (premiere.jsx pcg_info). */
+  function parseSeq(line) {
+    var p = line.split('|');
+    var fps = parseFloat(p[2]) || 25;
+    var f = 1 / fps;
+    var s = { width: +p[0], height: +p[1], fps: fps, rate: rateOf(fps), playhead: +p[3] || 0, name: p[4] || '', tracks: +p[5] || 0, end: +p[8] || 0, zero: +p[9] || 0, id: p[10] || p[4] || '' };
+    var a = +p[6];
+    var b = +p[7];
+    // Unset, Premiere gives -1, or the whole sequence.
+    s.range = a >= 0 && b > a + f && !(a < f && s.end > 0 && b >= s.end - f) ? { a: a, b: b } : null;
+    return s;
+  }
+
+  function readState() {
+    return evalScript('pcg_state()').then(function (r) {
+      if (!r) return { seq: null, clips: [] };
+      var lines = r.split('\n');
+      return {
+        seq: parseSeq(lines[0]),
+        clips: lines
+          .slice(1)
+          .filter(Boolean)
+          .map(function (l) {
+            var p = l.split('\t');
+            return { track: +p[0], start: +p[1], end: +p[2], selected: p[3] === '1', media: p[4], name: p[5] || '' };
+          }),
+      };
+    });
+  }
+
+  function readMarkers() {
+    return evalScript('pcg_markers()').then(function (r) {
+      return r
+        .split('\t')
+        .filter(Boolean)
+        .map(Number)
+        .sort(function (a, b) {
+          return a - b;
+        });
+    });
+  }
+
+  function freeTrack(start, len) {
+    return evalScript('pcg_freeTrack(' + start + ', ' + (start + len) + ')').then(Number);
+  }
+
   // ------------------------------------------------------------------- api
 
   function request(method, url, body) {
@@ -184,13 +308,22 @@
       cache: 'no-store',
       headers: Object.assign({ Authorization: 'Bearer ' + S.key }, body ? { 'Content-Type': 'application/json' } : {}),
       body: body ? JSON.stringify(body) : undefined,
-    }).then(function (r) {
-      if (!r.ok)
-        return r.text().then(function (t) {
-          throw new Error(t || r.status + ' ' + r.statusText);
-        });
-      return r;
-    });
+    }).then(
+      function (r) {
+        if (r.status === 401 || r.status === 403) setOnline(false);
+        if (!r.ok)
+          return r.text().then(function (t) {
+            var e = new Error(t || r.status + ' ' + r.statusText);
+            e.status = r.status;
+            throw e;
+          });
+        return r;
+      },
+      function (e) {
+        setOnline(false);
+        throw e;
+      },
+    );
   }
   function api(method, url, body) {
     return request(method, url, body).then(function (r) {
@@ -199,155 +332,162 @@
   }
 
   function setOnline(ok) {
+    if (S.online === ok) return;
     S.online = ok;
-    renderConn();
+    renderTop();
   }
 
-  /** Inter, as in the app, from the server. */
-  function loadFonts() {
-    if (!S.server || $('pcgFonts')) return;
-    var st = document.createElement('style');
-    st.id = 'pcgFonts';
-    st.textContent = [
-      [400, 'Regular'],
-      [500, 'Medium'],
-      [600, 'SemiBold'],
-      [700, 'Bold'],
-      [800, 'ExtraBold'],
-    ]
-      .map(function (w) {
-        return "@font-face{font-family:'Inter';font-weight:" + w[0] + ";src:url('" + S.server + '/fonts/Inter-' + w[1] + ".otf') format('opentype')}";
-      })
-      .join('\n');
-    document.head.appendChild(st);
+  /** The server's clock (the clocks of a clip are frozen at its first render). */
+  function serverNow() {
+    return Date.now() + S.skew;
   }
 
-  // ------------------------------------------------------------------ sync
-
-  function syncAll() {
-    if (!S.server || !S.key) {
-      setOnline(null);
-      return Promise.resolve();
-    }
-    if (S.syncing) return S.syncing;
-    S.syncing = api('GET', '/api/projects')
-      .then(function (list) {
-        setOnline(true);
-        S.projects = list;
-        list.forEach(function (p) {
-          if (!S.sync[p.id]) S.sync[p.id] = { sig: '', changed: 0 };
-          if (!S.full[p.id]) S.sync[p.id].state = 'sync';
-        });
-        renderProjects();
-        return list.reduce(function (chain, p) {
-          return chain.then(function () {
-            return syncProject(p.id);
-          });
-        }, Promise.resolve());
-      })
-      .catch(function () {
-        setOnline(false);
-      })
-      .then(function () {
-        S.syncing = null;
-        S.lastSync = Date.now();
-        var keep = {};
-        S.projects.forEach(function (p) {
-          var st = S.sync[p.id];
-          if (st) keep[p.id] = { sig: st.sig, changed: st.changed };
-        });
-        store.set('syncState', keep);
-        renderProjects();
-        renderSettings();
-      });
-    return S.syncing;
+  /** The values to freeze in a clip (defaults, connectors, data set rows) and its data sets. */
+  function values(pid, tid, rows) {
+    var t0 = Date.now();
+    return api('POST', '/api/render/values', { projectId: pid, templateId: tid, rows: rows || undefined }).then(function (r) {
+      if (typeof r.now === 'number') S.skew = r.now - (t0 + Date.now()) / 2;
+      return { data: r.data || {}, datasets: r.datasets || [] };
+    });
   }
 
-  function syncProject(id) {
-    var st = S.sync[id];
-    st.state = 'sync';
-    renderProjects();
-    return request('GET', '/api/projects/' + enc(id))
+  // -------------------------------------------------------------- projects
+
+  function loadProject(id, force) {
+    if (!id) return Promise.reject(new Error('Aucun projet'));
+    if (S.full[id] && !force) return Promise.resolve(S.full[id]);
+    if (S.loading[id]) return S.loading[id];
+    var done = function () {
+      delete S.loading[id];
+    };
+    S.loading[id] = request('GET', '/api/projects/' + enc(id))
       .then(function (r) {
         return r.text();
       })
-      .then(
-        function (text) {
-          var sig = hash(text);
-          if (sig !== st.sig || !S.full[id]) {
-            if (sig !== st.sig) st.changed = Date.now();
-            st.sig = sig;
-            S.full[id] = JSON.parse(text);
-            if (S.project && S.project.id === id) projectChanged(S.full[id]);
-          }
-          st.state = 'ok';
-        },
-        function () {
-          st.state = 'err';
-        },
-      )
-      .then(renderProjects);
+      .then(function (text) {
+        setOnline(true);
+        var sig = hash(text);
+        if (sig !== S.sig[id] || !S.full[id]) {
+          var had = !!S.full[id];
+          S.sig[id] = sig;
+          S.full[id] = JSON.parse(text);
+          if (had) projectChanged(id);
+          else renderSeq();
+        }
+        done();
+        return S.full[id];
+      })
+      .catch(function (e) {
+        done();
+        throw e;
+      });
+    return S.loading[id];
   }
 
-  /** The open project changed on the server. */
-  function projectChanged(p) {
-    S.project = p;
-    if (S.template) {
-      var t = templateById(S.template.id);
-      if (!t) {
-        S.template = null;
-        if (S.screen === 'clip') show('templates');
-      } else if (JSON.stringify(t) !== JSON.stringify(S.template)) {
-        var before = S.model;
-        S.template = t;
-        S.model = model(t);
-        S.origin = originTiming(S.model);
-        // Other stops (markers added or removed): back to the template's timing.
-        if (!before || before.stops.length !== S.model.stops.length) S.timing = copyTiming(S.origin);
-        t.fields.forEach(function (f) {
-          if (!(f.key in S.data)) S.data[f.key] = f.default;
+  function loadProjects() {
+    return api('GET', '/api/projects').then(function (list) {
+      setOnline(true);
+      S.projects = list;
+      return list;
+    });
+  }
+
+  /** The projects in use, read again: a template published since shows on its clips. */
+  var syncing = false;
+  function syncProjects() {
+    if (syncing || !S.server || !S.key || document.hidden) return;
+    var ids = [];
+    var want = function (id) {
+      if (id && ids.indexOf(id) < 0) ids.push(id);
+    };
+    S.clips.forEach(function (c) {
+      want(c.side.projectId);
+    });
+    want(S.pid);
+    if (S.E) want(S.E.p.id);
+    syncing = true;
+    ids
+      .reduce(function (chain, id) {
+        return chain.then(function () {
+          return loadProject(id, true).catch(noop);
         });
-        if (S.screen === 'clip') renderClip();
-      }
-    }
-    if (S.screen === 'templates') renderTemplates();
+      }, loadProjects().catch(noop))
+      .then(function () {
+        syncing = false;
+      });
   }
 
-  // ------------------------------------------------------------- template timing
+  /** A project changed on the server. */
+  function projectChanged(id) {
+    var p = S.full[id];
+    var E = S.E;
+    if (E && E.p.id === id) {
+      var t = tplOf(p, E.t.id);
+      if (!t) {
+        toast('Modèle supprimé : ' + E.t.name, true);
+        S.E = null;
+        if (S.screen === 'clip') show('seq');
+      } else if (tplHash(t) !== tplHash(E.t)) {
+        E.p = p;
+        E.t = t;
+        E.m = model(t, p);
+        E.acts = actionsOf(t, p);
+        E.timing = fitTiming(E.m, E.timing.duration, E.timing);
+        E.events = fixEvents(E.events, E.acts, E.m, E.timing);
+        t.fields.forEach(function (f) {
+          if (!(f.key in E.data)) E.data[f.key] = f.default;
+        });
+        if (S.screen === 'clip') renderEditor();
+      } else E.p = p;
+    }
+    renderSeq();
+    if (S.screen === 'tpl') renderTpl();
+  }
 
-  function projectFps() {
-    var r = S.project && S.project.frameRate;
+  function tplOf(p, id) {
+    return p
+      ? p.templates.filter(function (t) {
+          return t.id === id;
+        })[0] || null
+      : null;
+  }
+  function zoneOf(p, id) {
+    return (
+      ((p && p.zones) || []).filter(function (z) {
+        return z.id === id;
+      })[0] || null
+    );
+  }
+  function projFps(p) {
+    var r = p && p.frameRate;
     return r && r.num && r.den ? r.num / r.den : 25;
   }
 
-  function templateById(id) {
-    return (S.project ? S.project.templates : []).filter(function (t) {
-      return t.id === id;
-    })[0];
-  }
+  // ------------------------------------------------------- template timing
 
   /**
    * The stops of a template, as the server counts them (render.rs `stops`):
    * its pauses and its on-air point, in frame order, one per frame. Each
-   * with its hold in seconds (a timed pause, a timed on-air).
+   * with the seconds it holds as on air (a timed pause, a timed on-air).
    */
-  function model(t) {
-    var fps = projectFps();
-    var out = (t.markers || []).filter(function (m) {
+  function model(t, p) {
+    var fps = projFps(p);
+    var markers = t.markers || [];
+    var out = markers.filter(function (m) {
       return m.kind === 'out';
     })[0];
     var hold = out ? Math.min(out.frame, t.duration) : t.duration;
     var after = function (m) {
       return m && m.resume && m.resume.type === 'after' ? Math.max(0, +m.resume.seconds || 0) : null;
     };
-    var list = (t.markers || [])
+    var list = markers
       .filter(function (m) {
         return m.kind === 'pause';
       })
       .map(function (m) {
-        return { frame: Math.max(0, Math.min(m.frame, t.duration)), onAir: false, hold: after(m) || 0 };
+        return { frame: clamp(m.frame, 0, t.duration), onAir: false, name: m.name || 'Pause', hold: after(m) === null ? DEFAULT_PAUSE : after(m) };
       });
-    list.push({ frame: hold, onAir: true, hold: after(out) === null ? DEFAULT_HOLD : after(out) });
+    list.push({ frame: hold, onAir: true, name: '', hold: after(out) === null ? DEFAULT_HOLD : after(out) });
     list.sort(function (a, b) {
       return a.frame - b.frame || (b.onAir ? 1 : 0) - (a.onAir ? 1 : 0);
     });
@@ -367,28 +507,59 @@
     return { fps: fps, duration: t.duration, stops: stops, onAir: onAir };
   }
 
-  /** The clip as the template plays on air: animations at their speed, the holds it sets. */
-  function originTiming(m) {
-    var t = 0;
-    var prev = 0;
-    var stops = m.stops.map(function (s) {
-      t += (s.frame - prev) / m.fps + s.hold;
-      prev = s.frame;
-      return t;
-    });
-    var duration = t + (m.duration - prev) / m.fps;
-    if (duration > MAX_SECONDS) {
-      var r = MAX_SECONDS / duration;
-      stops = stops.map(function (x) {
-        return x * r;
-      });
-      duration = MAX_SECONDS;
-    }
-    return { stops: stops, duration: Math.max(duration, 0.04) };
+  /** Seconds of the out animation, at its speed. */
+  function outLen(m) {
+    return Math.max(0, (m.duration - m.stops[m.onAir].frame) / m.fps);
   }
 
-  function copyTiming(t) {
-    return { stops: t.stops.slice(), duration: t.duration };
+  /** The clip as the template plays on air: animations at their speed, its holds. */
+  function naturalDuration(m) {
+    var k = m.onAir;
+    var h = 0;
+    for (var i = 0; i < k; i++) h += m.stops[i].hold;
+    return clamp(m.stops[k].frame / m.fps + h + m.stops[k].hold + outLen(m), 0.04, MAX_SECONDS);
+  }
+
+  /**
+   * The clip's timing for `D` seconds: when it leaves each stop (render.rs
+   * ClipTiming). The out animation always ends at the end of the clip; the
+   * pauses stay where they were (`prev`), else as on air (fitted in).
+   */
+  function fitTiming(m, D, prev) {
+    var k = m.onAir;
+    var n = m.stops.length;
+    var fps = m.fps;
+    var st = [];
+    var i;
+    var leave = Math.max(0, D - outLen(m));
+    st[k] = leave;
+    for (i = k + 1; i < n; i++) st[i] = Math.min(D, st[i - 1] + (m.stops[i].frame - m.stops[i - 1].frame) / fps);
+    if (prev && prev.stops && prev.stops.length === n) {
+      for (i = 0; i < k; i++) st[i] = +prev.stops[i] || 0;
+    } else {
+      var need = m.stops[k].frame / fps;
+      var H = 0;
+      for (i = 0; i < k; i++) H += m.stops[i].hold;
+      var room = leave - need;
+      if (room >= 0) {
+        var sc = H > 0 ? Math.min(1, room / H) : 0;
+        var t = 0;
+        var pf = 0;
+        for (i = 0; i < k; i++) {
+          t += (m.stops[i].frame - pf) / fps + m.stops[i].hold * sc;
+          pf = m.stops[i].frame;
+          st[i] = t;
+        }
+      } else {
+        for (i = 0; i < k; i++) st[i] = m.stops[k].frame > 0 ? (leave * m.stops[i].frame) / m.stops[k].frame : 0;
+      }
+    }
+    var lo = 0;
+    for (i = 0; i < k; i++) {
+      st[i] = clamp(st[i], lo, leave);
+      lo = st[i];
+    }
+    return { stops: st, duration: D };
   }
 
   /** A clip made by an older panel: its seconds on air, with or without the out animation. */
@@ -401,405 +572,39 @@
       return t;
     });
     var duration = withOut === false ? stops[m.onAir] : t + (m.duration - prev) / m.fps;
-    return { stops: stops, duration: Math.max(Math.min(duration, MAX_SECONDS), 0.04) };
+    return { stops: stops, duration: clamp(duration, 0.04, MAX_SECONDS) };
   }
 
-  function zoneName(id) {
-    var z = ((S.project && S.project.zones) || []).filter(function (x) {
-      return x.id === id;
-    })[0];
-    return z ? z.name : id || '';
+  /** The timing a sidecar recorded, when it still fits the template. */
+  function sideTiming(m, side) {
+    if (side.timing && side.timing.stops && side.timing.stops.length === m.stops.length) return { stops: side.timing.stops.slice(), duration: +side.timing.duration };
+    if (typeof side.hold === 'number') return timingFromHold(m, side.hold, side.withOut);
+    return null;
   }
 
-  // --------------------------------------------------------------- screens
-
-  function show(screen) {
-    S.screen = screen;
-    ['projects', 'templates', 'clip', 'settings'].forEach(function (k) {
-      $('scr-' + k).classList.toggle('hidden', k !== screen);
-    });
-    if (screen === 'projects') renderProjects();
-    if (screen === 'templates') renderTemplates();
-    if (screen === 'clip') renderClip();
-    if (screen === 'settings') renderSettings(true);
+  function renderedLen(side) {
+    if (typeof side.rendered === 'number') return side.rendered;
+    return side.timing && side.timing.duration ? +side.timing.duration : null;
   }
 
-  // -------------------------------------------------------------- projects
-
-  function renderConn() {
-    var c = $('conn');
-    var on = S.online;
-    c.className = 'conn ' + (on === true ? 'ok' : on === false ? 'err' : '');
-    $('connTxt').textContent = on === true ? 'Connected' : on === false ? 'Offline' : '';
-    c.title = S.server;
-    $('srvTxt').textContent = S.server ? 'Server ' + S.server.replace(/^https?:\/\//, '') : '';
-    ['autoSync', 'autoSync2'].forEach(function (id) {
-      $(id).classList.toggle('on', !!S.autoSync);
-    });
-    $('gear').classList.toggle('dot', S.update === 'install' || S.update === 'reload');
+  /** The end of the IN (the graphic reaches its first stop) and the start of the OUT. */
+  function zones(m, c) {
+    return { inEnd: Math.max(0, Math.min(c.stops[0], m.stops[0].frame / m.fps)), outStart: c.stops[m.onAir] };
   }
 
-  function renderProjects() {
-    renderConn();
-    if (S.screen !== 'projects') return;
-    var q = S.q.trim().toLowerCase();
-    var html = S.projects
-      .filter(function (p) {
-        return !q || p.name.toLowerCase().indexOf(q) >= 0;
-      })
-      .map(function (p) {
-        var st = S.sync[p.id] || {};
-        var full = S.full[p.id];
-        var n = full ? full.templates.length : p.templates;
-        var badge = st.state === 'sync' ? '<span class="badge busy">⟳ syncing…</span>' : st.state === 'err' ? '<span class="badge err">✕ error</span>' : '<span class="badge ok">✓ up to date</span>';
-        return (
-          '<button class="prj" data-project="' +
-          esc(p.id) +
-          '"><span class="av">' +
-          esc((p.name.trim()[0] || '?').toUpperCase()) +
-          '</span><span class="nm"><b>' +
-          esc(p.name) +
-          '</b><small>' +
-          n +
-          ' template' +
-          (n === 1 ? '' : 's') +
-          (st.changed ? ' · updated ' + ago(st.changed) : '') +
-          '</small></span>' +
-          badge +
-          '<span class="chev">›</span></button>'
-        );
-      })
-      .join('');
-    // Redrawn every second: only when it changed (a click must not lose its row).
-    if (html !== lastProjects) $('projects').innerHTML = lastProjects = html;
+  /** When the graphic is fully on air. */
+  function onAirAt(m, c) {
+    var k = m.onAir;
+    var fromT = k > 0 ? c.stops[k - 1] : 0;
+    var anim = (m.stops[k].frame - (k > 0 ? m.stops[k - 1].frame : 0)) / m.fps;
+    return Math.min(c.stops[k], fromT + anim);
   }
-  var lastProjects = null;
-
-  function openProject(id) {
-    var go = function (p) {
-      S.project = p;
-      S.zone = 'all';
-      S.tq = '';
-      $('tSearch').value = '';
-      show('templates');
-    };
-    if (S.full[id]) return go(S.full[id]);
-    api('GET', '/api/projects/' + enc(id)).then(
-      function (p) {
-        S.full[id] = p;
-        go(p);
-      },
-      function (e) {
-        toast(e.message, 'err');
-      },
-    );
-  }
-
-  // ------------------------------------------------------------- templates
-
-  function thumbUrl(t, data) {
-    return (
-      S.server +
-      '/api/projects/' +
-      enc(S.project.id) +
-      '/templates/' +
-      enc(t.id) +
-      '/thumbnail.png?key=' +
-      enc(S.key) +
-      (data ? '&data=' + enc(JSON.stringify(data)) : '') +
-      '&v=' +
-      (t.revision || 0) +
-      '.' +
-      JSON.stringify(t).length
-    );
-  }
-
-  function renderTemplates() {
-    if (!S.project) return;
-    $('projTitle').textContent = S.project.name;
-    var zones = [];
-    S.project.templates.forEach(function (t) {
-      if (t.zone && zones.indexOf(t.zone) < 0) zones.push(t.zone);
-    });
-    if (S.zone !== 'all' && zones.indexOf(S.zone) < 0) S.zone = 'all';
-    $('zones').innerHTML = [['all', 'All']]
-      .concat(
-        zones.map(function (z) {
-          return [z, zoneName(z)];
-        }),
-      )
-      .map(function (c) {
-        return '<button class="chip ' + (S.zone === c[0] ? 'on' : '') + '" data-zone="' + esc(c[0]) + '">' + esc(c[1]) + '</button>';
-      })
-      .join('');
-    var q = S.tq.trim().toLowerCase();
-    var box = $('templates');
-    var rows = S.project.templates
-      .filter(function (t) {
-        if (S.zone !== 'all' && t.zone !== S.zone) return false;
-        return !q || t.name.toLowerCase().indexOf(q) >= 0;
-      })
-      .map(templateRow);
-    // The rows are kept (their pictures stay loaded): only their order changes.
-    var same =
-      rows.length === box.children.length &&
-      rows.every(function (r, i) {
-        return box.children[i] === r;
-      });
-    if (same) return;
-    while (box.firstChild) box.removeChild(box.firstChild);
-    rows.forEach(function (r) {
-      box.appendChild(r);
-    });
-    renderBusy();
-  }
-
-  var rowCache = {};
-  /** The row of a template, made again only when the template changed. */
-  function templateRow(t) {
-    var url = thumbUrl(t);
-    var m = model(t);
-    var html =
-      '<span class="thumb"><img draggable="false" src="' +
-      esc(url) +
-      '"></span><span class="nm"><b>' +
-      esc(t.name) +
-      '</b><small>' +
-      esc(zoneName(t.zone)) +
-      ' · ' +
-      secs(originTiming(m).duration, true) +
-      '</small></span><button class="add" data-add="' +
-      esc(t.id) +
-      '" title="Insert at playhead">+</button>';
-    var id = S.project.id + '/' + t.id;
-    var c = rowCache[id];
-    if (c && c.html === html) return c.el;
-    var el = document.createElement('div');
-    el.className = 'tpl';
-    el.draggable = true;
-    el.setAttribute('data-tpl', t.id);
-    el.innerHTML = html;
-    rowCache[id] = { html: html, el: el };
-    return el;
-  }
-
-  // ------------------------------------------------------------------ clip
-
-  /** Opens a template on the clip screen, with the values (and timing) of a clip when given. */
-  function openTemplate(t, side) {
-    S.template = t;
-    S.model = model(t);
-    S.origin = originTiming(S.model);
-    S.data = {};
-    t.fields.forEach(function (f) {
-      S.data[f.key] = f.default;
-    });
-    if (side && side.data) Object.assign(S.data, side.data);
-    if (side && side.timing && side.timing.stops && side.timing.stops.length === S.model.stops.length) S.timing = copyTiming(side.timing);
-    else if (side && typeof side.hold === 'number') S.timing = timingFromHold(S.model, side.hold, side.withOut);
-    else S.timing = copyTiming(S.origin);
-    pv.t = onAirTime();
-    pv.playing = false;
-    $('play').innerHTML = '▶';
-    $('play').classList.remove('on');
-    show('clip');
-  }
-
-  function renderClip() {
-    var t = S.template;
-    if (!t) return;
-    $('tplTitle').textContent = t.name;
-    $('backTpl').textContent = '‹ ' + S.project.name;
-    $('origin').textContent = '↺ Origin ' + secs(S.origin.duration);
-    renderFields();
-    loadPreview();
-    sizePreview();
-    renderTimeline();
-    renderBusy();
-  }
-
-  function renderTotal() {
-    var el = $('total');
-    if (document.activeElement !== el) el.value = +S.timing.duration.toFixed(2);
-  }
-
-  /** Changes the clip's length: every marker keeps its place in proportion. */
-  function setTotal(v) {
-    v = Math.max(0.1, Math.min(MAX_SECONDS, v));
-    var r = v / S.timing.duration;
-    S.timing = {
-      stops: S.timing.stops.map(function (x) {
-        return x * r;
-      }),
-      duration: v,
-    };
-    renderTimeline();
-  }
-
-  var drag = null;
-
-  /** Seconds shown across the timeline (frozen while a marker is dragged). */
-  function viewSpan() {
-    return drag ? drag.span : S.timing.duration * 1.06;
-  }
-
-  function renderTimeline() {
-    if (!S.timing) return;
-    renderTotal();
-    var T = S.timing.duration;
-    var V = viewSpan();
-    var W = $('track').clientWidth || 240;
-    var pc = function (x) {
-      return (x / V) * 100 + '%';
-    };
-    var px = function (x) {
-      return (x / V) * W;
-    };
-    var m = S.model;
-    var onAir = S.timing.stops[m.onAir];
-
-    // Ruler: a step of at least 44 px.
-    var steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
-    var step = steps.filter(function (s) {
-      return px(s) >= 44;
-    })[0] || 300;
-    var endX = px(T);
-    var ticks = [];
-    for (var x = 0; x <= V + 1e-9; x += step) {
-      if (px(x) > endX - 62 && x > 0) break;
-      ticks.push('<span style="left:' + pc(x) + '">' + (x === 0 ? '0' : secs(x)) + '</span>');
-    }
-    ticks.push('<span class="endlab" style="left:' + pc(T) + ';transform:translateX(-100%)">END ' + secs(T) + '</span>');
-    $('ruler').innerHTML = ticks.join('');
-
-    // The bed: green up to the on-air point, red after it, to the end.
-    var h = '<div class="bed"><span class="in" style="width:' + pc(onAir) + '"></span><span class="out" style="left:' + pc(onAir) + ';width:' + pc(T - onAir) + '"></span></div>';
-    h += '<span class="mk end' + (drag && drag.i === 'end' ? ' drag' : '') + '" data-mk="end" style="left:' + pc(T) + '"></span>';
-    S.timing.stops.forEach(function (s, i) {
-      var kind = i === m.onAir ? 'onair' : 'pause';
-      h += '<span class="mk ' + kind + (drag && drag.i === i ? ' drag' : '') + '" data-mk="' + i + '" style="left:' + pc(s) + '"></span>';
-    });
-    $('track').innerHTML = h;
-
-    // Labels under the markers, on more rows when they would overlap.
-    var rows = [];
-    var labels = S.timing.stops
-      .map(function (s, i) {
-        var onair = i === m.onAir;
-        var text = onair ? 'IN / OUT ' + secs(s) : 'PAUSE ' + secs(s);
-        return { x: px(s), w: text.length * 5.8 + 6, onair: onair, html: onair ? '<em>IN</em> / <em>OUT</em> ' + secs(s) : 'PAUSE ' + secs(s) };
-      })
-      .sort(function (a, b) {
-        return a.x - b.x;
-      })
-      .map(function (l) {
-        var left = Math.max(0, Math.min(W - l.w, l.x - l.w / 2));
-        var row = 0;
-        while (row < rows.length && left < rows[row] + 4) row++;
-        rows[row] = left + l.w;
-        return '<span class="' + (l.onair ? 'onair' : 'pause') + '" style="left:' + left + 'px;top:' + row * 14 + 'px">' + l.html + '</span>';
-      });
-    $('labels').innerHTML = labels.join('');
-    $('labels').style.height = Math.max(1, rows.length) * 14 + 'px';
-    sendPreview();
-  }
-
-  /**
-   * Drags a marker (a stop's index, or 'end') anywhere on the clip. The
-   * stops keep their order: a marker pushes the ones it passes, and they go
-   * back where they were when it comes back. The end follows the last stop.
-   * Near the right edge the timeline zooms out, to make the clip longer.
-   */
-  function startDrag(e, which) {
-    var rect = $('track').getBoundingClientRect();
-    var i = which === 'end' ? 'end' : +which;
-    var from = copyTiming(S.timing);
-    var t0 = i === 'end' ? from.duration : from.stops[i];
-    var snap = 1 / (S.seq ? S.seq.fps : projectFps());
-    drag = { i: i, span: viewSpan(), x: e.clientX, cx: e.clientX };
-    var place = function () {
-      var t = t0 + ((drag.cx - drag.x) / rect.width) * drag.span;
-      t = Math.max(0, Math.min(MAX_SECONDS, Math.round(t / snap) * snap));
-      var st = from.stops.slice();
-      var end = from.duration;
-      if (i === 'end') {
-        end = Math.max(t, snap);
-        st = st.map(function (x) {
-          return Math.min(x, end);
-        });
-      } else {
-        st = st.map(function (x, k) {
-          return k < i ? Math.min(x, t) : k > i ? Math.max(x, t) : t;
-        });
-        end = Math.max(end, t);
-      }
-      S.timing = { stops: st, duration: end };
-      renderTimeline();
-    };
-    var edge = setInterval(function () {
-      if (drag && drag.cx > rect.right - 6 && drag.span < MAX_SECONDS * 1.1) {
-        drag.span *= 1.04;
-        place();
-      }
-    }, 60);
-    trackPointer(e, function (ev) {
-      drag.cx = ev.clientX;
-      place();
-    }, function () {
-      clearInterval(edge);
-      drag = null;
-      renderTimeline();
-    });
-    renderTimeline();
-  }
-
-  /**
-   * Follows the mouse until it is released: mouse events, which every CEP
-   * Chromium sends (pointer events are only used when the mouse ones are not).
-   */
-  function trackPointer(e, move, up) {
-    e.preventDefault();
-    var mouse = e.type === 'mousedown';
-    var mv = mouse ? 'mousemove' : 'pointermove';
-    var end = mouse ? 'mouseup' : 'pointerup';
-    var onMove = function (ev) {
-      ev.preventDefault();
-      move(ev);
-    };
-    var onUp = function (ev) {
-      window.removeEventListener(mv, onMove);
-      window.removeEventListener(end, onUp);
-      window.removeEventListener('blur', onUp);
-      up(ev);
-    };
-    window.addEventListener(mv, onMove);
-    window.addEventListener(end, onUp);
-    window.addEventListener('blur', onUp);
-  }
-
-  /** Clicks and drags on the ruler or the bar move the playhead. */
-  function startScrub(e) {
-    var rect = $('track').getBoundingClientRect();
-    var span = viewSpan();
-    var at = function (ev) {
-      setTime(((ev.clientX - rect.left) / rect.width) * span);
-    };
-    setPlaying(false);
-    at(e);
-    trackPointer(e, at, function () {});
-  }
-
-  // ---------------------------------------------------------------- preview
 
   /**
    * The template frame shown `t` seconds into the clip, as the server
-   * renders it (render.rs `ClipTiming::frame_at`): an animation with time to
-   * spare plays at its speed then holds on its stop, a shorter one plays
-   * faster. Null once the graphic has gone out.
+   * renders it (render.rs `ClipTiming::frame_at`). Null once it has gone out.
    */
-  function clipFrame(t) {
-    var m = S.model;
-    var c = S.timing;
+  function clipFrame(m, c, t) {
     var fromF = 0;
     var fromT = 0;
     for (var k = 0; k <= m.stops.length; k++) {
@@ -819,120 +624,880 @@
     return null;
   }
 
-  /** When the graphic is fully on air (it reaches the IN / OUT point). */
-  function onAirTime() {
-    var m = S.model;
-    var k = m.onAir;
-    var fromT = k > 0 ? S.timing.stops[k - 1] : 0;
-    var anim = (m.stops[k].frame - (k > 0 ? m.stops[k - 1].frame : 0)) / m.fps;
-    return Math.min(S.timing.stops[k], fromT + anim);
+  // --------------------------------------------------------------- actions
+
+  /** An element generated inside a built widget (engine/built.ts insideWidget). */
+  function insideWidget(byId, l) {
+    for (var p = l.parent ? byId[l.parent] : null; p; p = p.parent ? byId[p.parent] : null) if (p.widget) return true;
+    return false;
   }
 
-  var pv = { ready: false, page: '', loads: 0, playing: false, loop: store.get('loop', true), t: 0, last: 0 };
-
-  function setTime(t) {
-    pv.t = Math.max(0, Math.min(S.timing ? S.timing.duration : 0, t));
-    sendPreview();
-  }
-
-  function setPlaying(on) {
-    pv.playing = on;
-    if (on && pv.t >= S.timing.duration - 1e-3) pv.t = 0;
-    pv.last = 0;
-    $('play').innerHTML = on ? '❚❚' : '▶';
-    $('play').classList.toggle('on', on);
-    if (on) requestAnimationFrame(tick);
-  }
-
-  function tick(now) {
-    if (!pv.playing || S.screen !== 'clip' || !S.timing) return setPlaying(false);
-    if (pv.last) {
-      pv.t += (now - pv.last) / 1000;
-      if (pv.t >= S.timing.duration) {
-        if (pv.loop) pv.t = pv.t % S.timing.duration;
-        else {
-          pv.t = S.timing.duration;
-          sendPreview();
-          return setPlaying(false);
-        }
-      }
-      sendPreview();
-    }
-    pv.last = now;
-    requestAnimationFrame(tick);
-  }
-
-  /**
-   * The preview page of the server (the HTML5 renderer). Loaded again for
-   * another project: the page keeps the first project it read when two
-   * arrive out of order.
-   */
-  function loadPreview() {
-    var want = S.server + '|' + S.key + '|' + S.project.id;
-    if (pv.page === want) return;
-    pv.page = want;
-    pv.ready = false;
-    // A new address each time: never a page kept from before (it would not say it is ready).
-    $('pvFrame').src = S.server + '/embed/preview?key=' + enc(S.key) + '&project=' + enc(S.project.id) + '&n=' + ++pv.loads;
-  }
-
-  window.addEventListener('message', function (ev) {
-    if (ev.source !== $('pvFrame').contentWindow) return;
-    if (ev.data && ev.data.type === 'pcg-ready') {
-      pv.ready = true;
-      sendPreview();
-    }
-  });
-
-  /** The preview box at the sequence's (else the project's) shape. */
-  function sizePreview() {
-    var box = $('pv');
-    var w = (S.seq && S.seq.width) || (S.project && S.project.width) || 16;
-    var h = (S.seq && S.seq.height) || (S.project && S.project.height) || 9;
-    box.style.height = Math.round(Math.min(box.clientWidth * (h / w), 260)) + 'px';
-  }
-
-  function sendPreview() {
-    if (!S.template || !S.timing) return;
-    var t = Math.min(pv.t, S.timing.duration);
-    var x = (t / viewSpan()) * 100;
-    $('ph').style.left = x + '%';
-    $('pvTc').textContent = t.toFixed(2) + ' / ' + S.timing.duration.toFixed(2) + ' s';
-    var f = clipFrame(t);
-    var frame = $('pvFrame');
-    frame.style.visibility = f === null ? 'hidden' : '';
-    if (!pv.ready || f === null || !frame.contentWindow) return;
-    frame.contentWindow.postMessage(
-      {
-        type: 'pcg-preview',
-        projectId: S.project.id,
-        templateId: S.template.id,
-        data: S.data,
-        frame: f,
-        width: S.seq ? S.seq.width : undefined,
-        height: S.seq ? S.seq.height : undefined,
-      },
-      '*',
+  /** A built widget's definition: as placed (its snapshot, as on air), else the project's. */
+  function widgetDef(l, p) {
+    var s = l.widget.snap;
+    if (s && s.controls) return s;
+    return (
+      ((p && p.widgets) || []).filter(function (d) {
+        return d.id === l.widget.def;
+      })[0] || null
     );
   }
 
-  function renderFields() {
-    var t = S.template;
-    var box = $('fields');
-    box.innerHTML = '';
-    $('paramsCap').classList.toggle('hidden', !t.fields.length);
-    t.fields.forEach(function (f) {
-      var row = document.createElement('div');
-      row.className = 'f' + (f.kind === 'multiline' || f.kind === 'table' ? ' top' : '');
-      row.innerHTML = '<span title="' + esc(f.label) + '">' + esc(f.label) + '</span>';
-      row.appendChild(fieldInput(f));
-      box.appendChild(row);
+  /**
+   * What the operator does live that a clip places in time: the layers
+   * waiting for Continue or a trigger (their start), and the buttons of the
+   * built widgets (as the Operator lists them, widgets/built.tsx).
+   */
+  function actionsOf(t, p) {
+    var layers = t.layers || [];
+    var byId = {};
+    layers.forEach(function (l) {
+      byId[l.id] = l;
     });
+    var starts = [];
+    var controls = [];
+    layers.forEach(function (l) {
+      if (insideWidget(byId, l)) return;
+      if (l.manualStart) starts.push({ id: l.id, name: l.name || l.id });
+      if (!l.widget || l.visible === false) return;
+      var def = widgetDef(l, p);
+      if (!def) return;
+      var sb = l.settingBindings || {};
+      (def.controls || []).forEach(function (c) {
+        if (c.kind === 'list' || c.kind === 'field') return;
+        if (c.choose && !sb['widget.controls.' + c.id]) return;
+        controls.push({ layer: l.id, op: c.id, label: (l.name || def.name || 'Widget') + ' · ' + (c.label || c.id) });
+      });
+    });
+    return { starts: starts, controls: controls };
+  }
+
+  function eventLabel(ev, acts) {
+    var c = ev.command || {};
+    if (c.action === 'widget') {
+      var s = acts.starts.filter(function (x) {
+        return x.id === c.target;
+      })[0];
+      return 'Départ · ' + (s ? s.name : c.target);
+    }
+    if (c.action === 'act') {
+      var k = acts.controls.filter(function (x) {
+        return x.layer === c.target && x.op === c.op;
+      })[0];
+      return k ? k.label : c.op;
+    }
+    return String(c.action || '?');
+  }
+
+  var evSeq = 0;
+  function sortEvents(list) {
+    return list.sort(function (a, b) {
+      return a.at - b.at || a.id - b.id;
+    });
+  }
+
+  /** The actions of a clip for its template: those it no longer has dropped, a start for each layer that waits. */
+  function fixEvents(events, acts, m, timing) {
+    var out = (events || [])
+      .filter(function (e) {
+        var c = e && e.command;
+        if (!c) return false;
+        if (c.action === 'widget')
+          return acts.starts.some(function (s) {
+            return s.id === c.target;
+          });
+        if (c.action === 'act')
+          return acts.controls.some(function (k) {
+            return k.layer === c.target && k.op === c.op;
+          });
+        return true;
+      })
+      .map(function (e) {
+        return { id: ++evSeq, at: clamp(+e.at || 0, 0, timing.duration), command: e.command };
+      });
+    acts.starts.forEach(function (s) {
+      var has = out.some(function (e) {
+        return e.command.action === 'widget' && e.command.target === s.id;
+      });
+      if (!has) out.push({ id: ++evSeq, at: onAirAt(m, timing), command: { action: 'widget', target: s.id, control: 'start' } });
+    });
+    return sortEvents(out);
+  }
+
+  // -------------------------------------------------------------- sidecars
+
+  var sideCache = {};
+  /** What made a clip (<clip>.mov.pcg.json); null for any other clip. */
+  function sidecarOf(media) {
+    if (!node || !media) return null;
+    var p = media + '.pcg.json';
+    var mt;
+    try {
+      mt = fs.statSync(p).mtime.getTime();
+    } catch (e) {
+      return null;
+    }
+    var c = sideCache[p];
+    if (c && c.mt === mt) return c.side;
+    var side = null;
+    try {
+      side = JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch (e) {}
+    if (side && (!side.projectId || !side.templateId)) side = null;
+    sideCache[p] = { mt: mt, side: side };
+    return side;
+  }
+
+  function clipKey(c) {
+    return c.track + ':' + c.start.toFixed(3) + ':' + c.media;
+  }
+
+  function defaultsOf(t) {
+    var d = {};
+    (t.fields || []).forEach(function (f) {
+      d[f.key] = f.default;
+    });
+    return d;
+  }
+
+  /** The clip's main text: its first text value. */
+  function mainText(t, data) {
+    var fields = (t && t.fields) || [];
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      if (f.kind !== 'text' && f.kind !== 'multiline') continue;
+      var v = plain(data && data[f.key]);
+      if (v) return v;
+    }
+    return t ? t.name : '';
+  }
+
+  // -------------------------------------------------------------- screens
+
+  function show(scr) {
+    if (S.screen !== scr) S.prev = S.screen;
+    S.screen = scr;
+    ['seq', 'tpl', 'clip', 'set'].forEach(function (k) {
+      $('scr-' + k).classList.toggle('pp-off', k !== scr);
+    });
+    closeList();
+    if (scr !== 'clip') setPlaying(false);
+    renderTop();
+    if (scr === 'seq') renderSeq();
+    if (scr === 'tpl') renderTpl();
+    if (scr === 'clip') renderEditor();
+    if (scr === 'set') renderSettings(true);
+  }
+
+  function backTarget() {
+    return S.screen === 'clip' && S.E && S.E.mode === 'new' ? 'tpl' : 'seq';
+  }
+
+  function renderTop() {
+    var el = $('pill');
+    var cls;
+    var txt;
+    if (!S.server || !S.key) {
+      cls = 'wait';
+      txt = 'Non connecté';
+    } else if (S.online === false) {
+      cls = 'lost';
+      txt = 'Hors ligne';
+    } else if (S.update === 'install' || S.update === 'reload') {
+      cls = 'hot';
+      txt = 'Mise à jour';
+    } else if (S.online === true) {
+      cls = 'ok';
+      txt = 'Connecté';
+    } else {
+      cls = 'wait';
+      txt = 'Connexion…';
+    }
+    el.className = 'ux1-pill ' + cls;
+    $('pillTxt').textContent = txt;
+    el.title = 'Réglages' + (S.server ? ' · ' + S.server.replace(/^https?:\/\//, '') : '');
+    var back = $('back');
+    back.classList.toggle('pp-off', S.screen === 'seq');
+    back.title = backTarget() === 'tpl' ? 'Modèles' : 'Séquence';
+  }
+
+  // -------------------------------------------------------------- Séquence
+
+  var lastRows = null;
+
+  /** The rows of the Séquence screen: its Strata clips and the clips being made, in time order. */
+  function rowsModel() {
+    var out = [];
+    S.clips.forEach(function (c) {
+      var side = c.side;
+      var p = S.full[side.projectId];
+      var t = p ? tplOf(p, side.templateId) : null;
+      var m = t ? model(t, p) : null;
+      var timing = m ? sideTiming(m, side) : null;
+      var z = m && timing ? zones(m, timing) : null;
+      var needs = [];
+      if (t) {
+        var R = renderedLen(side);
+        if (R !== null && Math.abs(c.len - R) > 0.5 / seqFps()) needs.push('Durée du clip changée : ' + dec(R, 1) + ' s → ' + dec(c.len, 1) + ' s');
+        if (side.templateHash && side.templateHash !== tplHash(t)) needs.push('Modèle publié depuis ce rendu');
+      }
+      out.push({
+        key: c.key,
+        clip: c,
+        track: c.track,
+        start: c.start,
+        main: t ? mainText(t, Object.assign(defaultsOf(t), side.data || {})) : plain(side.label) || c.name,
+        tpl: t ? t.name : side.template || side.templateId,
+        zone: t ? zoneOf(p, t.zone) : null,
+        inPc: z ? (z.inEnd / timing.duration) * 100 : 0,
+        outPc: z ? (z.outStart / timing.duration) * 100 : 100,
+        needs: needs,
+        on: c.selected,
+      });
+    });
+    S.jobs.forEach(function (j) {
+      if (j.kind !== 'insert') return;
+      var r = j.row;
+      out.push({ key: j.key, pending: true, track: r.track, start: r.start, main: r.main, tpl: r.t.name, zone: zoneOf(r.p, r.t.zone), inPc: r.inPc, outPc: r.outPc, needs: [], on: false });
+    });
+    out.sort(function (a, b) {
+      return a.start - b.start || a.track - b.track;
+    });
+    return out;
+  }
+
+  function jobFor(key) {
+    return (
+      S.jobs.filter(function (j) {
+        return j.key === key;
+      })[0] || null
+    );
+  }
+
+  function voidHtml(icon, text, add) {
+    return '<div class="opx-void"><span class="opx-void-ic">' + icon + '</span><span class="opx-void-t">' + esc(text) + '</span>' + (add ? '<button class="opx-btn small" data-add-tpl="1">' + I.plus13 + ' Ajouter un graphique</button>' : '') + '</div>';
+  }
+
+  function renderSeq() {
+    if (S.screen !== 'seq') return;
+    var s = S.seq;
+    $('seqTabs').classList.toggle('pp-off', !s);
+    $('seqFmt').textContent = s ? s.width + '×' + s.height + ' · ' + fpsLabel(s.fps) + ' i/s' : '';
+    $('seqAdd').disabled = !s;
+    var rows = s ? rowsModel() : [];
+    if (s) {
+      $('seqName').textContent = s.name;
+      $('seqN').textContent = String(S.clips.length);
+      $('seqName').parentNode.title = S.clips.length + (S.clips.length > 1 ? ' graphiques' : ' graphique');
+    }
+    var html;
+    if (!s) html = voidHtml(I.film, 'Ouvrez une séquence', false);
+    else if (!rows.length) html = voidHtml(I.listPlus, 'Aucun graphique', true);
+    else
+      html = rows
+        .map(function (r) {
+          var job = jobFor(r.key);
+          var zc = r.zone ? r.zone.color || '#8a90ad' : '';
+          var state = job ? '<span class="pp-pct"></span>' : r.needs.length ? '<span class="tpl-draft" title="' + esc(r.needs.join('\n')) + '"></span>' : '';
+          return (
+            '<div class="opx-gr' + (r.on ? ' on' : '') + (job ? ' pp-busy' : '') + (r.pending ? ' pp-pending' : '') + '" data-row="' + esc(r.key) + '">' +
+            '<button class="opx-sq big" ' + (r.pending ? 'disabled' : 'data-go="' + esc(r.key) + '"') + ' title="Aller au clip"><span class="pp-tc">' + (r.track == null ? '…' : 'V' + (r.track + 1)) + '</span></button>' +
+            '<span class="opx-gr-main"><strong title="' + esc(r.main) + '">' + esc(r.main) + '</strong>' +
+            '<span class="muted small opx-gr-line">' +
+            (r.zone ? '<span class="opx-zpill" style="--zc: ' + esc(zc) + '; --zc-bg: ' + rgba(zc, 0.18) + '; --zc-bd: ' + rgba(zc, 0.38) + ';">' + esc(r.zone.name) + '</span>' : '') +
+            '<span class="opx-gr-tpl">' + esc(r.tpl) + ' · ' + tc(r.start) + '</span></span>' +
+            '<span class="opx-mtl" title="Entrée · à l’antenne · sortie"><span class="in" style="width: ' + r.inPc.toFixed(2) + '%;"></span><span class="out" style="left: ' + r.outPc.toFixed(2) + '%;"></span></span></span>' +
+            '<span class="pp-state">' + state + '</span></div>'
+          );
+        })
+        .join('');
+    var box = $('rows');
+    // Redrawn on every poll: only when it changed (a click must not lose its row).
+    if (html !== lastRows) {
+      box.innerHTML = lastRows = html;
+      box.classList.toggle('pp-v', !s || !rows.length);
+    }
+    var n = rows.filter(function (r) {
+      return r.needs.length && !jobFor(r.key);
+    }).length;
+    $('seqFoot').classList.toggle('pp-off', !n);
+    $('updN').textContent = String(n);
+    renderProgress();
+  }
+
+  /** The progress of the renders, in place (the rows are not drawn again). */
+  function renderProgress() {
+    if (S.screen === 'seq')
+      [].forEach.call($('rows').querySelectorAll('.pp-busy'), function (el) {
+        var j = jobFor(el.getAttribute('data-row'));
+        var p = j ? Math.round(j.progress * 100) : 0;
+        el.style.setProperty('--p', p + '%');
+        var pct = el.querySelector('.pp-pct');
+        if (pct) pct.textContent = j && j.started ? p + ' %' : '…';
+      });
+    renderFoot();
+  }
+
+  /** The playhead to the clip, and the clip selected in the sequence (it is not opened here). */
+  function gotoClip(key) {
+    var c = S.clips.filter(function (x) {
+      return x.key === key;
+    })[0];
+    if (!c) return;
+    S.quietSel = key;
+    evalScript('pcg_goto(' + c.start + ', ' + c.track + ', ' + c.start + ')').catch(function (e) {
+      toast(e.message, true);
+    });
+  }
+
+  /** Every clip whose length or template changed, rendered again in place. */
+  function updateAll() {
+    if (!needNode()) return;
+    rowsModel().forEach(function (r) {
+      if (!r.clip || !r.needs.length || jobFor(r.key)) return;
+      var c = r.clip;
+      enqueue({
+        kind: 'update',
+        key: c.key,
+        prepare: function () {
+          return loadProject(c.side.projectId).then(function (p) {
+            var t = tplOf(p, c.side.templateId);
+            if (!t) throw new Error('Modèle introuvable : ' + (c.side.template || c.side.templateId));
+            return specOfClip(c, p, t);
+          });
+        },
+        place: function (file, spec) {
+          return placeUpdate(c, file, spec.timing.duration);
+        },
+      });
+    });
+  }
+
+  // ----------------------------------------------------------------- Modèles
+
+  var lastTpl = '';
+
+  function openTemplates() {
+    if (!S.pid && S.E) S.pid = S.E.p.id;
+    if (!S.pid && S.clips.length) S.pid = S.clips[0].side.projectId;
+    show('tpl');
+    var go = function () {
+      if (!S.pid) return renderTpl();
+      loadProject(S.pid).then(renderTpl, function (e) {
+        toast(e.message, true);
+        renderTpl();
+      });
+    };
+    if (S.pid) go();
+    loadProjects().then(function (list) {
+      var known = list.some(function (p) {
+        return p.id === S.pid;
+      });
+      if (!known && list.length) {
+        S.pid = list[0].id;
+        store.set('project', S.pid);
+        go();
+      } else renderTpl();
+    }, noop);
+  }
+
+  function thumbUrl(p, t) {
+    return S.server + '/api/projects/' + enc(p.id) + '/templates/' + enc(t.id) + '/thumbnail.png?w=480&key=' + enc(S.key) + '&v=' + enc(tplHash(t));
+  }
+
+  function renderTpl() {
+    if (S.screen !== 'tpl') return;
+    var p = S.full[S.pid];
+    var summary = S.projects.filter(function (x) {
+      return x.id === S.pid;
+    })[0];
+    $('pjNameTxt').textContent = p ? p.name : summary ? summary.name : S.pid ? '…' : 'Choisir un projet';
+    var sel = S.E && S.E.p.id === S.pid ? S.E.t.id : '';
+    var sig = S.pid + '|' + (S.sig[S.pid] || '') + '|' + sel + '|' + S.server;
+    if (sig === lastTpl) return;
+    lastTpl = sig;
+    var list = p ? p.templates : [];
+    $('tplList').innerHTML =
+      '<header><span>Modèles</span></header>' +
+      (p && !list.length ? voidHtml(I.listPlus, 'Aucun modèle', false) : '') +
+      list
+        .map(function (t) {
+          var z = zoneOf(p, t.zone);
+          return (
+            '<div class="template-item' + (t.id === sel ? ' selected' : '') + '" draggable="true" data-tpl="' + esc(t.id) + '">' +
+            '<img alt="" draggable="false" src="' + esc(thumbUrl(p, t)) + '">' +
+            '<span class="tpl-text"><span class="tpl-name">' + esc(t.name) + '</span>' + (z ? '<em class="tpl-zone" style="--zc: ' + esc(z.color || '#8a90ad') + ';">' + esc(z.name) + '</em>' : '') + '</span>' +
+            '<div class="item-actions"><button class="icon-btn ghost" data-add="' + esc(t.id) + '" title="Insérer à la tête de lecture">' + I.plus + '</button></div></div>'
+          );
+        })
+        .join('');
+  }
+
+  function pickProject() {
+    var go = function (list) {
+      openList(
+        $('pjName'),
+        list.map(function (p) {
+          return { value: p.id, label: p.name };
+        }),
+        S.pid,
+        function (id) {
+          S.pid = id;
+          store.set('project', id);
+          lastTpl = '';
+          renderTpl();
+          loadProject(id).then(renderTpl, function (e) {
+            toast(e.message, true);
+          });
+        },
+      );
+    };
+    if (S.projects.length) {
+      go(S.projects);
+      loadProjects().catch(noop);
+    } else
+      loadProjects().then(go, function (e) {
+        toast(e.message, true);
+      });
+  }
+
+  // -------------------------------------------------------------- the clip
+
+  /** A Strata clip of the sequence, as it was made (what its sidecar keeps), for its template as it is now. */
+  function specOfClip(c, p, t) {
+    var side = c.side;
+    var m = model(t, p);
+    var acts = actionsOf(t, p);
+    var timing = fitTiming(m, frameSnap(c.len), sideTiming(m, side));
+    var data = Object.assign(defaultsOf(t), side.data || {});
+    return {
+      p: p,
+      t: t,
+      m: m,
+      acts: acts,
+      data: data,
+      rows: Object.assign({}, side.rows || {}),
+      events: fixEvents(side.events, acts, m, timing),
+      clock: typeof side.clock === 'number' ? side.clock : null,
+      timing: timing,
+    };
+  }
+
+  /** Seconds on whole frames of the sequence. */
+  function frameSnap(x) {
+    return framesToSec(Math.max(1, secToFrames(x)));
+  }
+
+  function openClip(c) {
+    loadProject(c.side.projectId).then(
+      function (p) {
+        var t = tplOf(p, c.side.templateId);
+        if (!t) return toast('Modèle introuvable : ' + (c.side.template || c.side.templateId), true);
+        var E = Object.assign(specOfClip(c, p, t), { mode: 'clip', clip: c, datasets: [], touched: {}, place: 'playhead', track: c.track });
+        startEditor(E);
+        if ((t.datasets || []).length)
+          values(p.id, t.id, E.rows).then(function (r) {
+            if (S.E !== E) return;
+            E.datasets = r.datasets;
+            renderVals();
+          }, noop);
+      },
+      function (e) {
+        toast(e.message, true);
+      },
+    );
+  }
+
+  function openNew(t) {
+    var p = S.full[S.pid];
+    if (!p) return;
+    var m = model(t, p);
+    var acts = actionsOf(t, p);
+    var place = S.seq && S.seq.range ? 'range' : 'playhead';
+    var D = place === 'range' ? frameSnap(S.seq.range.b - S.seq.range.a) : frameSnap(naturalDuration(m));
+    var timing = fitTiming(m, D, null);
+    var E = { mode: 'new', p: p, t: t, m: m, acts: acts, data: defaultsOf(t), rows: {}, datasets: [], touched: {}, clock: null, timing: timing, events: fixEvents([], acts, m, timing), place: place, track: null };
+    startEditor(E);
+    values(p.id, t.id, null).then(function (r) {
+      if (S.E !== E) return;
+      E.data = Object.assign(E.data, r.data);
+      E.datasets = r.datasets;
+      renderVals();
+      renderFoot();
+      sendPreview();
+      $('monNameIn').value = monName(E);
+    }, noop);
+  }
+
+  function startEditor(E) {
+    S.E = E;
+    pv.t = onAirAt(E.m, E.timing);
+    show('clip');
+    $('clipScroll').scrollTop = 0;
+    setPlaying(pv.shown);
+  }
+
+  function monName(E) {
+    return E.mode === 'clip' ? mainText(E.t, E.data) : E.t.name;
+  }
+
+  function renderEditor() {
+    var E = S.E;
+    if (!E) return show('seq');
+    $('monNameIn').value = monName(E);
+    var z = zoneOf(E.p, E.t.zone);
+    $('monName').title = E.mode === 'clip' ? E.t.name + ' · V' + (E.clip.track + 1) + ' · ' + tc(E.clip.start) : E.t.name + (z ? ' · ' + z.name : '');
+    renderEye();
+    renderPlace();
+    renderDur();
+    renderVals();
+    renderFoot();
+    loadPreview();
+    // Sizes need the screen laid out.
+    sizePreview();
+    renderRuler();
+    renderActs();
+    if (E.mode === 'new') computeTrack();
+  }
+
+  // Placement (a new clip): at the playhead, or between the sequence's In and Out points.
+
+  function startOf(E) {
+    return E.mode === 'clip' ? E.clip.start : E.place === 'range' && S.seq && S.seq.range ? S.seq.range.a : S.seq ? S.seq.playhead : 0;
+  }
+
+  function renderPlace() {
+    var E = S.E;
+    if (!E) return;
+    var range = S.seq && S.seq.range;
+    if (E.place === 'range' && !range) {
+      E.place = 'playhead';
+      if (E.mode === 'new') setDuration(frameSnap(naturalDuration(E.m)));
+    }
+    $('fPlace').classList.toggle('pp-off', E.mode !== 'new' || !range);
+    $('fDur').classList.toggle('pp-off', E.mode === 'new' && E.place === 'range');
+    [].forEach.call($('place').children, function (b) {
+      b.classList.toggle('on', b.getAttribute('data-place') === E.place);
+    });
+    $('placeInfo').textContent = !range ? '' : E.place === 'range' ? tc(range.a) + ' → ' + tc(range.b) + ' · ' + secs(range.b - range.a) : tc(S.seq.playhead);
+  }
+
+  function setPlace(v) {
+    var E = S.E;
+    if (!E || E.place === v) return;
+    E.place = v;
+    var range = S.seq && S.seq.range;
+    setDuration(v === 'range' && range ? frameSnap(range.b - range.a) : frameSnap(naturalDuration(E.m)));
+    renderPlace();
+  }
+
+  /** The track a new clip goes to (the first free one above V1 at its place). */
+  var trackTimer = 0;
+  var trackAt = '';
+  function computeTrack() {
+    clearTimeout(trackTimer);
+    trackTimer = setTimeout(function () {
+      var E = S.E;
+      if (!E || E.mode !== 'new' || !S.seq) return;
+      var at = startOf(E);
+      trackAt = at + '|' + E.timing.duration;
+      freeTrack(at, E.timing.duration).then(function (t) {
+        if (S.E !== E) return;
+        E.track = t;
+        renderFoot();
+      }, noop);
+    }, 120);
+  }
+
+  // Durée: the Designer's duration field, at the sequence's rate.
+
+  function renderDur() {
+    var E = S.E;
+    if (!E) return;
+    var r = Math.round(seqFps());
+    var f = secToFrames(E.timing.duration);
+    if (document.activeElement !== $('durTc')) $('durTc').value = durTc(f, r);
+    [].forEach.call($('durPresets').children, function (b) {
+      b.classList.toggle('on', f === +b.getAttribute('data-sec') * r);
+    });
+  }
+
+  function setFrames(f) {
+    setDuration(framesToSec(clamp(f, 1, Math.floor(MAX_SECONDS * seqFps()))));
+  }
+
+  function setDuration(D) {
+    var E = S.E;
+    if (!E) return;
+    E.timing = fitTiming(E.m, D, E.timing);
+    E.events.forEach(function (e) {
+      e.at = Math.min(e.at, D);
+    });
+    pv.t = Math.min(pv.t, D);
+    renderDur();
+    renderRuler();
+    renderActs();
+    if (E.mode === 'new') computeTrack();
+    sendPreview();
+  }
+
+  // Déroulé: the clip's timeline (the Designer's ruler).
+
+  function renderRuler() {
+    var E = S.E;
+    if (!E || S.screen !== 'clip') return;
+    var D = E.timing.duration;
+    var W = $('ruler').clientWidth || 300;
+    var pc = function (x) {
+      return ((clamp(x, 0, D) / D) * 100).toFixed(3) + '%';
+    };
+    var steps = [0.5, 1, 2, 5, 10, 15, 30, 60];
+    var step =
+      steps.filter(function (s) {
+        return (s / D) * W >= 56;
+      })[0] || 120;
+    var h = '';
+    for (var i = 0; i * step < D - 1e-9; i++) {
+      var x = i * step;
+      if ((x / D) * W > W - 18) break;
+      h += '<div class="tick" style="left: ' + pc(x) + ';"><span>' + String(+x.toFixed(1)).replace('.', ',') + '</span></div>';
+    }
+    $('rTime').innerHTML = h;
+    var z = zones(E.m, E.timing);
+    var px = function (x) {
+      return (x / D) * W;
+    };
+    var mk = '<div class="tl-zone in" style="left: 0%; width: ' + pc(z.inEnd) + ';">' + (px(z.inEnd) >= 26 ? 'IN' : '') + '</div>';
+    mk += '<div class="tl-zone out" style="left: ' + pc(z.outStart) + '; width: ' + pc(D - z.outStart) + ';">' + (px(D - z.outStart) >= 34 ? 'OUT' : '') + '</div>';
+    E.m.stops.forEach(function (s, k) {
+      if (s.onAir) return;
+      var at = E.timing.stops[k];
+      mk += '<div class="tl-marker pause" data-stop="' + k + '" title="' + esc(s.name + ' · ' + durTc(secToFrames(at), Math.round(seqFps()))) + '" style="left: ' + pc(at) + ';"><span>' + esc(s.name) + '</span></div>';
+    });
+    E.events.forEach(function (e, j) {
+      var label = eventLabel(e, E.acts);
+      mk += '<div class="tl-marker label" data-ev="' + j + '" title="' + esc(label + ' · ' + durTc(secToFrames(e.at), Math.round(seqFps()))) + '" style="left: ' + pc(e.at) + ';"><span>' + esc(label) + '</span></div>';
+    });
+    if (z.outStart < D - 1e-6) mk += '<div class="tl-marker onair" style="left: ' + pc(z.outStart) + ';"></div>';
+    $('rMarks').innerHTML = mk;
+    flipMarkers();
+    renderHead();
+  }
+
+  /** A label that would leave the ruler on the right goes on the left of its marker. */
+  function flipMarkers() {
+    var W = $('ruler').clientWidth;
+    [].forEach.call($('rMarks').querySelectorAll('.tl-marker.pause, .tl-marker.label'), function (el) {
+      el.classList.remove('pp-flip');
+      if (el.offsetLeft + el.offsetWidth > W - 2) el.classList.add('pp-flip');
+    });
+  }
+
+  function renderHead() {
+    var E = S.E;
+    if (!E) return;
+    $('rHead').style.left = ((clamp(pv.t, 0, E.timing.duration) / E.timing.duration) * 100).toFixed(3) + '%';
+  }
+
+  /**
+   * A pause (`data-stop`) or an action (`data-ev`) dragged along the clip,
+   * on whole frames. A pause stays between its neighbours.
+   */
+  function dragMarker(e, el) {
+    var E = S.E;
+    var rect = $('ruler').getBoundingClientRect();
+    var D = E.timing.duration;
+    var stop = el.hasAttribute('data-stop') ? +el.getAttribute('data-stop') : -1;
+    var ev = stop < 0 ? E.events[+el.getAttribute('data-ev')] : null;
+    var lo = 0;
+    var hi = D;
+    if (stop >= 0) {
+      lo = stop > 0 ? E.timing.stops[stop - 1] : 0;
+      hi = E.timing.stops[stop + 1] === undefined ? D : E.timing.stops[stop + 1];
+    }
+    var playing = pv.playing;
+    setPlaying(false);
+    el.classList.add('moving');
+    trackPointer(
+      e,
+      function (m) {
+        var t = (clamp(m.clientX - rect.left, 0, rect.width) / rect.width) * D;
+        t = clamp(framesToSec(secToFrames(t)), lo, hi);
+        if (stop >= 0) E.timing.stops[stop] = t;
+        else ev.at = t;
+        el.style.left = ((t / D) * 100).toFixed(3) + '%';
+        pv.t = t;
+        renderHead();
+        sendPreview();
+        renderActTimes();
+      },
+      function () {
+        el.classList.remove('moving');
+        sortEvents(E.events);
+        renderRuler();
+        renderActs();
+        if (playing) setPlaying(true);
+      },
+    );
+  }
+
+  /** Clicks and drags on the ruler move the playhead of the preview. */
+  function scrub(e) {
+    var E = S.E;
+    var rect = $('ruler').getBoundingClientRect();
+    var at = function (m) {
+      pv.t = (clamp(m.clientX - rect.left, 0, rect.width) / rect.width) * E.timing.duration;
+      renderHead();
+      sendPreview();
+    };
+    setPlaying(false);
+    at(e);
+    trackPointer(e, at, noop);
+  }
+
+  /** Follows the mouse until it is released (mouse events: every CEP Chromium sends them). */
+  function trackPointer(e, move, up) {
+    e.preventDefault();
+    var onMove = function (ev) {
+      ev.preventDefault();
+      move(ev);
+    };
+    var onUp = function (ev) {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('blur', onUp);
+      up(ev);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('blur', onUp);
+  }
+
+  // The actions placed on the clip, each with its time.
+
+  function renderActs() {
+    var E = S.E;
+    if (!E) return;
+    var r = Math.round(seqFps());
+    $('addAct').classList.toggle('pp-off', !E.acts.controls.length);
+    $('acts').classList.toggle('pp-off', !E.events.length);
+    $('acts').innerHTML = E.events
+      .map(function (e, j) {
+        var label = eventLabel(e, E.acts);
+        return (
+          '<div class="opx-var pp-act"><i class="opx-var-dot"></i><span class="opx-var-name" title="' + esc(label) + '">' + esc(label) + '</span>' +
+          '<div class="opx-var-val"><input class="pp-time" data-evt="' + j + '" value="' + durTc(secToFrames(e.at), r) + '" spellcheck="false" title="Minutes:secondes:images dans le clip"></div>' +
+          (e.command.action === 'act' ? '<button class="icon-btn ghost" data-del="' + j + '" title="Retirer">' + I.x + '</button>' : '<span></span>') +
+          '</div>'
+        );
+      })
+      .join('');
+  }
+
+  function renderActTimes() {
+    var E = S.E;
+    var r = Math.round(seqFps());
+    [].forEach.call($('acts').querySelectorAll('[data-evt]'), function (el) {
+      var e = E.events[+el.getAttribute('data-evt')];
+      if (e && document.activeElement !== el) el.value = durTc(secToFrames(e.at), r);
+    });
+  }
+
+  function addAction() {
+    var E = S.E;
+    openList(
+      $('addAct'),
+      E.acts.controls.map(function (k, i) {
+        return { value: String(i), label: k.label };
+      }),
+      '',
+      function (v) {
+        var k = E.acts.controls[+v];
+        E.events.push({ id: ++evSeq, at: clamp(pv.t, 0, E.timing.duration), command: { action: 'act', target: k.layer, op: k.op } });
+        sortEvents(E.events);
+        renderRuler();
+        renderActs();
+      },
+    );
+  }
+
+  // Valeurs: the template's values, the data sets' rows.
+
+  function renderVals() {
+    var E = S.E;
+    if (!E) return;
+    var box = $('vals');
+    box.innerHTML = '';
+    E.datasets.forEach(function (ds) {
+      box.appendChild(varRow(ds.name || ds.key, rowPicker(ds)));
+    });
+    (E.t.fields || []).forEach(function (f) {
+      box.appendChild(varRow(f.label || f.key, fieldInput(f)));
+    });
+    $('valsHead').classList.toggle('pp-off', !box.children.length);
+    requestAnimationFrame(function () {
+      [].forEach.call(box.querySelectorAll('textarea.tx-grow'), grow);
+    });
+  }
+
+  function varRow(name, input) {
+    var row = document.createElement('div');
+    row.className = 'opx-var ';
+    row.innerHTML = '<i class="opx-var-dot"></i><span class="opx-var-name" title="' + esc(name) + '">' + esc(name) + '</span><div class="opx-var-val"></div>';
+    row.children[2].appendChild(input);
+    return row;
+  }
+
+  function ddButton(label) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'dd-btn';
+    b.innerHTML = '<span class="dd-label">' + esc(label) + '</span>' + I.chevDown;
+    return b;
+  }
+
+  /** The row of a data set the clip shows: its values come from the server. */
+  function rowPicker(ds) {
+    var E = S.E;
+    var cur = +E.rows[ds.key] || 1;
+    var label = function (n) {
+      var l = plain((ds.rows || [])[n - 1]);
+      return n + (l ? ' · ' + l : '');
+    };
+    var b = ddButton(label(cur));
+    b.onclick = function () {
+      openList(
+        b,
+        (ds.rows || []).map(function (l, i) {
+          return { value: String(i + 1), label: label(i + 1) };
+        }),
+        String(cur),
+        function (v) {
+          E.rows[ds.key] = +v;
+          values(E.p.id, E.t.id, E.rows).then(function (r) {
+            if (S.E !== E) return;
+            var kept = {};
+            Object.keys(E.touched).forEach(function (k) {
+              kept[k] = E.data[k];
+            });
+            E.data = Object.assign(E.data, r.data, kept);
+            E.datasets = r.datasets.length ? r.datasets : E.datasets;
+            renderVals();
+            sendPreview();
+            $('monNameIn').value = monName(E);
+          }, function (e) {
+            toast(e.message, true);
+          });
+          b.querySelector('.dd-label').textContent = label(+v);
+        },
+      );
+    };
+    return b;
   }
 
   function segmented(choices, v, set) {
     var el = document.createElement('div');
-    el.className = 'seg';
+    el.className = 'segmented';
     el.innerHTML = choices
       .map(function (c) {
         return '<button type="button" class="' + (c[0] === v ? 'on' : '') + '" data-v="' + esc(c[0]) + '">' + esc(c[1]) + '</button>';
@@ -949,47 +1514,68 @@
     return el;
   }
 
+  function grow(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.max(30, el.scrollHeight + 2) + 'px';
+  }
+
+  /** The control of a value, as the Operator's (text, choices, number, colour, on / off). */
   function fieldInput(f) {
-    var v = S.data[f.key] == null ? '' : String(S.data[f.key]);
+    var E = S.E;
+    var v = E.data[f.key] == null ? '' : String(E.data[f.key]);
     var set = function (x) {
-      S.data[f.key] = x;
+      E.data[f.key] = x;
+      E.touched[f.key] = true;
       sendPreview();
+      if (E.mode === 'clip') $('monNameIn').value = monName(E);
     };
     var el;
     if (f.options && f.options.length) {
       var short =
         f.options.length <= 4 &&
         f.options.every(function (o) {
-          return String(o[1]).length <= 10;
+          return String(o[1]).length <= 12;
         });
       if (short) return segmented(f.options, v, set);
-      el = document.createElement('select');
-      el.innerHTML = f.options
-        .map(function (o) {
-          return '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>';
-        })
-        .join('');
-      el.value = v;
-      el.onchange = function () {
-        set(el.value);
+      var labelOf = function (x) {
+        var o = f.options.filter(function (o2) {
+          return o2[0] === x;
+        })[0];
+        return o ? o[1] : x;
+      };
+      el = ddButton(labelOf(v));
+      el.onclick = function () {
+        openList(
+          el,
+          f.options.map(function (o) {
+            return { value: o[0], label: o[1] };
+          }),
+          String(E.data[f.key]),
+          function (x) {
+            set(x);
+            el.querySelector('.dd-label').textContent = labelOf(x);
+          },
+        );
       };
       return el;
     }
     if (f.kind === 'boolean') {
-      var on = v === 'true' || v === '1';
       var num = v === '1' || v === '0';
-      return segmented(
-        [
-          [num ? '1' : 'true', 'On'],
-          [num ? '0' : 'false', 'Off'],
-        ],
-        on ? (num ? '1' : 'true') : num ? '0' : 'false',
-        set,
-      );
+      var on = v === 'true' || v === '1';
+      el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'wk-tog' + (on ? ' on' : '');
+      el.innerHTML = '<i></i>';
+      el.onclick = function () {
+        on = !on;
+        el.classList.toggle('on', on);
+        set(num ? (on ? '1' : '0') : on ? 'true' : 'false');
+      };
+      return el;
     }
     if (f.kind === 'color') {
-      el = document.createElement('div');
-      el.className = 'color';
+      el = document.createElement('span');
+      el.className = 'pp-color';
       el.innerHTML = '<input type="color"><input spellcheck="false">';
       var pick = el.children[0];
       var hex = el.children[1];
@@ -1005,19 +1591,151 @@
       };
       return el;
     }
-    el = document.createElement(f.kind === 'multiline' || f.kind === 'table' ? 'textarea' : 'input');
-    if (f.kind === 'multiline' || f.kind === 'table') el.rows = 2;
     if (f.kind === 'number') {
-      el.type = 'number';
-      if (f.min != null) el.min = f.min;
-      if (f.max != null) el.max = f.max;
+      el = document.createElement('input');
+      el.spellcheck = false;
+      el.value = v;
+      el.oninput = function () {
+        set(el.value);
+      };
+      return el;
     }
+    // A text: on one line (Enter leaves it) or several (multiline, tables).
+    var several = f.kind === 'multiline' || f.kind === 'table';
+    el = document.createElement('textarea');
+    el.rows = 1;
+    el.className = 'tx-grow' + (several ? '' : ' line');
     el.spellcheck = false;
     el.value = v;
     el.oninput = function () {
+      if (!several && /\n/.test(el.value)) el.value = el.value.replace(/\n/g, ' ');
+      grow(el);
       set(el.value);
     };
+    el.onkeydown = function (e) {
+      if (!several && e.key === 'Enter') {
+        e.preventDefault();
+        el.blur();
+      }
+    };
     return el;
+  }
+
+  // The buttons at the bottom.
+
+  function renderFoot() {
+    var E = S.E;
+    if (!E || S.screen !== 'clip') return;
+    var clip = E.mode === 'clip';
+    $('updBox').classList.toggle('pp-off', !clip);
+    $('ins').classList.toggle('pp-off', clip);
+    var ds = E.datasets[0];
+    var n = !clip && ds && ds.rows ? ds.rows.length : 0;
+    $('insAll').classList.toggle('pp-off', n < 2);
+    if (n >= 2) {
+      $('insAll').innerHTML = I.rows + ' TOUTES LES LIGNES (' + n + ')';
+      $('insAll').title = 'Une par marqueur de la séquence à partir de la tête de lecture';
+    }
+    if (clip) {
+      var job = jobFor(E.clip.key);
+      var p = job ? Math.round(job.progress * 100) : 0;
+      $('upd').disabled = !!job;
+      $('updBox').classList.toggle('pp-prog', !!job);
+      $('updBox').style.setProperty('--p', p + '%');
+      $('updTxt').textContent = job ? (job.started ? p + ' %' : '…') : 'METTRE À JOUR';
+    } else {
+      $('insTrack').textContent = E.track === null ? '' : 'V' + (E.track + 1);
+      $('ins').disabled = !S.seq;
+      $('insAll').disabled = !S.seq;
+    }
+  }
+
+  // ---------------------------------------------------------------- preview
+
+  var pv = { ready: false, page: '', loads: 0, playing: false, t: 0, last: 0, shown: store.get('preview', true) };
+
+  function setPlaying(on) {
+    on = !!on && pv.shown && S.screen === 'clip' && !!S.E;
+    if (pv.playing === on) return;
+    pv.playing = on;
+    pv.last = 0;
+    if (on) requestAnimationFrame(tick);
+  }
+
+  function tick(now) {
+    if (!pv.playing) return;
+    var E = S.E;
+    if (!E || S.screen !== 'clip') return setPlaying(false);
+    if (pv.last) {
+      pv.t += Math.min(0.25, (now - pv.last) / 1000);
+      if (pv.t >= E.timing.duration) pv.t = pv.t % E.timing.duration;
+      renderHead();
+      sendPreview();
+    }
+    pv.last = now;
+    requestAnimationFrame(tick);
+  }
+
+  /** The preview page of the server (the HTML5 renderer), loaded again for another project. */
+  function loadPreview() {
+    var E = S.E;
+    var want = S.server + '|' + S.key + '|' + E.p.id;
+    if (pv.page === want) return sendPreview();
+    pv.page = want;
+    pv.ready = false;
+    // A new address each time: never a page kept from before (it would not say it is ready).
+    $('pvFrame').src = S.server + '/embed/preview?key=' + enc(S.key) + '&project=' + enc(E.p.id) + '&n=' + ++pv.loads;
+  }
+
+  window.addEventListener('message', function (ev) {
+    if (ev.source !== $('pvFrame').contentWindow) return;
+    if (ev.data && ev.data.type === 'pcg-ready') {
+      pv.ready = true;
+      sendPreview();
+    }
+  });
+
+  /** The picture at the sequence's shape, as large as the monitor allows. */
+  function sizePreview() {
+    var E = S.E;
+    var box = $('screen');
+    var W = box.clientWidth;
+    var H = box.clientHeight;
+    if (!W || !H) return;
+    var w = (S.seq && S.seq.width) || E.p.width || 16;
+    var h = (S.seq && S.seq.height) || E.p.height || 9;
+    var k = Math.min(W / w, H / h);
+    $('vp').style.width = Math.floor(w * k) + 'px';
+    $('vp').style.height = Math.floor(h * k) + 'px';
+  }
+
+  function sendPreview() {
+    var E = S.E;
+    if (!E || S.screen !== 'clip') return;
+    var f = clipFrame(E.m, E.timing, Math.min(pv.t, E.timing.duration));
+    var frame = $('pvFrame');
+    frame.style.visibility = f === null ? 'hidden' : '';
+    if (!pv.ready || f === null || !frame.contentWindow) return;
+    frame.contentWindow.postMessage(
+      {
+        type: 'pcg-preview',
+        projectId: E.p.id,
+        templateId: E.t.id,
+        data: E.data,
+        frame: f,
+        width: S.seq ? S.seq.width : undefined,
+        height: S.seq ? S.seq.height : undefined,
+      },
+      '*',
+    );
+  }
+
+  function renderEye() {
+    var b = $('eye');
+    b.innerHTML = pv.shown ? I.eye : I.eyeOff;
+    b.setAttribute('aria-pressed', pv.shown ? 'true' : 'false');
+    b.title = pv.shown ? 'Masquer l’image' : 'Afficher l’image';
+    $('mon').classList.toggle('pp-off', !pv.shown);
   }
 
   // ---------------------------------------------------------------- render
@@ -1035,214 +1753,464 @@
     return dir;
   }
 
-  function labelOf(t, data) {
-    var first = t.fields
-      .filter(function (f) {
-        return f.kind === 'text' || f.kind === 'multiline';
-      })
-      .map(function (f) {
-        return data[f.key];
-      })
-      .filter(Boolean)[0];
-    return String(first || t.name).replace(/\n/g, ' ');
-  }
-
-  /** What the server renders, and the file it goes to. */
-  function job(project, t, data, timing) {
-    var m = model(t);
+  /** What the server renders (POST /api/render/jobs). */
+  function bodyOf(spec) {
     var s = S.seq;
-    var onAir = timing.stops[m.onAir];
-    var body = {
-      projectId: project.id,
-      templateId: t.id,
-      data: Object.assign({}, data),
+    return {
+      projectId: spec.p.id,
+      templateId: spec.t.id,
+      data: Object.assign({}, spec.data),
       width: s.width,
       height: s.height,
       frameRate: s.rate,
-      timing: { stops: timing.stops.slice(), duration: timing.duration },
-      // For older readers of the sidecar: seconds on air, out animation or not.
-      hold: Math.max(0, onAir - m.stops[m.onAir].frame / m.fps),
-      includeOut: timing.duration > onAir + 1e-6,
+      timing: { stops: spec.timing.stops.slice(), duration: spec.timing.duration },
+      events: spec.events.map(function (e) {
+        return { at: Math.round(e.at * 1000) / 1000, command: e.command };
+      }),
+      clock: spec.clock,
+      rows: Object.assign({}, spec.rows),
     };
+  }
+
+  function fileOf(spec, body) {
     var digest = crypto
       .createHash('md5')
-      .update(JSON.stringify([body, t.revision || 0, JSON.stringify(t).length]))
+      .update(JSON.stringify([body, tplHash(spec.t)]))
       .digest('hex')
       .slice(0, 10);
-    var label = labelOf(t, data);
-    var file = path.join(outputFolder(project), (t.name + ' - ' + label).replace(/[\\/:*?"<>|\n]/g, '-').slice(0, 70) + ' ' + digest + '.mov');
-    return { body: body, file: file, label: label, template: t };
+    var name = (spec.t.name + ' - ' + mainText(spec.t, spec.data)).replace(/[\\/:*?"<>|\n\r\t]/g, '-').slice(0, 70);
+    return path.join(outputFolder(spec.p), name + ' ' + digest + '.mov');
   }
 
-  var chain = Promise.resolve();
-  /** Renders `j` (one render at a time; the same graphic rendered before is reused), then `place` lays it. */
-  function enqueue(j, place, busyKey) {
-    S.busy[busyKey] = (S.busy[busyKey] || 0) + 1;
-    renderBusy();
-    var run = function () {
-      var made = fs.existsSync(j.file)
-        ? Promise.resolve()
-        : request('POST', '/api/render', j.body)
-            .then(function (r) {
-              return r.arrayBuffer();
-            })
-            .then(function (buf) {
-              fs.writeFileSync(j.file, Buffer.from(buf));
-            });
-      return made
-        .then(function () {
-          var b = j.body;
-          fs.writeFileSync(j.file + '.pcg.json', JSON.stringify({ projectId: b.projectId, templateId: b.templateId, data: b.data, timing: b.timing, hold: b.hold, withOut: b.includeOut, label: j.label }, null, 2));
-          return place(j.file);
-        })
-        .then(function (msg) {
-          toast('✓ ' + msg, 'ok');
-        })
-        .catch(function (e) {
-          toast(e.message, 'err');
-        })
-        .then(function () {
-          S.busy[busyKey]--;
-          renderBusy();
-        });
+  function writeSidecar(file, spec, body) {
+    var side = {
+      projectId: body.projectId,
+      templateId: body.templateId,
+      templateHash: tplHash(spec.t),
+      template: spec.t.name,
+      label: mainText(spec.t, spec.data),
+      data: body.data,
+      rows: body.rows,
+      events: body.events,
+      clock: body.clock,
+      timing: body.timing,
+      rendered: body.timing.duration,
+      width: body.width,
+      height: body.height,
+      frameRate: body.frameRate,
     };
-    chain = chain.then(run);
-    return chain;
+    fs.writeFileSync(file + '.pcg.json', JSON.stringify(side, null, 2));
   }
 
-  /** A Strata clip of this template selected in the sequence: Update clip, else Insert. */
-  function renderBusy() {
-    var editing = !!(S.editing && S.template && S.editing.templateId === S.template.id && S.editing.projectId === S.project.id);
-    var u = $('update');
-    u.classList.toggle('hidden', !editing);
-    u.classList.toggle('busy', !!S.busy.update);
-    $('insert').className = 'btn ' + (editing ? 'ghost' : 'primary') + (S.busy.insert ? ' busy' : '');
-    [].forEach.call(document.querySelectorAll('[data-add]'), function (b) {
-      b.classList.toggle('busy', !!S.busy['add:' + b.getAttribute('data-add')]);
-    });
-  }
-
-  function needNode() {
-    if (node) return true;
-    toast('Node.js is disabled in this panel.', 'err');
-    return false;
-  }
-
-  function trackFor(start, len) {
-    return evalScript('pcg_freeTrack(' + start + ', ' + (start + len) + ')').then(Number);
-  }
-
-  /** Lays `j` on the first free track at the playhead. */
-  function insertJob(makeJob, busyKey) {
-    if (!needNode()) return;
-    refreshSequence()
-      .then(function (s) {
-        var j = makeJob();
-        var at = s.playhead;
-        return trackFor(at, j.body.timing.duration).then(function (track) {
-          enqueue(
-            j,
-            function (file) {
-              return evalScript('pcg_import(' + jsx(file) + ', ' + track + ', ' + at + ')');
+  /** The server renders the clip; its progress shows where the clip is. */
+  function renderOnServer(job, body) {
+    return api('POST', '/api/render/jobs', body).then(function (r) {
+      var id = r.id;
+      return new Promise(function (resolve, reject) {
+        var misses = 0;
+        var poll = function () {
+          api('GET', '/api/render/jobs/' + enc(id)).then(
+            function (st) {
+              misses = 0;
+              if (st.error) return reject(new Error(st.error));
+              job.progress = clamp(+st.progress || 0, 0, 1);
+              renderProgress();
+              if (!st.done) return setTimeout(poll, 400);
+              request('GET', '/api/render/jobs/' + enc(id) + '/file')
+                .then(function (res) {
+                  return res.arrayBuffer();
+                })
+                .then(resolve, reject);
             },
-            busyKey,
+            function (e) {
+              if (++misses > 5 || e.status === 404) return reject(e);
+              setTimeout(poll, 1000);
+            },
           );
-        });
-      })
-      .catch(function (e) {
-        toast(e.message, 'err');
+        };
+        setTimeout(poll, 300);
       });
-  }
-
-  function insert() {
-    if (!S.template) return;
-    var p = S.project;
-    var t = S.template;
-    var data = Object.assign({}, S.data);
-    var timing = copyTiming(S.timing);
-    insertJob(function () {
-      return job(p, t, data, timing);
-    }, 'insert');
-  }
-
-  /** A template as it is (its defaults, its timing), from the list. */
-  function defaultJob(t) {
-    var data = {};
-    t.fields.forEach(function (f) {
-      data[f.key] = f.default;
     });
-    return job(S.project, t, data, originTiming(model(t)));
   }
 
-  function addTemplate(t) {
-    insertJob(function () {
-      return defaultJob(t);
-    }, 'add:' + t.id);
-  }
-
-  /** Renders the clip again and puts it in place of the selected Strata clip. */
-  function update() {
-    if (!S.template || !S.editing || !needNode()) return;
-    var p = S.project;
-    var t = S.template;
-    var data = Object.assign({}, S.data);
-    var timing = copyTiming(S.timing);
-    refreshSequence()
-      .then(function () {
-        enqueue(
-          job(p, t, data, timing),
-          function (file) {
-            return evalScript('pcg_replaceSelected(' + jsx(file) + ')');
-          },
-          'update',
-        );
-      })
-      .catch(function (e) {
-        toast(e.message, 'err');
+  /** Renders a job (a clip made before with the same values is reused), then lays it. */
+  function run(job) {
+    return Promise.resolve()
+      .then(job.prepare)
+      .then(function (spec) {
+        if (!S.seq) throw new Error('Ouvrez une séquence');
+        if (job.row)
+          freeTrack(job.row.start, job.row.len).then(function (t) {
+            job.row.track = t;
+            renderSeq();
+          }, noop);
+        if (spec.clock === null || spec.clock === undefined) spec.clock = Math.round(serverNow());
+        var body = bodyOf(spec);
+        var file = fileOf(spec, body);
+        var made = fs.existsSync(file)
+          ? Promise.resolve()
+          : renderOnServer(job, body).then(function (buf) {
+              fs.writeFileSync(file, Buffer.from(buf));
+            });
+        return made.then(function () {
+          writeSidecar(file, spec, body);
+          job.progress = 1;
+          renderProgress();
+          return job.place(file, spec);
+        });
       });
+  }
+
+  var jobSeq = 0;
+  function enqueue(job) {
+    job.id = ++jobSeq;
+    if (!job.key) job.key = 'new:' + job.id;
+    job.progress = 0;
+    job.started = false;
+    S.jobs.push(job);
+    renderSeq();
+    renderFoot();
+    pump();
+  }
+
+  /** One render at a time. */
+  function pump() {
+    if (
+      S.jobs.some(function (j) {
+        return j.started;
+      })
+    )
+      return;
+    var j = S.jobs[0];
+    if (!j) return;
+    j.started = true;
+    renderSeq();
+    run(j)
+      .then(
+        function (msg) {
+          toast('✓ ' + msg);
+        },
+        function (e) {
+          toast(e.message || String(e), true);
+        },
+      )
+      .then(function () {
+        S.jobs.splice(S.jobs.indexOf(j), 1);
+        renderSeq();
+        renderFoot();
+        poll();
+        pump();
+      });
+  }
+
+  /** A new clip laid on the first free track at `at`. */
+  function placeNew(file, at, len) {
+    return freeTrack(at, len).then(function (t) {
+      return evalScript('pcg_import(' + jsx(file) + ', ' + t + ', ' + at + ')').then(function (r) {
+        return 'Inséré sur ' + r;
+      });
+    });
+  }
+
+  /** A clip put in place of `c`: same track, same start. */
+  function placeUpdate(c, file, len) {
+    return evalScript('pcg_replaceClip(' + c.track + ', ' + c.start + ', ' + jsx(c.media) + ', ' + jsx(file) + ', ' + len + ')').then(
+      function (r) {
+        var E = S.E;
+        var now = Object.assign({}, c, { media: file, end: c.start + len, len: len });
+        now.key = clipKey(now);
+        if (E && E.mode === 'clip' && E.clip.key === c.key) E.clip = now;
+        // Still selected in the sequence: the same clip, not one to open.
+        if (S.selKey === c.key) S.selKey = S.quietSel = now.key;
+        return 'Mis à jour sur ' + r;
+      },
+      function (e) {
+        if (/NOCLIP/.test(e.message)) throw new Error('Clip introuvable dans la séquence');
+        if (/BUSY/.test(e.message)) throw new Error('Piste V' + (c.track + 1) + ' occupée après le clip');
+        throw e;
+      },
+    );
+  }
+
+  /** What the editor holds, frozen for a render. */
+  function snapshot(E) {
+    return {
+      p: E.p,
+      t: E.t,
+      m: E.m,
+      acts: E.acts,
+      data: Object.assign({}, E.data),
+      rows: Object.assign({}, E.rows),
+      events: E.events.map(function (e) {
+        return { at: e.at, command: e.command };
+      }),
+      clock: E.clock,
+      timing: { stops: E.timing.stops.slice(), duration: E.timing.duration },
+    };
+  }
+
+  /** A clip being made, shown in the Séquence until it is laid. */
+  function pendingRow(spec, at, len, track, main) {
+    var z = zones(spec.m, spec.timing);
+    return { p: spec.p, t: spec.t, start: at, len: len, track: track, main: main || mainText(spec.t, spec.data), inPc: (z.inEnd / len) * 100, outPc: (z.outStart / len) * 100 };
+  }
+
+  function insertJob(spec, at, main, after) {
+    var len = spec.timing.duration;
+    var job = {
+      kind: 'insert',
+      row: pendingRow(spec, at, len, null, main),
+      prepare: function () {
+        return spec.prepare ? spec.prepare() : spec;
+      },
+      place: function (file) {
+        return placeNew(file, at, len).then(function (msg) {
+          if (after) after(file);
+          return msg;
+        });
+      },
+    };
+    freeTrack(at, len).then(function (t) {
+      job.row.track = t;
+      renderSeq();
+    }, noop);
+    enqueue(job);
+  }
+
+  function insertCurrent() {
+    var E = S.E;
+    if (!E || !S.seq || !needNode()) return;
+    var spec = snapshot(E);
+    insertJob(spec, startOf(E));
+    show('seq');
+  }
+
+  function updateCurrent() {
+    var E = S.E;
+    if (!E || E.mode !== 'clip' || !needNode() || jobFor(E.clip.key)) return;
+    var c = E.clip;
+    var spec = snapshot(E);
+    enqueue({
+      kind: 'update',
+      key: c.key,
+      prepare: function () {
+        return spec;
+      },
+      place: function (file) {
+        return placeUpdate(c, file, spec.timing.duration).then(function (msg) {
+          if (S.E === E) E.clock = spec.clock;
+          return msg;
+        });
+      },
+    });
+  }
+
+  /** One clip per row of the first data set, on the sequence markers from the playhead on. */
+  function insertAllRows() {
+    var E = S.E;
+    var ds = E && E.datasets[0];
+    if (!ds || !S.seq || !needNode()) return;
+    var base = snapshot(E);
+    var touched = Object.assign({}, E.touched);
+    var len = base.timing.duration;
+    var ph = S.seq.playhead;
+    readMarkers()
+      .catch(function () {
+        return [];
+      })
+      .then(function (marks) {
+        var mk = marks.filter(function (x) {
+          return x >= ph - 1e-3;
+        });
+        var at = [];
+        ds.rows.forEach(function (label, i) {
+          at.push(i < mk.length ? mk[i] : i === 0 ? ph : at[i - 1] + len);
+          var rows = Object.assign({}, base.rows);
+          rows[ds.key] = i + 1;
+          var spec = Object.assign({}, base, {
+            rows: rows,
+            clock: null,
+            prepare: function () {
+              return values(base.p.id, base.t.id, rows).then(function (r) {
+                var kept = {};
+                Object.keys(touched).forEach(function (k) {
+                  kept[k] = base.data[k];
+                });
+                return Object.assign({}, base, { rows: rows, clock: null, data: Object.assign({}, base.data, r.data, kept) });
+              });
+            },
+          });
+          insertJob(spec, at[i], plain(label) || mainText(base.t, base.data));
+        });
+        show('seq');
+      });
+  }
+
+  /** A template as it is (its values, its timing) at the playhead, from the list. */
+  function quickInsert(t) {
+    var p = S.full[S.pid];
+    if (!p || !needNode()) return;
+    if (!S.seq) return toast('Ouvrez une séquence', true);
+    var m = model(t, p);
+    var acts = actionsOf(t, p);
+    var timing = fitTiming(m, frameSnap(naturalDuration(m)), null);
+    var spec = {
+      p: p,
+      t: t,
+      m: m,
+      acts: acts,
+      data: defaultsOf(t),
+      rows: {},
+      events: fixEvents([], acts, m, timing),
+      clock: null,
+      timing: timing,
+    };
+    spec.prepare = function () {
+      return values(p.id, t.id, null).then(
+        function (r) {
+          return Object.assign({}, spec, { data: Object.assign(defaultsOf(t), r.data) });
+        },
+        function () {
+          return spec;
+        },
+      );
+    };
+    insertJob(spec, S.seq.playhead, null, function (file) {
+      S.lastDefault[p.id + '/' + t.id] = { file: file, sig: defaultSig(t) };
+      store.set('lastDefault', S.lastDefault);
+    });
+    show('seq');
+  }
+
+  /** The last render of a template as it is, at this sequence's format (dragged to the sequence). */
+  function defaultSig(t) {
+    var s = S.seq;
+    return tplHash(t) + '|' + (s ? s.width + 'x' + s.height + '@' + s.fps : '');
   }
 
   // ------------------------------------------------------------- selection
 
-  /** The selected clip; a Strata clip opens here. */
-  function watchSelection() {
-    if (!window.__adobe_cep__ || S.screen === 'settings') return;
-    evalScript('pcg_selected()')
-      .then(function (r) {
-        if (!r) {
-          S.selection = null;
-          S.selectedPath = '';
-          if (S.editing) {
-            S.editing = null;
-            renderBusy();
-          }
-          return;
-        }
-        var p = r.split('\t');
-        S.selection = { media: p[0], start: +p[1], end: +p[2], track: +p[3] };
-        if (p[0] === S.selectedPath) return;
-        S.selectedPath = p[0];
-        var side = null;
-        try {
-          side = node && p[0] && fs.existsSync(p[0] + '.pcg.json') ? JSON.parse(fs.readFileSync(p[0] + '.pcg.json', 'utf8')) : null;
-        } catch (e) {}
-        S.editing = side ? { media: p[0], projectId: side.projectId, templateId: side.templateId } : null;
-        renderBusy();
-        if (!side) return;
-        var open = function (project) {
-          S.project = project;
-          var t = templateById(side.templateId);
-          if (t) openTemplate(t, side);
-        };
-        if (S.full[side.projectId]) open(S.full[side.projectId]);
-        else
-          api('GET', '/api/projects/' + enc(side.projectId)).then(function (pr) {
-            S.full[pr.id] = pr;
-            open(pr);
+  /** The sequence and its Strata clips, read again; a clip selected in the sequence opens here. */
+  var polling = false;
+  function poll() {
+    if (polling || !window.__adobe_cep__ || document.hidden) return;
+    polling = true;
+    readState().then(
+      function (st) {
+        polling = false;
+        var before = S.seq;
+        S.seq = st.seq;
+        S.clips = st.clips
+          .map(function (c) {
+            c.len = c.end - c.start;
+            c.key = clipKey(c);
+            c.side = sidecarOf(c.media);
+            return c;
+          })
+          .filter(function (c) {
+            return !!c.side;
           });
-      })
-      .catch(function () {});
+        S.clips.forEach(function (c) {
+          if (!S.full[c.side.projectId] && !S.loading[c.side.projectId]) loadProject(c.side.projectId).catch(noop);
+        });
+        watchSelection();
+        renderSeq();
+        var E = S.E;
+        if (E && E.mode === 'new' && S.screen === 'clip') {
+          renderPlace();
+          var moved = !before || !S.seq || before.playhead !== S.seq.playhead || JSON.stringify(before.range) !== JSON.stringify(S.seq.range);
+          if (moved || trackAt !== startOf(E) + '|' + E.timing.duration) computeTrack();
+          renderFoot();
+        }
+      },
+      function () {
+        polling = false;
+        S.seq = null;
+        S.clips = [];
+        renderSeq();
+      },
+    );
   }
+
+  function watchSelection() {
+    var sel = S.clips.filter(function (c) {
+      return c.selected;
+    })[0];
+    var key = sel ? sel.key : '';
+    if (!key) S.quietSel = '';
+    if (key === S.selKey) return;
+    S.selKey = key;
+    if (!sel || key === S.quietSel || S.screen === 'set') return;
+    if (S.E && S.E.mode === 'clip' && S.E.clip.key === key && S.screen === 'clip') return;
+    openClip(sel);
+  }
+
+  // -------------------------------------------------------------- dropdown
+
+  var dd = null;
+
+  /** The app's drop-down list (.dd-list) under (or over) `anchor`. */
+  function openList(anchor, options, value, pick) {
+    closeList();
+    var r = anchor.getBoundingClientRect();
+    var el = document.createElement('div');
+    var below = window.innerHeight - r.bottom;
+    var up = below < 240 && r.top > below;
+    el.className = 'dd-list' + (up ? ' up' : '');
+    el.setAttribute('role', 'listbox');
+    el.style.left = r.left + 'px';
+    el.style.minWidth = Math.max(160, r.width) + 'px';
+    if (up) el.style.bottom = window.innerHeight - r.top + 4 + 'px';
+    else el.style.top = r.bottom + 4 + 'px';
+    el.innerHTML = options.length
+      ? options
+          .map(function (o, i) {
+            var on = o.value === value;
+            return '<div role="option" class="dd-opt' + (on ? ' on' : '') + '" data-i="' + i + '"><span class="dd-check">' + (on ? I.check : '') + '</span><span class="dd-text">' + esc(o.label) + '</span>' + (o.note ? '<span class="dd-note">' + esc(o.note) + '</span>' : '') + '</div>';
+          })
+          .join('')
+      : '<div class="dd-empty">Rien à choisir</div>';
+    document.body.appendChild(el);
+    var over = el.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) el.style.left = Math.max(8, r.left - over) + 'px';
+    el.addEventListener('mousemove', function (e) {
+      var o = e.target.closest('.dd-opt');
+      [].forEach.call(el.children, function (x) {
+        x.classList.toggle('hover', x === o);
+      });
+    });
+    el.addEventListener('click', function (e) {
+      var o = e.target.closest('.dd-opt');
+      if (!o) return;
+      var v = options[+o.getAttribute('data-i')];
+      closeList();
+      pick(v.value);
+    });
+    anchor.classList.add('open');
+    dd = { el: el, anchor: anchor };
+  }
+
+  function closeList() {
+    if (!dd) return;
+    if (dd.el.parentNode) dd.el.parentNode.removeChild(dd.el);
+    dd.anchor.classList.remove('open');
+    dd = null;
+  }
+
+  document.addEventListener(
+    'mousedown',
+    function (e) {
+      if (dd && !dd.el.contains(e.target) && !dd.anchor.contains(e.target)) closeList();
+    },
+    true,
+  );
+  window.addEventListener(
+    'wheel',
+    function (e) {
+      if (dd && !dd.el.contains(e.target)) closeList();
+    },
+    { passive: true },
+  );
 
   // -------------------------------------------------------------- settings
 
@@ -1251,7 +2219,51 @@
     S.key = store.get('key', '');
     $('server').value = S.server;
     $('key').value = S.key;
-    $('every').value = String(S.every);
+  }
+
+  /** The web app's stylesheet, first in <head>; the last copy when the server cannot be reached. */
+  function linkAppCss() {
+    var body = document.body;
+    var ready = function () {
+      body.classList.remove('pp-wait');
+      if (S.screen === 'clip') {
+        sizePreview();
+        renderRuler();
+      }
+    };
+    var cached = function () {
+      var c = store.get('appCss', null);
+      if (c && c.text && !$('ppAppCss')) {
+        var st = document.createElement('style');
+        st.id = 'ppAppCss';
+        st.textContent = c.text;
+        document.head.insertBefore(st, document.head.firstChild);
+      }
+      ready();
+    };
+    if (!S.server) return cached();
+    body.classList.add('pp-wait');
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = S.server + '/premiere/app.css';
+    link.onload = function () {
+      ready();
+      // Kept for offline starts, once per version of the panel.
+      var v = window.STRATA_LOADER ? window.STRATA_LOADER.ui : '';
+      var c = store.get('appCss', null);
+      if (c && c.v === v && c.server === S.server) return;
+      fetch(link.href, { cache: 'no-store' })
+        .then(function (r) {
+          return r.ok ? r.text() : null;
+        })
+        .then(function (text) {
+          if (text) store.set('appCss', { v: v, server: S.server, text: text.replace(/url\(\s*(['"]?)\//g, 'url($1' + S.server + '/') });
+        })
+        .catch(noop);
+    };
+    link.onerror = cached;
+    document.head.insertBefore(link, document.head.firstChild);
+    setTimeout(ready, 5000);
   }
 
   /**
@@ -1263,19 +2275,22 @@
     if (server && !/^https?:\/\//.test(server)) server = 'http://' + server;
     var key = $('key').value.trim();
     var changed = server !== S.server || key !== S.key;
-    S.server = server;
-    S.key = key;
+    var L = window.STRATA_LOADER;
     store.set('server', server);
     store.set('key', key);
-    var L = window.STRATA_LOADER;
-    if (L && server && server !== L.server) {
+    if (server && server !== S.server && (!L || server !== L.server)) {
       location.reload();
       return null;
     }
+    S.server = server;
+    S.key = key;
     if (changed) {
       S.full = {};
+      S.sig = {};
       S.projects = [];
-      loadFonts();
+      S.online = null;
+      lastTpl = '';
+      pv.page = '';
     }
     return changed;
   }
@@ -1283,47 +2298,43 @@
   function testConnection() {
     if (saveSettings() === null) return;
     if (!S.server || !S.key) {
-      S.test = { kind: 'err', text: 'Not set' };
+      S.test = { kind: 'err', text: 'Non configuré' };
       return renderSettings();
     }
-    S.test = { kind: 'busy', text: '…' };
+    S.test = { kind: '', text: '…' };
     renderSettings();
     var t0 = Date.now();
-    api('GET', '/api/projects').then(
+    loadProjects().then(
       function () {
-        S.test = { kind: 'ok', text: 'Connected · ' + (Date.now() - t0) + ' ms' };
-        setOnline(true);
+        S.test = { kind: 'ok', text: 'Connecté · ' + (Date.now() - t0) + ' ms' };
         renderSettings();
-        syncAll();
+        syncProjects();
       },
       function (e) {
         var msg = String(e.message || '').trim();
-        S.test = { kind: 'err', text: msg.length > 40 || /fetch/i.test(msg) ? 'Unreachable' : msg };
-        setOnline(false);
+        S.test = { kind: 'err', text: e.status === 401 || e.status === 403 ? 'Clé refusée' : msg.length > 40 || /fetch/i.test(msg) || !e.status ? 'Injoignable' : msg };
+        if (e.status) setOnline(false);
         renderSettings();
       },
     );
   }
 
   function renderSettings(fresh) {
-    renderConn();
-    if (S.screen !== 'settings') return;
+    if (S.screen !== 'set') return;
     if (fresh) {
       $('server').value = S.server;
       $('key').value = S.key;
     }
     var st = S.test;
-    $('testState').className = 'state ell ' + (st ? st.kind : '');
-    $('testState').innerHTML = st ? '<i></i>' + esc(st.text) : '';
-    $('every').value = String(S.every);
-    $('lastAgo').textContent = S.syncing ? '⟳' : ago(S.lastSync);
+    $('testState').className = 'muted small pp-ell' + (st && st.kind ? ' pp-' + st.kind : '');
+    $('testState').textContent = st ? st.text : '';
     var L = window.STRATA_LOADER;
     $('ver').textContent = L ? L.ui : 'dev';
     var u = S.update;
-    var vs = $('verState');
-    vs.className = 'state ' + (u === 'ok' ? 'ok' : u === 'install' || u === 'reload' ? 'busy' : u === 'err' ? 'err' : '');
-    vs.textContent = u === 'ok' ? '✓ up to date' : u === 'install' || u === 'reload' ? '● new version' : u === 'err' ? '✕' : u === 'checking' ? '…' : '';
-    $('check').textContent = u === 'install' ? 'Update' : u === 'reload' ? 'Reload' : 'Check for updates';
+    $('verState').className = 'muted small pp-ell' + (u === 'ok' ? ' pp-ok' : u === 'err' ? ' pp-err' : '');
+    $('verState').textContent = u === 'ok' ? 'À jour' : u === 'install' || u === 'reload' ? 'Nouvelle version' : u === 'err' ? 'Injoignable' : u === 'checking' || u === 'installing' ? '…' : '';
+    $('check').textContent = u === 'install' ? 'Mettre à jour' : u === 'reload' ? 'Recharger' : 'Vérifier';
+    $('check').className = 'btn small' + (u === 'install' || u === 'reload' ? ' primary' : '');
     $('check').disabled = u === 'checking' || u === 'installing';
   }
 
@@ -1344,6 +2355,7 @@
           else if (L && m.version !== L.ui) S.update = 'reload';
           else S.update = 'ok';
           renderSettings();
+          renderTop();
         },
         function () {
           S.update = 'err';
@@ -1362,13 +2374,14 @@
         if (r.restart) {
           S.update = 'ok';
           renderSettings();
-          toast('Restart Premiere Pro', 'ok');
+          renderTop();
+          toast('Redémarrez Premiere Pro');
         } else r.reload();
       },
       function (e) {
         S.update = 'err';
         renderSettings();
-        toast(e.message, 'err');
+        toast(e.message, true);
       },
     );
   }
@@ -1376,98 +2389,147 @@
   // ------------------------------------------------------------------ wire
 
   document.addEventListener('click', function (e) {
-    var el = e.target.closest('button, [data-tpl]');
-    if (!el) return;
+    var el = e.target.closest('button, [data-tpl], [data-row]');
+    if (!el || el.disabled) return;
     var d = el.dataset;
-    if (d.go) {
-      if (d.go === 'projects') renderProjects();
-      return show(d.go);
-    }
-    if (d.project) return openProject(d.project);
-    if (d.zone) {
-      S.zone = d.zone;
-      return renderTemplates();
-    }
+    if (d.go) return gotoClip(d.go);
+    if (d.addTpl) return openTemplates();
     if (d.add) {
-      e.stopPropagation();
-      var ta = templateById(d.add);
-      if (ta) addTemplate(ta);
+      var ta = tplOf(S.full[S.pid], d.add);
+      if (ta) quickInsert(ta);
       return;
     }
+    if (d.del !== undefined && S.E) {
+      S.E.events.splice(+d.del, 1);
+      renderRuler();
+      renderActs();
+      return;
+    }
+    if (d.place) return setPlace(d.place);
+    if (d.sec) return setFrames(+d.sec * Math.round(seqFps()));
     if (d.tpl) {
-      var t = templateById(d.tpl);
-      if (t) openTemplate(t);
+      var t = tplOf(S.full[S.pid], d.tpl);
+      if (t) openNew(t);
+      return;
+    }
+    if (d.row) {
+      var c = S.clips.filter(function (x) {
+        return x.key === d.row;
+      })[0];
+      if (c) openClip(c);
     }
   });
 
-  // Markers drag, the ruler and the bar scrub (mouse events: every CEP Chromium).
-  $('tl').addEventListener('mousedown', function (e) {
-    if (e.button !== 0) return;
-    var mk = e.target.closest('[data-mk]');
-    if (mk) startDrag(e, mk.getAttribute('data-mk'));
-    else if (e.target.closest('#ruler, #track')) startScrub(e);
-  });
-  $('play').onclick = function () {
+  $('back').onclick = function () {
+    show(backTarget());
+  };
+  $('brand').onclick = function () {
+    show('seq');
+  };
+  $('pill').onclick = function () {
+    show(S.screen === 'set' ? (S.prev === 'set' ? 'seq' : S.prev) : 'set');
+  };
+  $('seqAdd').onclick = openTemplates;
+  $('updAll').onclick = updateAll;
+  $('pjName').onclick = pickProject;
+  $('upd').onclick = updateCurrent;
+  $('ins').onclick = insertCurrent;
+  $('insAll').onclick = insertAllRows;
+  $('addAct').onclick = addAction;
+  $('eye').onclick = function () {
+    pv.shown = !pv.shown;
+    store.set('preview', pv.shown);
+    renderEye();
+    setPlaying(pv.shown);
+    if (pv.shown) sizePreview();
+  };
+  $('mon').onclick = function () {
     setPlaying(!pv.playing);
   };
-  $('loop').classList.toggle('on', pv.loop);
-  $('loop').onclick = function () {
-    pv.loop = !pv.loop;
-    store.set('loop', pv.loop);
-    this.classList.toggle('on', pv.loop);
+
+  // The duration field.
+  var durIn = $('durTc');
+  durIn.onfocus = function () {
+    durIn.select();
+  };
+  durIn.onblur = function () {
+    var f = parseDur(durIn.value, seqFps());
+    if (f !== null && S.E) setFrames(Math.max(1, f));
+    renderDur();
+  };
+  durIn.onkeydown = function (e) {
+    var r = Math.round(seqFps());
+    if (e.key === 'Enter') durIn.blur();
+    if (e.key === 'Escape') {
+      durIn.value = '';
+      renderDur();
+      durIn.blur();
+    }
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && S.E) {
+      e.preventDefault();
+      setFrames(secToFrames(S.E.timing.duration) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : r));
+      durIn.value = durTc(secToFrames(S.E.timing.duration), r);
+    }
+    e.stopPropagation();
+  };
+  $('durMinus').onclick = function (e) {
+    if (S.E) setFrames(secToFrames(S.E.timing.duration) - (e.shiftKey ? 1 : Math.round(seqFps())));
+  };
+  $('durPlus').onclick = function (e) {
+    if (S.E) setFrames(secToFrames(S.E.timing.duration) + (e.shiftKey ? 1 : Math.round(seqFps())));
   };
 
-  $('pSearch').oninput = function () {
-    S.q = this.value;
-    renderProjects();
-  };
-  $('tSearch').oninput = function () {
-    S.tq = this.value;
-    renderTemplates();
-  };
-  $('total').oninput = function () {
-    var v = parseFloat(this.value);
-    if (v > 0) setTotal(v);
-  };
-  $('total').onchange = function () {
-    renderTotal();
-  };
-  $('total').onblur = function () {
-    this.value = +S.timing.duration.toFixed(2);
-  };
-  $('origin').onclick = function () {
-    S.timing = copyTiming(S.origin);
-    renderTimeline();
-  };
-  $('update').onclick = update;
-  $('insert').onclick = insert;
-  $('gear').onclick = function () {
-    show('settings');
-  };
-  $('syncNow').onclick = $('syncNow2').onclick = function () {
-    syncAll();
-    renderSettings();
-  };
-  $('autoSync').onclick = $('autoSync2').onclick = function () {
-    S.autoSync = !S.autoSync;
-    store.set('autoSync', S.autoSync);
-    renderConn();
-  };
-  $('every').onchange = function () {
-    S.every = +this.value || 30;
-    store.set('syncEvery', S.every);
-  };
+  // The ruler: markers dragged, the rest scrubs.
+  $('ruler').addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || !S.E) return;
+    var mk = e.target.closest('[data-stop], [data-ev]');
+    if (mk) dragMarker(e, mk);
+    else scrub(e);
+  });
+
+  // The times of the actions.
+  var acts = $('acts');
+  acts.addEventListener('focusin', function (e) {
+    if (e.target.matches('[data-evt]')) e.target.select();
+  });
+  acts.addEventListener('keydown', function (e) {
+    if (!e.target.matches('[data-evt]')) return;
+    if (e.key === 'Enter') e.target.blur();
+    e.stopPropagation();
+  });
+  acts.addEventListener(
+    'blur',
+    function (e) {
+      var E = S.E;
+      if (!E || !e.target.matches('[data-evt]')) return;
+      var ev = E.events[+e.target.getAttribute('data-evt')];
+      var f = parseDur(e.target.value, seqFps());
+      if (ev && f !== null) ev.at = clamp(framesToSec(f), 0, E.timing.duration);
+      sortEvents(E.events);
+      renderRuler();
+      renderActs();
+    },
+    true,
+  );
+
+  // Settings.
   $('server').onchange = $('key').onchange = function () {
-    if (saveSettings()) syncAll();
+    if (saveSettings()) {
+      renderTop();
+      syncProjects();
+    }
   };
   $('test').onclick = testConnection;
   $('paste').onclick = function () {
     var k = $('key');
     var done = function (text) {
       k.value = String(text || '').trim();
-      if (saveSettings()) syncAll();
+      if (saveSettings()) {
+        renderTop();
+        syncProjects();
+      }
     };
-    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(done, function () {});
+    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(done, noop);
     else {
       k.focus();
       k.select();
@@ -1479,25 +2541,29 @@
     else checkUpdate();
   };
 
-  // A template dragged to the sequence: its last render goes there as a
-  // file; never rendered yet, it is inserted at the playhead.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (dd) return closeList();
+    if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return e.target.blur();
+    if (S.screen !== 'seq') show(backTarget());
+  });
+
+  // A template dragged to the sequence: its last render as it is goes
+  // there as a file; never rendered yet, it is inserted at the playhead.
   var dragged = null;
   document.addEventListener('dragstart', function (e) {
     var row = e.target.closest && e.target.closest('[data-tpl]');
     if (!row) return;
-    var t = templateById(row.getAttribute('data-tpl'));
+    var p = S.full[S.pid];
+    var t = tplOf(p, row.getAttribute('data-tpl'));
     if (!t) return;
     dragged = { t: t, file: null, left: false, dropped: false };
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('text/plain', t.name);
-    if (node && S.seq) {
-      try {
-        var f = defaultJob(t).file;
-        if (fs.existsSync(f)) {
-          dragged.file = f;
-          e.dataTransfer.setData('com.adobe.cep.dnd.file.0', f);
-        }
-      } catch (err) {}
+    var last = S.lastDefault[p.id + '/' + t.id];
+    if (node && last && last.sig === defaultSig(t) && fs.existsSync(last.file)) {
+      dragged.file = last.file;
+      e.dataTransfer.setData('com.adobe.cep.dnd.file.0', last.file);
     }
   });
   document.addEventListener('dragleave', function (e) {
@@ -1512,37 +2578,41 @@
   document.addEventListener('dragend', function () {
     var d = dragged;
     dragged = null;
-    if (d && !d.file && !d.dropped && d.left) addTemplate(d.t);
+    if (d && !d.file && !d.dropped && d.left) quickInsert(d.t);
   });
 
   window.addEventListener('resize', function () {
+    closeList();
     if (S.screen === 'clip') {
       sizePreview();
-      renderTimeline();
+      renderRuler();
     }
   });
-  // Back in the panel: the sequence may have changed.
+  // Back in the panel: the sequence and the projects may have changed.
   window.addEventListener('focus', function () {
-    refreshSequence().catch(function () {});
+    poll();
+    syncProjects();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) poll();
   });
 
-  // Every second: the selected clip, the "… ago", auto-sync when due.
-  setInterval(function () {
-    watchSelection();
-    if (S.autoSync && !S.syncing && S.server && S.key && Date.now() - S.lastSync >= S.every * 1000) syncAll();
-    if (S.screen === 'projects') renderProjects();
-    if (S.screen === 'settings') renderSettings();
-  }, 1000);
+  setInterval(poll, POLL_MS);
+  setInterval(syncProjects, SYNC_MS);
 
+  // Settings of older panels (sync, loop).
+  ['syncState', 'autoSync', 'syncEvery', 'loop'].forEach(function (k) {
+    try {
+      localStorage.removeItem('pcg.' + k);
+    } catch (e) {}
+  });
   loadSettings();
-  loadFonts();
-  var L0 = window.STRATA_LOADER;
-  if (L0 && L0.updateAvailable) S.update = 'install';
-  renderConn();
-  if (!S.server || !S.key) show('settings');
+  linkAppCss();
+  if (window.STRATA_LOADER && window.STRATA_LOADER.updateAvailable) S.update = 'install';
+  if (!S.server || !S.key) show('set');
   else {
-    show('projects');
-    syncAll();
+    show('seq');
+    syncProjects();
   }
-  refreshSequence().catch(function () {});
+  poll();
 })();
