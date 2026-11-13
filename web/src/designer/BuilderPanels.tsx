@@ -2,12 +2,14 @@
 // its variables, in the toolbar the way back to the template, on the right Element / Options /
 // Controls.
 import { useState } from 'react';
-import { ArrowLeft, ChevronRight, Hash, List, Plus, SlidersHorizontal, ToggleLeft, Trash2, Type } from 'lucide-react';
+import { ArrowLeft, Braces, CaseSensitive, ChevronRight, Hash, Image, List, Palette, Plus, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { newId } from '../engine/evaluate';
-import { readPath } from '../engine/settings';
-import type { BuiltControl, CtlAction, Layer, Template, WidgetOption, WidgetVar } from '../engine/types';
+import { setOption } from '../engine/built';
+import { DEFAULTS, newId, propValue } from '../engine/evaluate';
+import { readPath, writePath } from '../engine/settings';
+import type { BuiltControl, CtlAction, Layer, Prop, Template, WidgetOption, WidgetVar } from '../engine/types';
 import { t } from '../i18n';
+import { ContextMenu } from '../ui/ContextMenu';
 import { Dropdown } from '../ui/Dropdown';
 import { BUILT_ICONS } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
@@ -26,7 +28,7 @@ const edit = (fn: (b: NonNullable<Template['builder']>, t: Template) => void, ke
 
 // ------------------------------------------------------------------ left --
 
-const VAR_ICONS = { number: Hash, text: Type, list: List, bool: ToggleLeft, team: Hash };
+const VAR_ICONS = { number: Hash, text: Type, list: List, bool: ToggleLeft };
 
 /** The widget (its name, where it is kept) and its variables. */
 export function BuilderLeft() {
@@ -51,6 +53,10 @@ export function BuilderLeft() {
         </header>
         <div className="pjp-body">
           <input className="bl-name" value={tpl.name} onChange={(e) => update((d) => void (d.name = e.target.value), 'builder-name')} />
+          <div className="bl-row">
+            <span className="prop-label">{t('Icon')}</span>
+            <Dropdown value={b.icon ?? 'puzzle'} options={ICON_OPTIONS()} onChange={(v) => edit((d) => void (d.icon = v))} />
+          </div>
           <div className="bl-row">
             <span className="prop-label">{t('Kept in')}</span>
             <div className="segmented">
@@ -171,37 +177,160 @@ export function BuilderCrumb() {
 
 // ----------------------------------------------------------------- right --
 
-/** A row's button in the Builder: publishes the property as an option of the widget (or removes it). */
-export function OptionToggle({ layer, paths, label, value }: { layer: Layer; paths: readonly string[]; label?: string; value?: unknown }) {
+/** The kind of option a property makes (from its value). */
+function optionKind(value: unknown, path: string): WidgetOption['kind'] {
+  return Array.isArray(value) ? 'color' : typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'bool' : /font/i.test(path) ? 'font' : 'text';
+}
+
+/** The options' group of an element: its outermost folder in the widget (Équipe 1…), else none. */
+function groupOf(tpl: Template, layer: Layer): string | undefined {
+  let name: string | undefined;
+  for (let f = layer.parent ? findLayer(tpl, layer.parent) : undefined; f; f = f.parent ? findLayer(tpl, f.parent) : undefined) name = f.name;
+  return name;
+}
+
+/**
+ * A row's button in the Builder: publishes the property as an option of the widget, a new one or
+ * one already there of its kind (one option, several elements), or removes it.
+ */
+export function OptionToggle({ layer, paths, label, value, chip }: { layer: Layer; paths: readonly string[]; label?: string; value?: unknown; /** A chip with its word (under a text). */ chip?: boolean }) {
   const tpl = useDesigner((s) => s.template);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   if (!tpl?.builder) return null;
   const has = (o: WidgetOption, p: string) => o.targets.some((x) => x.layer === layer.id && x.path === p);
   const mine = tpl.builder.options.filter((o) => paths.some((p) => has(o, p)));
   const on = mine.length > 0;
-  const toggle = () =>
+  // A property's value: the layer's, else its default (a property the layer does not set yet).
+  const valueOf = (p: string): unknown => {
+    const v = readPath(layer, p);
+    if (v !== undefined) return v;
+    if (p.startsWith('props.') && p.slice(6) in DEFAULTS) return propValue(layer, p.slice(6) as Prop, 0);
+    return paths.length === 1 ? value : (value as Record<string, unknown> | undefined)?.[p];
+  };
+  const kind = optionKind(valueOf(paths[0]), paths[0]);
+  const same = tpl.builder.options.filter((o) => o.kind === kind);
+  const create = () =>
     edit((b) => {
-      if (on) {
-        b.options = b.options.map((o) => ({ ...o, targets: o.targets.filter((x) => !(x.layer === layer.id && paths.includes(x.path))) })).filter((o) => o.targets.length);
-        return;
-      }
       for (const p of paths) {
-        const cur = readPath(layer, p) ?? value;
+        const cur = valueOf(p);
         const hex = (c: unknown) => (Array.isArray(c) ? `#${c.slice(0, 3).map((v: number) => Math.round(v * 255).toString(16).padStart(2, '0')).join('')}` : c);
-        const kind: WidgetOption['kind'] = Array.isArray(cur) ? 'color' : typeof cur === 'number' ? 'number' : typeof cur === 'boolean' ? 'bool' : /font/i.test(p) ? 'font' : 'text';
-        b.options.push({ id: newId(), name: label || p.split('.').pop() || p, group: layer.name, kind, default: kind === 'color' ? hex(cur) : cur, targets: [{ layer: layer.id, path: p }] });
+        const k = optionKind(cur, p);
+        b.options.push({ id: newId(), name: label || p.split('.').pop() || p, group: groupOf(tpl, layer), kind: k, default: k === 'color' ? hex(cur) : cur, targets: [{ layer: layer.id, path: p }] });
       }
     });
+  // Joined to an option: the element takes its value.
+  const link = (o: WidgetOption) =>
+    edit((b, d) => {
+      b.options = b.options.map((x) => (x.id === o.id ? { ...x, targets: [...x.targets, ...paths.map((p) => ({ layer: layer.id, path: p }))] } : x));
+      const l = findLayer(d, layer.id);
+      if (l && o.default !== undefined) for (const p of paths) setOption(l, p, o.default);
+    });
+  const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (on) {
+      edit((b) => void (b.options = b.options.map((o) => ({ ...o, targets: o.targets.filter((x) => !(x.layer === layer.id && paths.includes(x.path))) })).filter((o) => o.targets.length)));
+      return;
+    }
+    if (!same.length) return create();
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenu({ x: r.left, y: r.bottom + 4 });
+  };
   return (
-    <button className={`pp-op bl-opt ${on ? 'on' : ''}`} title={on ? t('Option of the widget ({names}) · click to remove', { names: mine.map((o) => o.name).join(', ') }) : t('Publish as an option of the widget')} onClick={toggle}>
-      <SlidersHorizontal size={13} />
-    </button>
+    <>
+      <button className={`${chip ? 'wk-chip op' : 'pp-op'} bl-opt ${on ? 'on' : ''}`} title={on ? t('Option of the widget ({names}) · click to remove', { names: mine.map((o) => o.name).join(', ') }) : t('Publish as an option of the widget')} onClick={toggle}>
+        <SlidersHorizontal size={chip ? 12 : 13} />
+        {chip && (on ? mine.map((o) => o.name).join(', ') : t('Option'))}
+      </button>
+      {menu && (
+        <ContextMenu
+          at={menu}
+          onClose={() => setMenu(null)}
+          items={[
+            { icon: <Plus size={13} />, label: t('New option'), run: create },
+            null,
+            ...same.map((o) => ({ icon: <SlidersHorizontal size={13} />, label: o.group ? `${o.group} · ${o.name}` : o.name, run: () => link(o) })),
+          ]}
+        />
+      )}
+    </>
   );
 }
 
-/** The widget's options: what the Designer will set in a template, and what each drives. */
+/** A variable's name from an element's (« Score 1 » → score_1), not taken yet. */
+function varName(base: string, vars: WidgetVar[]): string {
+  const b =
+    base
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'valeur';
+  let name = b;
+  for (let i = 2; vars.some((v) => v.name === name); i++) name = `${b}_${i}`;
+  return name;
+}
+
+/**
+ * A content's button in the Builder: it shows a variable of the widget (a new one, from its value,
+ * or one already there), or its own text again.
+ */
+export function VarToggle({ layer, path, raw, chip }: { layer: Layer; path: string; raw: string; /** A chip with its word (under a text). */ chip?: boolean }) {
+  const tpl = useDesigner((s) => s.template);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  if (!tpl?.builder) return null;
+  const vars = tpl.builder.vars;
+  const m = /^\{\{\s*(\w+)\s*\}\}$/.exec(raw.trim());
+  const cur = m ? vars.find((v) => v.name === m[1]) : undefined;
+  const put = (v: string) =>
+    update((d) => {
+      const l = findLayer(d, layer.id);
+      if (l) writePath(l as unknown as Record<string, unknown>, path, v);
+    });
+  const create = () => {
+    const name = varName(layer.name, vars);
+    const numeric = raw.trim() !== '' && !Number.isNaN(Number(raw));
+    edit((b, d) => {
+      b.vars.push({ name, kind: numeric ? 'number' : 'text', initial: raw });
+      const l = findLayer(d, layer.id);
+      if (l) writePath(l as unknown as Record<string, unknown>, path, `{{${name}}}`);
+    });
+  };
+  const click = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (cur) return put(cur.initial);
+    if (!vars.length) return create();
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenu({ x: r.left, y: r.bottom + 4 });
+  };
+  return (
+    <>
+      <button className={`${chip ? 'wk-chip op' : 'pp-op'} ${cur ? 'on' : ''}`} title={cur ? t('Shows the variable {name} · click to stop', { name: cur.name }) : t('Show a variable of the widget')} onClick={click}>
+        <Braces size={chip ? 12 : 13} />
+        {chip && (cur ? cur.name : t('Variable'))}
+      </button>
+      {menu && (
+        <ContextMenu
+          at={menu}
+          onClose={() => setMenu(null)}
+          items={[
+            { icon: <Plus size={13} />, label: t('New variable'), run: create },
+            null,
+            ...vars.map((v) => {
+              const I = VAR_ICONS[v.kind ?? 'text'] ?? Hash;
+              return { icon: <I size={13} />, label: v.name, run: () => put(`{{${v.name}}}`) };
+            }),
+          ]}
+        />
+      )}
+    </>
+  );
+}
+
+const OPTION_ICONS: Record<WidgetOption['kind'], typeof Hash> = { color: Palette, number: Hash, text: Type, font: CaseSensitive, bool: ToggleLeft, choice: List, image: Image };
+
+/** The widget's options: what the Designer will set in a template (its name, its group), and what each drives. */
 function OptionsPane() {
   const tpl = useDesigner((s) => s.template)!;
   const select = useDesigner((s) => s.select);
+  const [open, setOpen] = useState<string | null>(null);
   const b = tpl.builder!;
   const groups: [string, WidgetOption[]][] = [];
   for (const o of b.options) {
@@ -211,36 +340,93 @@ function OptionsPane() {
   }
   const setOpt = (id: string, patch: Partial<WidgetOption>) => edit((d) => void (d.options = d.options.map((o) => (o.id === id ? { ...o, ...patch } : o))), `opt-${id}`);
   if (!b.options.length) return <div className="bl-empty">{t('Select an element, then publish its properties with')} <SlidersHorizontal size={12} /></div>;
+  const where = (x: WidgetOption['targets'][number]) => `${findLayer(tpl, x.layer)?.name ?? x.layer} · ${x.path.replace(/^props\./, '')}`;
   return (
     <>
       {groups.map(([g, list]) => (
         <Section key={g} id={`bopt-${g}`} title={g || t('Options')}>
-          {list.map((o) => (
-            <div key={o.id} className="row wk-row bl-optrow">
-              <span className="wk-gut" />
-              <input className="bl-optname" value={o.name} onChange={(e) => setOpt(o.id, { name: e.target.value })} />
-              <div className="wk-ctl">
-                <div className="bl-links">
-                  {o.targets.map((x) => {
-                    const l = findLayer(tpl, x.layer);
-                    return (
-                      <button key={`${x.layer}-${x.path}`} className="wk-chip bl-link" onClick={() => select([x.layer])}>
-                        {l?.name ?? x.layer} · {x.path.replace(/^props\./, '')}
-                      </button>
-                    );
-                  })}
-                </div>
+          {list.map((o) => {
+            const Icon = OPTION_ICONS[o.kind] ?? Type;
+            return (
+              <div key={o.id} className={`bl-var ${open === o.id ? 'open' : ''}`}>
+                <button className="bl-var-head" onClick={() => setOpen(open === o.id ? null : o.id)}>
+                  <span className="bl-vic">
+                    <Icon size={14} />
+                  </span>
+                  <span className="bl-vtext">
+                    <span>{o.name}</span>
+                    <em>{o.targets.map(where).join(' · ')}</em>
+                  </span>
+                  <ChevronRight size={13} className="bl-chev" />
+                </button>
+                {open === o.id && (
+                  <div className="bl-var-body">
+                    <label className="bl-row">
+                      <span className="prop-label">{t('Name')}</span>
+                      <input value={o.name} onChange={(e) => setOpt(o.id, { name: e.target.value })} />
+                    </label>
+                    <label className="bl-row">
+                      <span className="prop-label">{t('Group')}</span>
+                      <input list="bl-groups" value={o.group ?? ''} placeholder={t('Options')} onChange={(e) => setOpt(o.id, { group: e.target.value || undefined })} />
+                    </label>
+                    <div className="bl-row">
+                      <span className="prop-label">{t('Drives')}</span>
+                      <div className="bl-links">
+                        {o.targets.map((x) => (
+                          <span key={`${x.layer}-${x.path}`} className="wk-chip bl-link">
+                            <button onClick={() => select([x.layer])}>{where(x)}</button>
+                            {o.targets.length > 1 && (
+                              <button title={t('Remove')} onClick={() => setOpt(o.id, { targets: o.targets.filter((y) => y !== x) })}>
+                                <X size={11} />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button className="btn small ghost danger" onClick={() => edit((d) => void (d.options = d.options.filter((x) => x.id !== o.id)))}>
+                      <Trash2 size={13} /> {t('Remove the option')}
+                    </button>
+                  </div>
+                )}
               </div>
-              <button className="icon-btn ghost" title={t('Remove the option')} onClick={() => edit((d) => void (d.options = d.options.filter((x) => x.id !== o.id)))}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </Section>
       ))}
+      <datalist id="bl-groups">
+        {groups.filter(([g]) => g).map(([g]) => (
+          <option key={g} value={g} />
+        ))}
+      </datalist>
     </>
   );
 }
+
+/** The icons a widget or a control can have, drawn in the list. */
+const ICON_OPTIONS = () =>
+  Object.entries(BUILT_ICONS).map(([k, I]) => ({ value: k, label: t(ICON_NAMES[k] ?? k), icon: <I size={14} /> }));
+const ICON_NAMES: Record<string, string> = {
+  play: 'Play',
+  pause: 'Pause',
+  undo: 'Undo',
+  prev: 'Previous',
+  next: 'Next',
+  swap: 'Swap',
+  reset: 'Reset',
+  plus: 'Plus',
+  minus: 'Minus',
+  flag: 'Flag',
+  stop: 'Stop',
+  zap: 'Flash',
+  refresh: 'Refresh',
+  continue: 'Continue',
+  check: 'Check',
+  x: 'Cross',
+  timer: 'Timer',
+  trophy: 'Trophy',
+  puzzle: 'Puzzle',
+};
 
 const OPS: [CtlAction['op'], string][] = [
   ['add', 'Add to'],
@@ -295,7 +481,7 @@ function ControlsPane() {
                 <button key={x.id} className={`row wk-row bl-ctl ${sel === x.id ? 'sel' : ''}`} onClick={() => setSel(x.id)}>
                   <span className="bl-ic">{Icon ? <Icon size={14} /> : <span className="cc-txt">{x.label}</span>}</span>
                   <span className="prop-label">{x.row ? `${x.row} · ${x.label}` : x.label}</span>
-                  <span className="bl-act">{x.actions.map(actionText).join(' · ') || '—'}</span>
+                  <span className="bl-act">{x.actions.map((a) => actionText(a, tpl)).join(' · ') || '—'}</span>
                   {x.key ? <kbd className="kc">{x.key}</kbd> : <span />}
                 </button>
               );
@@ -317,7 +503,7 @@ function ControlsPane() {
             </label>
             <div className="bl-row">
               <span className="prop-label">{t('Icon')}</span>
-              <Dropdown value={c.icon ?? ''} options={[{ value: '', label: t('Its label') }, ...Object.keys(BUILT_ICONS).map((k) => ({ value: k, label: k }))]} onChange={(v) => setCtl(c.id, { icon: v || undefined })} />
+              <Dropdown value={c.icon ?? ''} options={[{ value: '', label: t('Its label') }, ...ICON_OPTIONS()]} onChange={(v) => setCtl(c.id, { icon: v || undefined })} />
             </div>
             <label className="bl-row">
               <span className="prop-label">{t('Key')}</span>
@@ -355,6 +541,24 @@ function ControlsPane() {
                 ))}
               </div>
             </div>
+            {place(c) === 'actions' && (c.kind ?? 'button') === 'button' && (
+              <div className="bl-row">
+                <span className="prop-label">{t('Look')}</span>
+                <div className="segmented">
+                  {(
+                    [
+                      ['plain', t('Normal')],
+                      ['main', t('Main')],
+                      ['red', t('Danger')],
+                    ] as const
+                  ).map(([k, l]) => (
+                    <button key={k} type="button" className={(c.main ? 'main' : c.tone === 'red' ? 'red' : 'plain') === k ? 'on' : ''} onClick={() => setCtl(c.id, { main: k === 'main' || undefined, tone: k === 'red' ? 'red' : undefined })}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {place(c) !== 'actions' && (
               <label className="bl-row">
                 <span className="prop-label">{t('Row')}</span>
@@ -413,9 +617,12 @@ function ControlsPane() {
 }
 
 /** What an action does, in a few words. */
-function actionText(a: CtlAction): string {
-  if (a.op === 'timer') return `${a.layer ?? ''} : ${a.value ?? ''}${a.arg ? ` ${a.arg}` : ''}`;
-  if (a.op === 'add') return `${a.var} + ${a.value}`;
+function actionText(a: CtlAction, tpl: Template): string {
+  if (a.op === 'timer') {
+    const op = TIMER_OPS.find(([v]) => v === a.value)?.[1];
+    return `${(a.layer && findLayer(tpl, a.layer)?.name) || a.layer || ''} : ${op ? t(op) : (a.value ?? '')}${a.arg ? ` ${a.arg}` : ''}`;
+  }
+  if (a.op === 'add') return a.value?.startsWith('-') ? `${a.var} − ${a.value.slice(1)}` : `${a.var} + ${a.value}`;
   if (a.op === 'set') return `${a.var} = ${a.value}`;
   if (a.op === 'undo') return t('Undo');
   if (a.op === 'reset') return a.var ? `${a.var} ↺` : t('All ↺');
@@ -461,3 +668,4 @@ export function BuilderRight() {
 }
 
 builderHooks.OptionToggle = OptionToggle;
+builderHooks.VarToggle = VarToggle;

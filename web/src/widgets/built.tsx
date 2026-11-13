@@ -45,6 +45,11 @@ export const controlPath = (id: string) => `widget.controls.${id}`;
 /** The exposure path of an option. */
 export const optionPath = (id: string) => `widget.options.${id}`;
 
+/** A switch shows the variable it switches. */
+const shows = (c: BuiltControl) => c.shows ?? c.actions.find((a) => a.op === 'toggle')?.var;
+/** A field's hint: a time for a Temps it sets, else nothing. */
+const hint = (c: BuiltControl) => c.placeholder ?? (c.actions.some((a) => a.op === 'timer' && a.value === 'set') ? 'mm:ss' : '');
+
 /** Controls grouped by the row they sit in, in their order. */
 function byRow(list: BuiltControl[]): [string, BuiltControl[]][] {
   const out: [string, BuiltControl[]][] = [];
@@ -93,7 +98,7 @@ function BuiltCentre({ layer, data, act, item, setData }: OperatorProps) {
     .filter((c) => (c.place ?? 'actions') === 'actions' && given(c))
     .map((c) =>
       c.kind === 'field'
-        ? { field: true as const, placeholder: c.placeholder ?? '', title: c.label, onSet: (v: string) => run(c, v) }
+        ? { field: true as const, placeholder: hint(c), title: c.label, onSet: (v: string) => run(c, v) }
         : { icon: BUILT_ICONS[c.icon ?? ''] ?? Square, text: c.icon ? undefined : c.label, label: c.label, key: c.key, main: c.main, tone: c.tone, confirm: ask(c), onClick: () => void run(c) },
     );
   const rows = byRow(def.controls.filter((c) => c.place === 'row' && given(c))).map(([row, cs]) => (
@@ -108,9 +113,9 @@ function BuiltCentre({ layer, data, act, item, setData }: OperatorProps) {
   ));
   const one = (c: BuiltControl): ReactNode =>
     c.kind === 'field' ? (
-      <SetInput key={c.id} placeholder={c.placeholder ?? ''} title={c.label} onSet={(v) => run(c, v)} />
+      <SetInput key={c.id} placeholder={hint(c)} title={c.label} onSet={(v) => run(c, v)} />
     ) : c.kind === 'toggle' ? (
-      <button key={c.id} className={`wk-tog ${c.shows && ['true', '1'].includes(value(c.shows)) ? 'on' : ''}`} title={c.label} onClick={() => void run(c)}>
+      <button key={c.id} className={`wk-tog ${shows(c) && ['true', '1'].includes(value(shows(c)!)) ? 'on' : ''}`} title={c.label} onClick={() => void run(c)}>
         <i />
       </button>
     ) : (

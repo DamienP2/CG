@@ -47,7 +47,8 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A widget of the graphic on air waits for Continue (F2): a layer waiting for its start, a widget's next page… */
 export function widgetWaits(layers: Layer[], item: PlayoutItem): boolean {
   return layers.some((l) => {
-    if (!l.visible) return false;
+    // A built widget's elements: its controls drive them, not CONTINUE.
+    if (!l.visible || insideWidget(layers, l)) return false;
     if (isTimed(l) && l.manualStart && l.startOn !== 'trigger' && !item.clocks?.[l.id]) return true;
     const def = widgetOf(l);
     return !!def?.waits?.(l as never, item.widgets?.[l.id], item.data, item);

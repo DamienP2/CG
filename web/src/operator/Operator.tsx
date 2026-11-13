@@ -210,9 +210,14 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
 }
 
 /** Continue would move it on: a widget waits for it (its next page, its start), or the graphic is held on a pause, playing towards one, or paused while going out (as the server's `resume`, crates/cg-core/src/playout.rs). */
+/** The template has pauses the operator's Continue resumes (by hand, not timed or on a trigger). */
+const manualPauses = (t: Template) => t.markers.some((m) => m.kind === 'pause' && (m.resume?.type ?? 'manual') === 'manual');
+
+/** CONTINUE is offered: a widget waits for it, or the template has pauses resumed by hand still ahead. */
 function canContinue(p: PlayoutItem, t: Template | undefined): boolean {
   if (!t || p.phase === 'out') return false;
   if (widgetWaits(t.layers, p)) return true;
+  if (!manualPauses(t)) return false;
   if (p.phase === 'outHold') return true;
   return Math.max(p.target, p.frame) < holdFrame(t) - 1e-6;
 }
@@ -529,6 +534,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
   };
   const outZone = (z: Zone | undefined) => z && command({ action: 'takeOut', zone: z.id });
   const continueZone = (z: Zone | undefined) => z && command({ action: 'continue', zone: z.id });
+  /** The graphic on air in `z` has something CONTINUE goes on with. */
+  const continuable = (z: Zone | undefined) => {
+    const it = z && channel.layers[String(z.layer)];
+    return !!it && canContinue(it, project?.templates.find((x) => x.id === it.templateId));
+  };
 
   // On air, front-most zone first; the internal controls show one of them.
   const zones = useMemo(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer), [project?.zones]);
@@ -564,8 +574,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   useShortcuts({
     next: take,
     take: () => item && takeItem(item),
-    continue: () => continueZone(selZone),
-    continueAll: () => busy.forEach(continueZone),
+    continue: () => continuable(selZone) && continueZone(selZone),
+    continueAll: () => busy.filter(continuable).forEach(continueZone),
     out: () => outZone(selZone),
     outSelected: () => item && command({ action: 'takeOut', zone: zoneOf(item)?.id, buses: itemBuses(item) }),
     clear: () => command({ action: 'clear' }),
@@ -1018,7 +1028,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     {/* The transport, the whole width: NEXT, CONTINUE, OUT · timecode, undo, clear, shortcuts. */}
     <footer className="ux1-transport">
       <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate || !!lockOf(nextTarget)} onTake={take} cap={<KeyCap action="next" />} />
-      <button className={`opx-btn ${selZone && pauseOf(channel.layers[String(selZone.layer)], project) ? 'amber' : ''}`} disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => continueZone(selZone)} title={actionLabel('continue')}>
+      <button className={`opx-btn ${selZone && pauseOf(channel.layers[String(selZone.layer)], project) ? 'amber' : ''}`} disabled={!operate || !selZone || !!zoneLocks.other(selZone.id) || !continuable(selZone)} onClick={() => continueZone(selZone)} title={actionLabel('continue')}>
         <ChevronsRight size={16} /> CONTINUE <KeyCap action="continue" />
       </button>
       <button className="opx-btn" disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => outZone(selZone)} title={actionLabel('out')}>

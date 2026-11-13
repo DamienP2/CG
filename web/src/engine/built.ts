@@ -152,7 +152,8 @@ const hexColor = (s: string): number[] | undefined => {
 };
 
 /** `v` written at `path` of `l`, read as the type already there (a colour as RGBA). */
-function setOption(l: Layer, path: string, v: unknown) {
+/** Sets an element's property to an option's value (a colour given as #hex on a colour property). */
+export function setOption(l: Layer, path: string, v: unknown) {
   const o = l as unknown as Record<string, unknown>;
   const cur = readPath(o, path);
   let out: unknown = v;

@@ -998,7 +998,7 @@ function LayerGeneral({ layer }: { layer: Layer }) {
                   l.startOn = v === 'trigger' ? 'trigger' : undefined;
                 })
               }
-              options={START_MODES().map(([value, label]) => ({ value, label }))}
+              options={START_MODES(!!useDesigner.getState().template?.builder).map(([value, label]) => ({ value, label }))}
             />
           </div>
           {startMode(layer) === 'trigger' && (

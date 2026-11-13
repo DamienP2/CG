@@ -87,7 +87,7 @@ function scoreboard(): WidgetDef {
       { id: 'zero', label: t('Reset the match'), icon: 'reset', tone: 'red', confirm: true, actions: [{ op: 'reset' }, { op: 'timer', layer: 'chrono', value: 'reset' }, { op: 'timer', layer: 'tirs', value: 'reset' }] },
       ...team(1, 'PAR'),
       ...team(2, 'MON'),
-      { id: 'chrono', label: t('Game clock'), kind: 'field', place: 'settings', row: t('Game clock'), placeholder: 'mm:ss', choose: true, actions: [{ op: 'timer', layer: 'chrono', value: 'set', arg: '$value' }] },
+      { id: 'chrono', label: t('Game clock'), kind: 'field', place: 'settings', row: t('Game clock'), choose: true, actions: [{ op: 'timer', layer: 'chrono', value: 'set', arg: '$value' }] },
       { id: 'faute1', label: 'PAR', place: 'settings', row: t('Fouls'), choose: true, actions: [{ op: 'add', var: 'fautes_1', value: '1' }] },
       { id: 'faute2', label: 'MON', place: 'settings', row: t('Fouls'), choose: true, actions: [{ op: 'add', var: 'fautes_2', value: '1' }] },
       { id: 'tirs24', label: '24', place: 'settings', row: t('Shot clock'), choose: true, actions: [{ op: 'timer', layer: 'tirs', value: 'restart' }] },

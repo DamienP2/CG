@@ -915,7 +915,7 @@ export interface WidgetDef {
 
 export interface WidgetVar {
   name: string;
-  kind?: 'number' | 'text' | 'list' | 'bool' | 'team';
+  kind?: 'number' | 'text' | 'list' | 'bool';
   /** Its value at the start (the template's start value comes first). */
   initial: string;
   /** The values it goes through (a list: Q1, Q2…). */

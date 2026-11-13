@@ -281,7 +281,7 @@ export function Row({ label, children, title, lead, tail, expose, exposeValue, e
 }
 
 /** What the Designer's Builder puts in the kit (set by designer/BuilderPanels): no import cycle. */
-export const builderHooks: { OptionToggle?: (p: { layer: Layer; paths: readonly string[]; label?: string; value?: unknown }) => ReactNode } = {};
+export const builderHooks: { OptionToggle?: (p: { layer: Layer; paths: readonly string[]; label?: string; value?: unknown; chip?: boolean }) => ReactNode; VarToggle?: (p: { layer: Layer; path: string; raw: string; chip?: boolean }) => ReactNode } = {};
 
 /** The radio button exposing settings of the layer to the Operator: one click exposes, one click stops. */
 export function ExposeSetting({ paths, label, value, options, range, text }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][]; range?: [number, number]; /** A button with this text (else the row's small icon). */ text?: ReactNode }) {
@@ -586,7 +586,8 @@ export function Content(p: {
   const { raw, data, field, exposed, wired: anyKey, shown: value, change, canExpose, toggleExpose } = useExposable(p.path, p.value, p.onChange, p.multiline ? 'multiline' : 'text', p.expose);
   const tpl = useDesigner((s) => s.template);
   const { obj } = useContext(BindContext);
-  const vars = useTextTokens(p.vars && !exposed ? (obj as { id?: string }).id : undefined, raw, change);
+  // In the Builder a text shows the widget's variables (its button), not variables of its own.
+  const vars = useTextTokens(p.vars && !exposed && !tpl?.builder ? (obj as { id?: string }).id : undefined, raw, change);
   // Its variables are typed by the Operator: edited here; read from data: shown, read only.
   const wired = anyKey && (!p.vars || wiredKeys(raw).some((k) => !tpl?.fields.some((f) => f.key === k && !f.binding?.source)));
   if (wired) return <DataValue label={p.label} value={plainText(interpolateText(raw, data))} multiline={p.multiline} />;
@@ -619,23 +620,37 @@ export function Content(p: {
   // In the Builder: the content published as an option of the widget; a variable shown as such.
   const builder = !!tpl?.builder;
   const Opt = builderHooks.OptionToggle;
+  const Var = builderHooks.VarToggle;
   const layerObj = obj as Layer | undefined;
-  if (builder)
+  if (builder) {
+    // Its variable and its option: buttons at the end of the row, or chips under a text without label.
+    const tools =
+      layerObj?.id && p.path ? (
+        <>
+          {Var && <Var layer={layerObj} path={p.path} raw={raw} chip={inline} />}
+          {Opt && !exposed && <Opt layer={layerObj} paths={[p.path]} label={typeof p.label === 'string' ? p.label : undefined} value={raw} chip={inline} />}
+        </>
+      ) : null;
     return (
-      <Row label={p.label} tail={Opt && layerObj?.id && p.path && !exposed ? <Opt layer={layerObj} paths={[p.path]} label={typeof p.label === 'string' ? p.label : undefined} value={raw} /> : undefined}>
+      <Row label={p.label} tail={inline ? undefined : tools}>
         <div className="wk-content">
           {p.rich && !exposed ? <RichInput plain={p.plain} multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} tokens={vars.tokens} /> : <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />}
-          {exposed && (
-            <div className="wk-content-tools">
-              <span className="wk-exposed">
-                {t('Variable')} <b className="mono">{field!.key}</b>
-              </span>
-            </div>
+          {inline && tools ? (
+            <div className="wk-content-tools">{tools}</div>
+          ) : (
+            exposed && (
+              <div className="wk-content-tools">
+                <span className="wk-exposed">
+                  {t('Variable')} <b className="mono">{field!.key}</b>
+                </span>
+              </div>
+            )
           )}
           {vars.panel}
         </div>
       </Row>
     );
+  }
   return (
     <Row label={p.label} tail={canExpose && !inline ? <ExposeToggle on={exposed} onClick={() => void expose()} /> : undefined}>
       <div className="wk-content">

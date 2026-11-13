@@ -92,6 +92,22 @@ pub struct Action {
     pub arg: String,
 }
 
+/// The layer is an element of a built widget (a folder with `widget` above it): the widget's
+/// controls drive it (its Temps do not wait for the operator's Continue).
+pub fn inside_widget(layers: &[Layer], l: &Layer) -> bool {
+    let mut p = l.parent.as_deref();
+    for _ in 0..layers.len() {
+        let Some(f) = p.and_then(|id| layers.iter().find(|x| x.id == id)) else {
+            return false;
+        };
+        if f.widget.is_some() {
+            return true;
+        }
+        p = f.parent.as_deref();
+    }
+    false
+}
+
 /// The data key of the variable `var` of the widget `widget` (its layer id).
 pub fn var_key(widget: &str, var: &str) -> String {
     let id: String = widget
@@ -512,5 +528,25 @@ mod tests {
         assert!(!k.contains_key(&var_key("W", "tir")));
         assert!(!k.contains_key("other"));
         assert_eq!(not_kept(&[d], &[l]), vec![var_key("W", "tir")]);
+    }
+
+    #[test]
+    fn a_widgets_elements_are_inside_it() {
+        let el = |id: &str, parent: Option<&str>| -> Layer {
+            serde_json::from_value(
+                serde_json::json!({ "id": id, "name": id, "type": "group", "parent": parent }),
+            )
+            .unwrap()
+        };
+        let layers = vec![
+            layer(),
+            el("W/eq1", Some("W")),
+            el("W/chrono", Some("W/eq1")),
+            el("free", None),
+        ];
+        assert!(inside_widget(&layers, &layers[1]));
+        assert!(inside_widget(&layers, &layers[2]));
+        assert!(!inside_widget(&layers, &layers[0]));
+        assert!(!inside_widget(&layers, &layers[3]));
     }
 }

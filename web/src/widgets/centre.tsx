@@ -16,6 +16,7 @@ import { useState, type ReactNode } from 'react';
 import { confirmDialog } from '../ui/dialogs';
 import { t, tc } from '../i18n';
 import { useApp } from '../store';
+import { useDesigner } from '../designer/designerStore';
 import type { Data, Layer } from '../engine/types';
 import { formatSetting, parseSetting, readPath, withSettings } from '../engine/settings';
 import { Bound, ExposedFilter, Seg, Text, useBound, useCentreMode } from './kit';
@@ -246,9 +247,10 @@ export function exposedValue<T>(layer: Layer, data: Data, path: string, fallback
 
 /** How a widget that moves by itself starts on air: at the In, on Continuer (F2) or on a trigger. */
 export type StartMode = 'in' | 'continue' | 'trigger';
-export const START_MODES = (): [StartMode, string][] => [
+export const START_MODES = (builder?: boolean): [StartMode, string][] => [
   ['in', tc('cc', 'At the In')],
-  ['continue', tc('cc', 'Continue F2')],
+  // In a widget being built: started by one of its controls (not by the operator's Continue).
+  ['continue', builder ? t('By a control') : tc('cc', 'Continue F2')],
   ['trigger', tc('cc', 'Trigger')],
 ];
 export const startMode = (l: { manualStart?: boolean; startOn?: 'continue' | 'trigger' }): StartMode => (!l.manualStart ? 'in' : l.startOn === 'trigger' ? 'trigger' : 'continue');
@@ -261,6 +263,7 @@ export const setStartMode = (l: { manualStart?: boolean; startOn?: 'continue' | 
 export function StartRow({ layer }: { layer: { manualStart?: boolean; startOn?: 'continue' | 'trigger'; startTrigger?: string } }) {
   const mode = useCentreMode();
   const b = useBound();
+  const builder = useDesigner((s) => !!s.template?.builder);
   if (mode !== 'designer') return null;
   const m = startMode(layer);
   return (
@@ -268,7 +271,7 @@ export function StartRow({ layer }: { layer: { manualStart?: boolean; startOn?: 
       <Seg
         label={tc('cc', 'Start')}
         value={m}
-        options={START_MODES()}
+        options={START_MODES(builder)}
         onChange={(v) => {
           b.set('manualStart', v !== 'in' ? true : undefined);
           b.set('startOn', v === 'trigger' ? 'trigger' : undefined);

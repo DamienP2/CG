@@ -991,6 +991,9 @@ impl PlayoutItem {
         let mut done = false;
         let data = self.data.clone();
         for l in &t.layers {
+            if crate::built::inside_widget(&t.layers, l) {
+                continue;
+            }
             let ctx = crate::wid::ActCtx {
                 now_ms: now_ms(),
                 age_secs: self.layer_age(l) / fps.max(1.0),
