@@ -16,7 +16,6 @@ pub mod sequence;
 mod shadow;
 pub mod slate;
 mod sprite;
-mod strip;
 mod text;
 mod wid;
 
@@ -26,51 +25,12 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use cg_core::anim::{interpolate_text, resolve_layer, Data, ResolvedLayer};
-use cg_core::widgets::{self, clock_text, scroll_positions, TimeCtx};
+use cg_core::widgets::{self, clock_text, TimeCtx};
 use cg_core::{
     ChannelState, Color, FontStyle, ImageFit, LayerKind, Project, Prop, Template, TextAlign, Value,
     VerticalAlign,
 };
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
-
-/// Text widths with the renderer's fonts, for the server's events (a
-/// crawl's passes): the fonts load at the first width asked.
-pub struct TextWidths {
-    dir: PathBuf,
-    fonts: Option<FontStore>,
-}
-
-impl TextWidths {
-    pub fn new(assets_dir: impl Into<PathBuf>) -> Self {
-        Self {
-            dir: assets_dir.into(),
-            fonts: None,
-        }
-    }
-}
-
-impl cg_core::playout::TextWidth for TextWidths {
-    fn width(
-        &mut self,
-        family: &str,
-        weight: u16,
-        text: &str,
-        size: f32,
-        letter_spacing: f32,
-    ) -> f32 {
-        let dir = self.dir.join("fonts");
-        let fonts = self.fonts.get_or_insert_with(|| FontStore::new(Some(&dir)));
-        match fonts
-            .font(family, weight)
-            .or_else(|| fonts.font("Inter", weight))
-        {
-            Some(f) => text::text_width(&f, text, size, letter_spacing),
-            None => {
-                cg_core::playout::EstimatedWidth.width(family, weight, text, size, letter_spacing)
-            }
-        }
-    }
-}
 
 pub use cache::FrameCache;
 pub use text::{fonts_changed, FontFamily, FontStore, BUNDLED_FONTS};
@@ -201,8 +161,6 @@ pub struct Renderer {
     scaled: scaled::Scaled,
     /// Masks kept from frame to frame (faded zones, `mask::Kept`).
     masks: mask::Kept,
-    /// Strips of the credits rolls (`strip`).
-    strips: strip::Strips,
     /// A frame-sized picture for the graphics drawn over what moves
     /// (`cache::top_item`), kept cleared between frames.
     over: Option<Pixmap>,
@@ -662,7 +620,6 @@ impl Renderer {
             scaled: Default::default(),
             over: None,
             masks: Default::default(),
-            strips: Default::default(),
             sprites: Default::default(),
             root_scale: 1.0,
             in_sprite: false,
@@ -919,7 +876,6 @@ impl Renderer {
         self.refresh_fonts();
         self.behind = None;
         self.scaled.frame();
-        self.strips.frame();
         self.sprites.frame();
         self.pending = false;
         self.steps = Steps::default();
@@ -1890,8 +1846,7 @@ impl Renderer {
             }
         }
         // The generic drawing (lib.rs), when the widget code leaves it the layer.
-        let scrolling = r.layer.kind.scrolling_as();
-        let m = match scrolling.as_ref().unwrap_or(&r.layer.kind) {
+        let m = match &r.layer.kind {
             LayerKind::Group { .. }
             | LayerKind::Rect { .. }
             | LayerKind::Ellipse { .. }
@@ -1901,14 +1856,13 @@ impl Renderer {
             | LayerKind::Polygon { .. }
             | LayerKind::Pen { .. }
             | LayerKind::Table { .. }
-            | LayerKind::Credits { .. }
             | LayerKind::Chart { .. }
             | LayerKind::Map { .. }
             | LayerKind::Scoreboard { .. }
             | LayerKind::SocialWall { .. }
             | LayerKind::SocialBadge { .. }
             | LayerKind::Web { .. } => Motion::Still,
-            // Clocks, tickers, rolls, counters… (by the time on air).
+            // Clocks, counters, rotators… (by the time on air).
             _ => Motion::Moving,
         };
         (m, None)
@@ -1997,9 +1951,6 @@ impl Renderer {
                 kind,
                 LayerKind::Pen { .. }
                     | LayerKind::Typewriter { .. }
-                    | LayerKind::Credits { .. }
-                    | LayerKind::Roll { .. }
-                    | LayerKind::Ticker { .. }
                     | LayerKind::Rotator { .. }
                     | LayerKind::Slideshow { .. }
                     | LayerKind::Group {
@@ -2662,9 +2613,7 @@ impl Renderer {
         let fill = paint_for(r.color(Prop::Fill), opacity);
         let stroke_w = r.num(Prop::StrokeWidth) as f32;
         let stroke = paint_for(r.color(Prop::Stroke), opacity);
-        // A scrolling text is drawn as the ticker or roll it behaves like.
-        let scrolling = r.layer.kind.scrolling_as();
-        let kind = scrolling.as_ref().unwrap_or(&r.layer.kind);
+        let kind = &r.layer.kind;
         // Widgets stay inside their box.
         let boxed;
         let mask = if matches!(
@@ -2675,8 +2624,6 @@ impl Renderer {
                 | LayerKind::Rotator { .. }
                 | LayerKind::BarChart { .. }
                 | LayerKind::Slideshow { .. }
-                | LayerKind::Ticker { .. }
-                | LayerKind::Roll { .. }
         ) {
             boxed = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0))
                 .map(|b| build_mask(pm, mask, b, tf));
@@ -2819,136 +2766,6 @@ impl Renderer {
                     opacity,
                     mask,
                 );
-            }
-            LayerKind::Ticker {
-                x: _,
-                text,
-                separator,
-                speed,
-                font,
-            } => {
-                let items: Vec<String> = interpolate_text(text, ctx.data)
-                    .lines()
-                    .map(str::trim)
-                    .filter(|l| !l.is_empty())
-                    .map(String::from)
-                    .collect();
-                if items.is_empty() {
-                    return;
-                }
-                let mut strip = items.join(separator) + separator;
-                if font.uppercase {
-                    strip = strip.to_uppercase();
-                }
-                let Some(f) = self.fonts.font(&font.font_family, font.font_weight) else {
-                    return;
-                };
-                let size = r.num(Prop::FontSize) as f32;
-                let cycle = text::text_width(&f, &strip, size, r.num(Prop::LetterSpacing) as f32)
-                    + r.num(Prop::LetterSpacing) as f32;
-                let Some(clip) =
-                    Rect::from_xywh(0.0, 0.0, w, h).map(|rc| build_mask(pm, mask, rc, tf))
-                else {
-                    return;
-                };
-                let speed = widgets::frame_speed(*speed, time.fps);
-                for x in scroll_positions(w as f64, cycle as f64, speed * time.age_secs, true) {
-                    let place = (TextAlign::Left, font.vertical_align);
-                    self.draw_text(
-                        pm,
-                        r,
-                        font,
-                        &strip,
-                        place,
-                        (x as f32, 0.0, cycle, h),
-                        tf,
-                        opacity,
-                        Some(&clip),
-                    );
-                }
-            }
-            LayerKind::Roll {
-                text,
-                speed,
-                looping,
-                font,
-            } => {
-                let mut body = interpolate_text(text, ctx.data);
-                if font.uppercase {
-                    body = body.to_uppercase();
-                }
-                let size = r.num(Prop::FontSize) as f32;
-                let block = body.split('\n').count() as f32 * size * text::LINE_HEIGHT;
-                // A screen-high gap before the roll comes round again.
-                let cycle = if *looping { block + h } else { block };
-                let Some(clip) =
-                    Rect::from_xywh(0.0, 0.0, w, h).map(|rc| build_mask(pm, mask, rc, tf))
-                else {
-                    return;
-                };
-                let tops: Vec<f32> = scroll_positions(
-                    h as f64,
-                    cycle as f64,
-                    widgets::frame_speed(*speed, time.fps) * time.age_secs,
-                    *looping,
-                )
-                .into_iter()
-                .map(|y| y as f32)
-                .collect();
-                // The block drawn once in a strip, the part in the box laid each frame.
-                let key = {
-                    use std::hash::{Hash, Hasher};
-                    let mut k = std::collections::hash_map::DefaultHasher::new();
-                    format!("{body}{font:?}").hash(&mut k);
-                    [Prop::FontSize, Prop::LetterSpacing, Prop::StrokeWidth]
-                        .map(|p| r.num(p).to_bits())
-                        .hash(&mut k);
-                    [Prop::Fill, Prop::Stroke]
-                        .map(|p| r.color(p).0.map(f32::to_bits))
-                        .hash(&mut k);
-                    k.finish()
-                };
-                let mut draw = |rd: &mut Renderer, chunk: &mut Pixmap, t: Transform| {
-                    let place = (font.align, VerticalAlign::Top);
-                    rd.draw_text(
-                        chunk,
-                        r,
-                        font,
-                        &body,
-                        place,
-                        (0.0, 0.0, w, block),
-                        t,
-                        1.0,
-                        None,
-                    );
-                };
-                let rolled = strip::roll(
-                    self,
-                    pm,
-                    &r.layer.id,
-                    key,
-                    tf,
-                    (w, h),
-                    block,
-                    &tops,
-                    opacity,
-                    Some(&clip),
-                    &mut draw,
-                );
-                for y in tops.into_iter().filter(|_| !rolled) {
-                    let place = (font.align, VerticalAlign::Top);
-                    self.draw_text(
-                        pm,
-                        r,
-                        font,
-                        &body,
-                        place,
-                        (0.0, y, w, block),
-                        tf,
-                        opacity,
-                        Some(&clip),
-                    );
-                }
             }
             LayerKind::Image { fit, .. } => {
                 if let Some(src) = r.image_src.clone() {
@@ -3154,7 +2971,6 @@ impl Renderer {
             LayerKind::Polygon { .. }
             | LayerKind::Pen { .. }
             | LayerKind::Table { .. }
-            | LayerKind::Credits { .. }
             | LayerKind::Chart { .. }
             | LayerKind::Map { .. }
             | LayerKind::Scoreboard { .. }
@@ -4380,13 +4196,13 @@ mod tests {
     }
 
     #[test]
-    fn a_flip_ticker_types_its_item_in() {
+    fn a_ticker_of_before_goes_by_as_its_list() {
         let project = sample::demo_project();
         let t: cg_core::Template = serde_json::from_value(serde_json::json!({
             "id": "tk", "name": "T", "duration": 500.0, "markers": [], "zone": "", "fields": [],
             "layers": [{
-                "id": "k", "name": "Ticker", "type": "ticker", "text": "", "separator": "", "speed": 100.0,
-                "fontFamily": "Inter", "mode": "flip", "trans": "type", "transDur": 2.0, "itemDur": 8.0,
+                "id": "k", "name": "Ticker", "type": "ticker", "text": "", "speed": 600.0,
+                "fontFamily": "Inter", "sepType": "none",
                 "items": [{"cat": "", "text": "MMMMMMMM", "on": true}],
                 "props": {"x": 0.0, "y": 0.0, "width": 1200.0, "height": 100.0, "fill": [1.0, 1.0, 1.0, 1.0], "fontSize": 60.0}
             }]
@@ -4401,13 +4217,9 @@ mod tests {
                 .filter(|&x| f.data[((50 * f.width + x) * 4 + 3) as usize] > 128)
                 .count()
         };
-        let quarter = ink(fps * 0.5);
-        let typed = ink(fps * 3.0);
-        assert!(typed > 100, "the whole item once typed ({typed} px)");
-        assert!(
-            quarter * 2 < typed,
-            "a quarter of it half a second in ({quarter} px of {typed})"
-        );
+        // At the take it starts beyond the right edge; a second later, on screen.
+        assert_eq!(ink(0.0), 0);
+        assert!(ink(fps) > 100);
     }
 
     #[test]
@@ -4504,40 +4316,6 @@ mod tests {
         let a = at(&mut r, 20.0);
         assert_eq!(a(50, 200), 255);
         assert_eq!(a(230, 200), 255);
-    }
-
-    #[test]
-    fn a_scrolling_text_comes_in_from_the_right_with_its_looks() {
-        let project = sample::demo_project();
-        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
-            "id": "sc", "name": "T", "duration": 500.0, "markers": [], "zone": "", "fields": [],
-            "layers": [{
-                "id": "t", "name": "Ticker", "type": "text", "fontFamily": "Inter",
-                "text": "Breaking <c=#00ff00>news</c>\nSecond line", "scroll": "horizontal", "speed": 600.0,
-                "band": true, "bandColor": "#0000ff",
-                "props": {"x": 0.0, "y": 0.0, "width": 1920.0, "height": 120.0, "fontSize": 60.0, "fill": [1.0, 0.0, 0.0, 1.0]}
-            }]
-        }))
-        .unwrap();
-        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
-        let fps = project.frame_rate.as_f64();
-        let seen = |f: &Frame| f.data.chunks(4).filter(|p| p[3] > 200).count();
-        let count = |f: &Frame, want: [u8; 3]| {
-            f.data
-                .chunks(4)
-                .filter(|p| p[3] == 255 && p[..3] == want)
-                .count()
-        };
-        // At the take it starts beyond the right edge.
-        assert_eq!(
-            seen(&r.render_template(&project, &t, "main", 0.0, &Default::default())),
-            0
-        );
-        // Two seconds later: on screen, with its band and its green part.
-        let f = r.render_template(&project, &t, "main", 2.0 * fps, &Default::default());
-        assert!(count(&f, [0, 0, 255]) > 1000, "band");
-        assert!(count(&f, [0, 255, 0]) > 200, "rich text");
-        assert!(count(&f, [255, 0, 0]) > 200, "text");
     }
 
     #[test]

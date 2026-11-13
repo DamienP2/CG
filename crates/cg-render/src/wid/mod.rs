@@ -4,7 +4,6 @@
 
 mod chart;
 mod counter;
-mod credits;
 mod ellipse;
 mod image;
 mod map;
@@ -19,7 +18,6 @@ mod socialbadge;
 mod socialwall;
 mod table;
 mod text;
-mod ticker;
 mod timer;
 mod typewriter;
 
@@ -234,8 +232,6 @@ pub(crate) fn draw(d: &mut Draw) -> bool {
         "pen" => pen::draw(d, &state(&raw)),
         "timer" => timer::draw(d, &state(&raw)),
         "table" => table::draw(d, &state(&raw)),
-        "ticker" => ticker::draw(d, &state(&raw)),
-        "credits" => credits::draw(d, &state(&raw)),
         "typewriter" => typewriter::draw(d, &state(&raw)),
         "counter" => counter::draw(d, &state(&raw)),
         "progress" => progress::draw(d, &state(&raw)),
@@ -276,8 +272,7 @@ pub(crate) fn motion(d: &mut Draw) -> Option<Motion> {
     let raw = d.state;
     match id {
         // Nothing of time in their drawing.
-        "quad" | "polygon" | "ellipse" | "qrcode" | "web" => Some(Motion::Still),
-        "text" => text::motion(d),
+        "quad" | "polygon" | "ellipse" | "text" | "qrcode" | "web" => Some(Motion::Still),
         "image" => image::motion(d, &state(raw)),
         "pen" => pen::motion(d),
         "timer" => timer::motion(d, &state(raw)),
@@ -289,7 +284,7 @@ pub(crate) fn motion(d: &mut Draw) -> Option<Motion> {
         "socialwall" => socialwall::motion(d, &state(raw)),
         "socialbadge" => socialbadge::motion(d, &state(raw)),
         "map" => map::motions(d, &state(raw)).map(|(under, _)| under),
-        // Tickers, credits, typewriters: by the time on air.
+        // Typewriters: by the time on air.
         _ => Some(Motion::Moving),
     }
 }

@@ -20,7 +20,7 @@ use crate::model::Layer;
 
 /// A widget made with the Builder (saved in its project).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", from = "DefIn")]
 pub struct Def {
     pub id: String,
     pub name: String,
@@ -31,6 +31,37 @@ pub struct Def {
     /// Its elements, options, icon… as the Builder wrote them.
     #[serde(flatten)]
     pub rest: BTreeMap<String, Value>,
+}
+
+/// A definition as stored: its elements made with the widgets of before are
+/// read as what they became ([`crate::old_widgets`]).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DefIn {
+    id: String,
+    name: String,
+    #[serde(default)]
+    vars: Vec<Var>,
+    #[serde(default)]
+    controls: Vec<Control>,
+    #[serde(flatten)]
+    rest: BTreeMap<String, Value>,
+}
+
+impl From<DefIn> for Def {
+    fn from(d: DefIn) -> Self {
+        let mut rest = d.rest;
+        if let Some(Value::Array(layers)) = rest.get_mut("layers") {
+            *layers = crate::old_widgets::convert(std::mem::take(layers));
+        }
+        Self {
+            id: d.id,
+            name: d.name,
+            vars: d.vars,
+            controls: d.controls,
+            rest,
+        }
+    }
 }
 
 /// A variable of a widget: what its controls change and its elements show.

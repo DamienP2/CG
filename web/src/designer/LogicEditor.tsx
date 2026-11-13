@@ -27,7 +27,7 @@ import type { StoreApi, UseBoundStore } from 'zustand';
 import { t, tc } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
 import { ELEMENT_OPS, WVAR_OPS } from './widgetOps';
-import { entries, entryLabel, FAMS, isProjectLogic, kindOf, layerNode, propsOf, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, wvarOp, type Entry, type Fam } from './logicNodes';
+import { entries, entryLabel, FAMS, isProjectLogic, kindOf, layerNode, propsOf, rowLabel, rowsFor, timedLayer, timerLayer, varNames, videoLayer, wvarOp, type Entry, type Fam } from './logicNodes';
 
 /*
  * The Logic canvas. Every node has its inputs on the left and its outputs on the right; value
@@ -149,20 +149,9 @@ function EventBody({ n, template, set }: { n: Extract<LogicNode, { type: 'event'
   const layers = (f: (l: Layer) => boolean) => template.layers.filter(f).map((l) => ({ value: l.id, label: l.name }));
   const fields = template.fields.map((f) => ({ value: f.key, label: f.label || f.key }));
   switch (on.kind) {
-    case 'scrollEnd': {
-      const ticker = template.layers.find((l) => l.id === on.layer)?.type === 'ticker';
-      return (
-        <>
-          <Dropdown value={on.layer} placeholder={t('Choose a layer')} options={layers(scrollLayer)} onChange={(layer) => set({ ...on, layer, passes: template.layers.find((l) => l.id === layer)?.type === 'ticker' ? (on.passes ?? 1) : undefined })} />
-          {ticker && (
-            <label className="lx-field">
-              <span>{t('Passes')}</span>
-              <NumberField value={on.passes ?? 1} min={1} step={1} onChange={(v) => set({ ...on, passes: Math.max(1, Math.round(v)) }, `lx-${n.id}-p`)} />
-            </label>
-          )}
-        </>
-      );
-    }
+    // The Ticker or the Credits of before: list folders now, it never comes.
+    case 'scrollEnd':
+      return null;
     case 'timerZero':
     case 'timerAt':
       return (
@@ -806,7 +795,6 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         const on = m.on;
         if (on.kind === 'lastRow' && !on.dataset) on.dataset = template.datasets?.[0]?.key ?? '';
         if ((on.kind === 'timerZero' || on.kind === 'timerAt') && !on.layer) on.layer = first(timerLayer);
-        if (on.kind === 'scrollEnd' && !on.layer) on.layer = first(scrollLayer);
         if (on.kind === 'videoEnd' && !on.layer) on.layer = first(videoLayer);
         if (on.kind === 'dataChange' && !on.key) on.key = template.fields[0]?.key ?? '';
       }

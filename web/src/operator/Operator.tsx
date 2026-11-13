@@ -29,7 +29,6 @@ import { DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownD
 import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, withoutSingleRow, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
 import { shownText } from '../widgets/text';
-import { creditsLeft, EntriesTable, rolesFor, type Entry } from '../widgets/credits';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { DataWarning } from './DataWarning';
 import { navigate, projectPath } from '../router';
@@ -55,16 +54,6 @@ import type { ZoneLock } from '../store';
  *           controls of the graphics on air (widgets, values, triggers)
  */
 
-
-/** Credits entries from a field's JSON (none when it is not). */
-const entriesOf = (v: string): Entry[] => {
-  try {
-    const x = JSON.parse(v);
-    return Array.isArray(x) ? x : [];
-  } catch {
-    return [];
-  }
-};
 
 /** The control of an exposed value, as in the Designer (text, choices, number, colour, picture, on / off). */
 export function FieldInput({ field, value, onChange, rich, maxLength }: { field: Field; value: string; onChange: (v: string) => void; rich?: boolean; /** Most characters (a Text's « Max characters »). */ maxLength?: number }) {
@@ -105,8 +94,6 @@ export function FieldInput({ field, value, onChange, rich, maxLength }: { field:
       return <AssetPicker value={value} onChange={onChange} />;
     case 'table':
       return <TableRowsField value={value} onChange={onChange} />;
-    case 'credits':
-      return <EntriesTable value={entriesOf(value)} roles={rolesFor(field.key)} onChange={(v) => onChange(JSON.stringify(v))} />;
     default:
       return <TextInput autoGrow value={value} onChange={onChange} maxLength={maxLength} />;
   }
@@ -240,15 +227,6 @@ function autoStep(project: Project, p: PlayoutItem & { advanced?: boolean }, liv
   const steps: AutoStep[] = [];
   const out = t.markers.find((m) => m.kind === 'out');
   if (out?.resume?.type === 'after') steps.push(step('out', out.resume.seconds));
-  // Credits set to go out by themselves: out when they have gone all the way, with the take's
-  // settings (a duration changed in the Operator), as the server (playout.rs) and the picture.
-  const nowMs = liveAt + useApp.getState().serverOffset;
-  const shown = p.vals ? { ...p.data, ...p.vals } : p.data;
-  for (const l of withSettings(t, shown).layers) {
-    if (l.type !== 'credits') continue;
-    const c = creditsLeft(l, p.widgets?.[l.id], shown, nowMs, (p.age ?? 0) / fps);
-    if (c) steps.push({ kind: 'out', secs: c.total, at: liveAt + c.left * 1000 });
-  }
   const r = p.rundownId ? project.rundown.find((x) => x.id === p.rundownId) : undefined;
   if (!p.advanced && r?.autoSecs !== undefined && project.playlists.some((x) => x.id === r.playlist && x.autoNext)) steps.push(step('next', r.autoSecs));
   return steps.sort((a, b) => a.at - b.at)[0] ?? null;
@@ -1452,8 +1430,8 @@ function ValuesPane({ template, fields: given, names, exposed, fedLayers, change
     </div>
   );
   // A text with a style toolbar, several lines or a table takes the whole row of tiles.
-  // A table (a table's rows, credits) takes the whole row, in a tile.
-  const grid = (f: Field) => f.kind === 'table' || f.kind === 'credits';
+  // A table (a table's rows) takes the whole row, in a tile.
+  const grid = (f: Field) => f.kind === 'table';
   const wide = (f: Field) => richField(template, f.key) || f.kind === 'multiline' || grid(f);
   // Bento: a number, a colour or a switch takes one cell, a text, an image or a read value two.
   const size = (f: Field) => (wide(f) ? 'wide' : live(f) || f.kind === 'text' || f.kind === 'image' ? 'w2' : '');
@@ -1465,7 +1443,7 @@ function ValuesPane({ template, fields: given, names, exposed, fedLayers, change
       {groups.map((g) => (
         <Fragment key={g.title}>
           {/* No group title over its only value of the same name. */}
-          {g.title && !(g.fields.length === 1 && g.fields[0].f.kind !== 'credits' && g.fields[0].label.toLowerCase() === g.title.toLowerCase()) && <div className="opx-vt-group">{g.title}</div>}
+          {g.title && !(g.fields.length === 1 && g.fields[0].label.toLowerCase() === g.title.toLowerCase()) && <div className="opx-vt-group">{g.title}</div>}
           {g.fields.map(({ f, label }) =>
             !grid(f) && fromData(f) && !byHand(f.key) ? (
               linkedRow(f.key, label, boundDraft[f.key] ?? draft[f.key] ?? '', (f.binding!.path || bindingLabel(f.binding!)).split('.').pop()!.replace(/\[.*$/, ''), 'live', `src:${f.binding!.source}`, handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? ''))
@@ -1485,11 +1463,6 @@ function ValuesPane({ template, fields: given, names, exposed, fedLayers, change
                 <div className="opx-var-val">
                   <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key) && /<\/?[bisuc]\b|<c=|<img=/.test(draft[f.key] ?? '')} onChange={(v) => onDraft({ [f.key]: v })} />
                 </div>
-              </div>
-            ) : f.kind === 'credits' && !fromData(f) ? (
-              // The credits' table alone, full width: no tile nor second title (the group's is enough).
-              <div key={f.key} className={`opx-cr ${changed.has(f.key) ? 'chg' : ''}`}>
-                <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />
               </div>
             ) : (
             <div key={f.key} className={`opx-vt ${size(f)} ${changed.has(f.key) ? 'chg' : ''}`}>

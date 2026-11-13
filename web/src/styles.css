@@ -16654,76 +16654,6 @@ button.ux1-pill.lost:hover {
   align-content: start;
   gap: 8px;
 }
-/* Credits, Motion: choices shown as pictures, their label above. */
-.cr-pics {
-  display: grid;
-  gap: 6px;
-  padding: 2px 0;
-}
-.cr-pics-h {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 22px;
-  color: var(--text-2);
-  font-size: var(--fs-12);
-}
-.cr-pics-g {
-  display: grid;
-  gap: 6px;
-}
-.cr-pic {
-  display: grid;
-  justify-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 7px 4px 6px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--fs-11);
-  line-height: 1.25;
-  text-align: center;
-  cursor: pointer;
-}
-.cr-pic:hover {
-  border-color: var(--line-2);
-  color: var(--text);
-}
-.cr-pic.on {
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-  color: var(--text);
-}
-.cr-pic svg {
-  display: block;
-}
-/* Credits' control centre: a slider and its value. */
-.cr-slide {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  width: 100%;
-}
-.cr-slide input[type='range'] {
-  flex: 1;
-  min-width: 0;
-}
-.cr-slide-v {
-  min-width: 42px;
-  text-align: right;
-  font-family: var(--mono);
-  font-size: var(--fs-12);
-  color: var(--text);
-}
-/* The credits' table in the Operator's values: the whole row, no tile. */
-.opx-cr {
-  grid-column: 1 / -1;
-  min-width: 0;
-}
 .opx-vt {
   display: flex;
   flex-direction: column;
@@ -19524,107 +19454,11 @@ textarea.tx-grow {
   font-size: 13px;
 }
 
-/* Credits: the entries as a table (Designer content, Operator when exposed). */
-.cr-tools {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 2px 0 6px;
-}
 .btn.pp-op-btn.on {
   color: var(--accent-2);
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: var(--accent-soft);
 }
-.cr-table {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.cr-table table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: var(--fs-12);
-}
-.cr-table th {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-  font-weight: 600;
-  font-size: var(--fs-11);
-  color: var(--text-3);
-  padding: 4px 4px;
-  border-bottom: 1px solid var(--line);
-}
-.cr-table th:first-child {
-  width: 20px;
-}
-.cr-table th:nth-child(2) {
-  width: 96px;
-}
-.cr-table td.cr-grip {
-  padding: 0;
-  color: var(--text-3);
-  cursor: grab;
-  text-align: center;
-}
-.cr-table td.cr-grip:hover {
-  color: var(--text);
-}
-.cr-table td.cr-grip svg {
-  display: block;
-  margin: auto;
-}
-.cr-table tr.cr-dragging {
-  opacity: 0.4;
-}
-.cr-table tr.cr-drop-before td {
-  box-shadow: inset 0 2px 0 var(--accent);
-}
-.cr-table tr.cr-drop-after td {
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-.cr-table th:last-child {
-  width: 26px;
-}
-.cr-table td {
-  padding: 3px 4px;
-  border-bottom: 1px solid var(--line);
-  vertical-align: middle;
-}
-.cr-table td input {
-  width: 100%;
-  min-width: 0;
-  height: 26px;
-  padding: 0 7px;
-  font-size: var(--fs-12);
-}
-.cr-table .cr-x button {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border: none;
-  background: none;
-  color: var(--text-3);
-  border-radius: 5px;
-  cursor: pointer;
-}
-.cr-table .cr-x button:hover {
-  color: var(--live);
-  background: var(--panel-3);
-}
-.cr-add {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-12);
-}
-
 /* A content with its chips under it (Exposed to the Operator, Lorem…): its label level with the field, not with the whole block. */
 .wk-row:has(> .wk-ctl > .wk-content > .wk-content-tools) {
   align-items: start;

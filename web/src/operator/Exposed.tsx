@@ -59,7 +59,7 @@ export function exposedFields(fields: Field[], layers: Layer[]): { content: Fiel
       if (!f) continue;
       // Buttons of its control centre: neither a value nor a property.
       if (buttons.includes(p) || p.startsWith('widget.controls.')) owned.add(f.key);
-      else if (!CONTENT_SETTINGS.has(p) && f.kind !== 'table' && f.kind !== 'credits') at.set(p, f);
+      else if (!CONTENT_SETTINGS.has(p) && f.kind !== 'table') at.set(p, f);
     }
     if (!at.size) continue;
     for (const f of at.values()) owned.add(f.key);

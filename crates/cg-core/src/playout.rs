@@ -101,36 +101,6 @@ pub struct PlayoutItem {
     pub vals: BTreeMap<String, String>,
 }
 
-/// Text widths for the events that need them (a crawl's passes): the
-/// renderer's fonts on the server.
-pub trait TextWidth {
-    fn width(
-        &mut self,
-        family: &str,
-        weight: u16,
-        text: &str,
-        size: f32,
-        letter_spacing: f32,
-    ) -> f32;
-}
-
-/// Without fonts: a rough width.
-pub struct EstimatedWidth;
-
-impl TextWidth for EstimatedWidth {
-    fn width(
-        &mut self,
-        _family: &str,
-        _weight: u16,
-        text: &str,
-        size: f32,
-        letter_spacing: f32,
-    ) -> f32 {
-        let n = text.chars().count() as f32;
-        n * (size * 0.56 + letter_spacing)
-    }
-}
-
 /// A graphic replaced in a « Fade » zone: drawn under the new one while it fades out.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -885,7 +855,7 @@ impl Fade {
     }
 }
 
-/// Own time of a widget layer (timer, ticker, roll…), in frames on air.
+/// Own time of a widget layer (timer, counter, a list folder going by…), in frames on air.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayerClock {
@@ -921,10 +891,7 @@ pub fn is_timed(kind: &LayerKind) -> bool {
                 crate::model::ClockMode::Elapsed | crate::model::ClockMode::Timer
             )
         }
-        LayerKind::Text { scroll, .. } => !scroll.is_none(),
-        LayerKind::Ticker { .. }
-        | LayerKind::Roll { .. }
-        | LayerKind::Counter { .. }
+        LayerKind::Counter { .. }
         | LayerKind::Progress { .. }
         | LayerKind::Rotator { .. }
         | LayerKind::Typewriter { .. }
@@ -1182,7 +1149,7 @@ pub enum Command {
         fade: bool,
     },
     /// Starts, pauses or resets the internal animation of widgets (timer,
-    /// stopwatch, ticker, roll, counter…) of the graphic on air. `target` is
+    /// stopwatch, counter, a list folder going by…) of the graphic on air. `target` is
     /// a layer id or name; `*` means every timed widget of the graphic.
     #[serde(rename_all = "camelCase")]
     Widget {
@@ -1404,7 +1371,6 @@ fn happened(
     now: i64,
     fps: f64,
     default_tz: &str,
-    m: &mut dyn TextWidth,
 ) -> bool {
     let layer = |id: &str| t.layers.iter().find(|l| l.id == id);
     let state = |item: &PlayoutItem, id: &str| {
@@ -1416,34 +1382,8 @@ fn happened(
     let age_secs = item.age / fps;
     let data = shown_data(item).into_owned();
     match on {
-        TriggerEvent::ScrollEnd { layer: id, passes } => {
-            let Some(l) = layer(id) else { return false };
-            let v = state(item, id);
-            if let Some((pass, ended)) = crate::wid::ticker::progress(
-                l,
-                &serde_json::from_value(v.clone()).unwrap_or_default(),
-                &data,
-                now,
-                age_secs,
-                fps,
-                m,
-            ) {
-                return if *passes > 0 {
-                    pass > *passes || ended
-                } else {
-                    ended
-                };
-            }
-            crate::wid::credits::ended(
-                l,
-                &serde_json::from_value(v).unwrap_or_default(),
-                &data,
-                now,
-                age_secs,
-                m,
-            )
-            .unwrap_or(false)
-        }
+        // The Ticker and the Credits of before: list folders now.
+        TriggerEvent::ScrollEnd { .. } => false,
         TriggerEvent::TimerZero { layer: id } | TriggerEvent::TimerAt { layer: id, .. } => {
             let Some(l) = layer(id) else { return false };
             let st = serde_json::from_value(state(item, id)).unwrap_or_default();
@@ -2834,12 +2774,7 @@ impl ChannelState {
     /// data set goes to its next row once each time their input becomes
     /// true. The event nodes are watched here. Returns what was done (for
     /// the as-run log).
-    pub fn event_resumes(
-        &mut self,
-        project: &Project,
-        default_tz: &str,
-        m: &mut dyn TextWidth,
-    ) -> Vec<String> {
+    pub fn event_resumes(&mut self, project: &Project, default_tz: &str) -> Vec<String> {
         let now = now_ms();
         let fps = project.frame_rate.as_f64().max(1.0);
         // The graphics on air (another one's in / out).
@@ -2873,24 +2808,6 @@ impl ChannelState {
             // With the settings of the take (an exposed duration…), as the picture.
             let ts = t.with_settings(&shown_data(item));
             let t: &Template = &ts;
-            // Credits set to go out by themselves: out once they have gone all the way.
-            if item.phase == Phase::Holding
-                && item.frame >= t.hold_frame() - 1e-6
-                && crate::wid::credits::auto_out_done(
-                    t,
-                    &item.widgets,
-                    &shown_data(item),
-                    now,
-                    item.age / fps,
-                    m,
-                )
-            {
-                done.push(t.name.clone());
-                if !begin_out(project, item) {
-                    gone.push(*layer);
-                }
-                continue;
-            }
             // One graph: the Logic (and the Triggers of a template not saved since).
             // …and the flows of its built widgets (their buttons, their variables).
             let merged;
@@ -2922,7 +2839,7 @@ impl ChannelState {
                 let bit = |v: bool| if v { "1" } else { "0" }.to_string();
                 match &n.kind {
                     NodeKind::Event { on } => {
-                        let v = happened(&n.id, on, t, item, &on_air, now, fps, default_tz, m);
+                        let v = happened(&n.id, on, t, item, &on_air, now, fps, default_tz);
                         seen.push((event_key(&n.id), bit(v)));
                     }
                     NodeKind::TriggerIn { name } => {
@@ -3849,11 +3766,10 @@ mod tests {
         );
         let mut ch = ChannelState::default();
         take(&mut ch, &p);
-        let mut w = EstimatedWidth;
         for _ in 0..85 {
             ch.tick(1.0);
             ch.auto_resume(&p);
-            assert!(ch.event_resumes(&p, "UTC", &mut w).is_empty());
+            assert!(ch.event_resumes(&p, "UTC").is_empty());
         }
         assert_eq!(ch.layers[&1].phase, Phase::Holding);
         ch.layers
@@ -3861,7 +3777,7 @@ mod tests {
             .unwrap()
             .data
             .insert("status".into(), "final".into());
-        assert_eq!(ch.event_resumes(&p, "UTC", &mut w).len(), 1);
+        assert_eq!(ch.event_resumes(&p, "UTC").len(), 1);
         assert_eq!(ch.layers[&1].phase, Phase::Out);
     }
 
@@ -3916,7 +3832,6 @@ mod tests {
         p.templates[0].layers.push(w);
         let mut ch = ChannelState::default();
         take(&mut ch, &p);
-        let mut m = EstimatedWidth;
         let press = |ch: &mut ChannelState, op: &str| {
             ch.apply(
                 &p,
@@ -3930,9 +3845,9 @@ mod tests {
             )
         };
         // A tick sees the press, the next one its end.
-        let mut tick = |ch: &mut ChannelState| {
-            ch.event_resumes(&p, "UTC", &mut m);
-            ch.event_resumes(&p, "UTC", &mut m);
+        let tick = |ch: &mut ChannelState| {
+            ch.event_resumes(&p, "UTC");
+            ch.event_resumes(&p, "UTC");
         };
         for _ in 0..2 {
             press(&mut ch, "plus").unwrap();
@@ -3982,13 +3897,12 @@ mod tests {
         );
         let mut ch = ChannelState::default();
         take(&mut ch, &p);
-        let mut w = EstimatedWidth;
-        ch.event_resumes(&p, "UTC", &mut w);
+        ch.event_resumes(&p, "UTC");
         let item = &ch.layers[&1];
         assert_eq!(item.vals[&var_key("flash")], "0");
         ch.apply(&p, Command::Trigger { name: "but".into() })
             .unwrap();
-        ch.event_resumes(&p, "UTC", &mut w);
+        ch.event_resumes(&p, "UTC");
         let item = &ch.layers[&1];
         assert_eq!(item.vals[&var_key("flash")], "1.0000");
         // Gliding: the renderers see it on its way.
@@ -3999,7 +3913,7 @@ mod tests {
         }
         assert_eq!(shown_data(&ch.layers[&1])[&var_key("flash")], "1.0000");
         // A received trigger lasts one tick: nothing more happens after.
-        ch.event_resumes(&p, "UTC", &mut w);
+        ch.event_resumes(&p, "UTC");
         assert!(!ch.layers[&1]
             .watch
             .keys()
@@ -4012,7 +3926,7 @@ mod tests {
             },
         )
         .unwrap();
-        ch.event_resumes(&p, "UTC", &mut w);
+        ch.event_resumes(&p, "UTC");
         assert_eq!(ch.layers[&1].vals[&var_key("flash")], "0");
     }
 
@@ -4075,10 +3989,9 @@ mod tests {
             .unwrap()
             .data
             .insert("score".into(), "1".into());
-        let mut w = EstimatedWidth;
         for _ in 0..90 {
             ch.tick(1.0);
-            ch.event_resumes(&p, "UTC", &mut w);
+            ch.event_resumes(&p, "UTC");
         }
         assert_eq!(ch.layers[&1].phase, Phase::Holding);
         ch.layers
@@ -4086,7 +3999,7 @@ mod tests {
             .unwrap()
             .data
             .insert("score".into(), "2".into());
-        ch.event_resumes(&p, "UTC", &mut w);
+        ch.event_resumes(&p, "UTC");
         assert_eq!(ch.layers[&1].phase, Phase::Out);
     }
 
@@ -4105,10 +4018,9 @@ mod tests {
         );
         let mut ch = ChannelState::default();
         take(&mut ch, &p);
-        let mut w = EstimatedWidth;
         for _ in 0..90 {
             ch.tick(1.0);
-            ch.event_resumes(&p, "UTC", &mut w);
+            ch.event_resumes(&p, "UTC");
         }
         assert_eq!(ch.layers[&1].phase, Phase::Out);
     }
@@ -4134,10 +4046,9 @@ mod tests {
         );
         let mut ch = ChannelState::default();
         take(&mut ch, &p);
-        let mut w = EstimatedWidth;
         for _ in 0..30 {
             ch.tick(1.0);
-            assert!(ch.event_resumes(&p, "UTC", &mut w).is_empty());
+            assert!(ch.event_resumes(&p, "UTC").is_empty());
         }
         let pause = p.templates[0].markers[0].frame;
         assert_eq!(ch.layers[&1].frame, pause);
@@ -4149,7 +4060,7 @@ mod tests {
         let mut fired = 0;
         for _ in 0..10 {
             fired += ch
-                .event_resumes(&p, "UTC", &mut w)
+                .event_resumes(&p, "UTC")
                 .iter()
                 .filter(|d| d.starts_with('⚡'))
                 .count();
@@ -4743,7 +4654,7 @@ mod tests {
         let crawl = ticker
             .layers
             .iter()
-            .find(|l| is_timed(&l.kind))
+            .find(|l| is_clocked(l))
             .unwrap()
             .clone();
         let mut ch = ChannelState::default();
@@ -4863,7 +4774,7 @@ mod tests {
         // A ticker waiting for a trigger starts on it, not on Continue.
         let mut p = crate::sample::demo_project();
         let t = p.templates.iter_mut().find(|t| t.id == "ticker").unwrap();
-        let crawl = t.layers.iter_mut().find(|l| is_timed(&l.kind)).unwrap();
+        let crawl = t.layers.iter_mut().find(|l| is_clocked(l)).unwrap();
         crawl.manual_start = true;
         crawl.start_on = Some("trigger".into());
         crawl.start_trigger = "go".into();

@@ -62,10 +62,6 @@ fn text(t: &str, weight: u16) -> LayerKind {
         transform: Default::default(),
         decoration: Default::default(),
         line_height: None,
-        scroll: Default::default(),
-        speed: 120.0,
-        separator: "   •   ".into(),
-        looping: false,
         overflow: Default::default(),
         squeeze: 0.8,
         min_size: 0.6,
@@ -300,10 +296,6 @@ pub fn score_bug() -> Template {
                 transform: Default::default(),
                 decoration: Default::default(),
                 line_height: None,
-                scroll: Default::default(),
-                speed: 120.0,
-                separator: "   •   ".into(),
-                looping: false,
                 overflow: Default::default(),
                 squeeze: 0.8,
                 min_size: 0.6,
@@ -564,10 +556,6 @@ pub fn ticker() -> Template {
             transform: Default::default(),
             decoration: Default::default(),
             line_height: None,
-            scroll: Default::default(),
-            speed: 120.0,
-            separator: "   •   ".into(),
-            looping: false,
             overflow: Default::default(),
             squeeze: 0.8,
             min_size: 0.6,
@@ -604,27 +592,29 @@ pub fn ticker() -> Template {
         ],
     );
     label_bg.tracks.insert(Y, bar.tracks[&Y].clone());
-    let mut crawl = layer(
-        "tk-crawl",
-        "Crawl",
-        LayerKind::Ticker {
-            x: Default::default(),
-            text: "{{items}}".into(),
-            separator: "   •   ".into(),
-            speed: 180.0,
-            font: font(500, TextAlign::Left),
+    // The headlines going by: a folder repeated once per line of `items`.
+    let mut crawl: Vec<Layer> = serde_json::from_value(serde_json::json!([
+        {
+            "id": "tk-crawl", "name": "Crawl", "type": "group", "clip": true,
+            "props": { "x": 240.0, "y": 990.0, "width": 1680.0, "height": 60.0 },
+            "list": { "key": "items", "layout": "row", "gap": 24.0 },
+            "roll": { "mode": "continuous", "dir": "left", "by": "speed", "speed": 180.0 }
         },
-        None,
-        &[
-            (X, n(240.0)),
-            (Y, n(990.0)),
-            (Width, n(1680.0)),
-            (Height, n(60.0)),
-            (FontSize, n(30.0)),
-            (Fill, hex("#ffffff")),
-        ],
-    );
-    crawl.tracks.insert(Y, bar.tracks[&Y].clone());
+        {
+            "id": "tk-crawl-sep", "name": "Separator", "type": "text", "parent": "tk-crawl",
+            "text": "•", "fontFamily": "Inter", "fontWeight": 500, "align": "center",
+            "verticalAlign": "middle", "overflow": "visible",
+            "props": { "x": 0.0, "y": 0.0, "width": 30.0, "height": 60.0, "fontSize": 18.0, "fill": [1.0, 1.0, 1.0, 1.0] }
+        },
+        {
+            "id": "tk-crawl-txt", "name": "Headline", "type": "text", "parent": "tk-crawl",
+            "text": "{{texte}}", "fontFamily": "Inter", "fontWeight": 500, "align": "left",
+            "verticalAlign": "middle", "overflow": "visible",
+            "props": { "x": 42.0, "y": 0.0, "width": 1638.0, "height": 60.0, "fontSize": 30.0, "fill": [1.0, 1.0, 1.0, 1.0] }
+        }
+    ]))
+    .expect("ticker layers");
+    crawl[0].tracks.insert(Y, bar.tracks[&Y].clone());
     Template {
         camera: None,
         logic: Default::default(),
@@ -647,7 +637,7 @@ pub fn ticker() -> Template {
                 default: "Strata renders HTML5, SDI and ST 2110 from one engine\nTickers, clocks and rolls are now built in\nOne project per show, one channel per studio".into(),
                 binding: None, min: None, max: None, options: Vec::new() },
         ],
-        layers: vec![bar, label_bg, label, crawl],
+        layers: [vec![bar, label_bg, label], crawl].concat(),
     }
 }
 
@@ -669,26 +659,23 @@ pub fn credits() -> Template {
         ],
     );
     fade(&mut shade, 0.0, 60.0);
-    let mut roll = layer(
-        "cr-roll",
-        "Roll",
-        LayerKind::Roll {
-            text: "{{credits}}".into(),
-            speed: 70.0,
-            looping: false,
-            font: font(500, TextAlign::Center),
+    // The names going up: a folder repeated once per line of `credits`.
+    let mut roll: Vec<Layer> = serde_json::from_value(serde_json::json!([
+        {
+            "id": "cr-roll", "name": "Roll", "type": "group", "clip": true,
+            "props": { "x": 460.0, "y": 0.0, "width": 1000.0, "height": 1080.0 },
+            "list": { "key": "credits", "layout": "column", "gap": 8.0 },
+            "roll": { "mode": "continuous", "dir": "up", "by": "speed", "speed": 70.0 }
         },
-        None,
-        &[
-            (X, n(460.0)),
-            (Y, n(0.0)),
-            (Width, n(1000.0)),
-            (Height, n(1080.0)),
-            (FontSize, n(40.0)),
-            (Fill, hex("#ffffff")),
-        ],
-    );
-    fade(&mut roll, 0.0, 60.0);
+        {
+            "id": "cr-line", "name": "Line", "type": "text", "parent": "cr-roll",
+            "text": "{{texte}}", "fontFamily": "Inter", "fontWeight": 500, "align": "center",
+            "verticalAlign": "middle",
+            "props": { "x": 0.0, "y": 0.0, "width": 1000.0, "height": 56.0, "fontSize": 40.0, "fill": [1.0, 1.0, 1.0, 1.0] }
+        }
+    ]))
+    .expect("credits layers");
+    fade(&mut roll[0], 0.0, 60.0);
     Template {
         camera: None,
         logic: Default::default(),
@@ -717,7 +704,7 @@ pub fn credits() -> Template {
             max: None,
             options: Vec::new(),
         }],
-        layers: vec![shade, roll],
+        layers: [vec![shade], roll].concat(),
     }
 }
 

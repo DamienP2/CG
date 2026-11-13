@@ -193,7 +193,7 @@ export const data: Record<string, string> = {
   'Every column': 'Toutes les colonnes',
   'All rows': 'Toutes les lignes',
   '{rows} × {columns} table': 'tableau {rows} × {columns}',
-  'Drag to a Table, Credits, Ticker or Chart: the whole table (key {key})': 'Glissez vers un tableau, un générique, un bandeau défilant ou un graphique : tout le tableau (clé {key})',
+  'Drag to a Table or a Chart: the whole table (key {key})': 'Glissez vers un tableau ou un graphique : tout le tableau (clé {key})',
   'Drag {column} to a layer\'s value (key {key})': 'Glissez {column} vers une valeur de calque (clé {key})',
   'Row': 'Ligne',
   'Previous row (preview)': 'Ligne précédente (aperçu)',

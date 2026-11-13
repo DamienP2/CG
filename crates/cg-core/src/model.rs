@@ -221,27 +221,6 @@ impl Prop {
     }
 }
 
-fn default_scroll_speed() -> f64 {
-    120.0
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum TextScroll {
-    #[default]
-    None,
-    /// The lines one after the other, from right to left (ticker).
-    Horizontal,
-    /// The text from bottom to top (credit roll).
-    Vertical,
-}
-
-impl TextScroll {
-    pub fn is_none(&self) -> bool {
-        *self == TextScroll::None
-    }
-}
-
 impl LayerKind {
     /// A plain rectangle / ellipse (default settings).
     pub fn rect() -> Self {
@@ -252,50 +231,6 @@ impl LayerKind {
     pub fn ellipse() -> Self {
         LayerKind::Ellipse {
             x: Default::default(),
-        }
-    }
-
-    /// A scrolling text drawn as the ticker or the roll it behaves like.
-    pub fn scrolling_as(&self) -> Option<LayerKind> {
-        let LayerKind::Text {
-            text,
-            font_family,
-            font_weight,
-            align,
-            vertical_align,
-            uppercase,
-            transform,
-            scroll,
-            speed,
-            separator,
-            looping,
-            ..
-        } = self
-        else {
-            return None;
-        };
-        let font = FontStyle {
-            font_family: font_family.clone(),
-            font_weight: *font_weight,
-            align: *align,
-            vertical_align: *vertical_align,
-            uppercase: *uppercase || *transform == TextTransform::Upper,
-        };
-        match scroll {
-            TextScroll::None => None,
-            TextScroll::Horizontal => Some(LayerKind::Ticker {
-                x: Default::default(),
-                text: text.clone(),
-                separator: separator.clone(),
-                speed: *speed,
-                font,
-            }),
-            TextScroll::Vertical => Some(LayerKind::Roll {
-                text: text.clone(),
-                speed: *speed,
-                looping: *looping,
-                font,
-            }),
         }
     }
 }
@@ -409,18 +344,6 @@ pub enum LayerKind {
         /// Line height, in font sizes (default 1.2).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         line_height: Option<f32>,
-        /// Fixed, or scrolling like a ticker (horizontal) or a credit roll (vertical).
-        #[serde(default, skip_serializing_if = "TextScroll::is_none")]
-        scroll: TextScroll,
-        /// Scrolling speed, px/s.
-        #[serde(default = "default_scroll_speed")]
-        speed: f64,
-        /// Between the lines of a horizontal scroll.
-        #[serde(default = "default_separator")]
-        separator: String,
-        /// A vertical scroll comes round again.
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        looping: bool,
         /// What happens when the text does not fit its box.
         #[serde(default)]
         overflow: TextOverflow,
@@ -467,33 +390,6 @@ pub enum LayerKind {
         /// Settings of the spec widget (`wid::timer`).
         #[serde(flatten)]
         x: Box<crate::wid::timer::Config>,
-    },
-    /// Horizontal crawl: one item per line of `text`, joined by `separator`.
-    #[serde(rename_all = "camelCase")]
-    Ticker {
-        text: String,
-        #[serde(default = "default_separator")]
-        separator: String,
-        /// Pixels per second.
-        #[serde(default = "default_ticker_speed")]
-        speed: f64,
-        #[serde(flatten)]
-        font: FontStyle,
-        /// Settings of the spec widget (`wid::ticker`).
-        #[serde(flatten)]
-        x: crate::wid::ticker::Config,
-    },
-    /// Vertical roll (credits, lists): lines scroll upwards.
-    #[serde(rename_all = "camelCase")]
-    Roll {
-        text: String,
-        #[serde(default = "default_roll_speed")]
-        speed: f64,
-        /// Start again from the bottom once everything has scrolled past.
-        #[serde(default = "yes", rename = "loop")]
-        looping: bool,
-        #[serde(flatten)]
-        font: FontStyle,
     },
     /// Clock face with hands.
     #[serde(rename_all = "camelCase")]
@@ -650,13 +546,6 @@ pub enum LayerKind {
         #[serde(flatten)]
         x: Box<crate::wid::table::Config>,
     },
-    /// Structured credits: roll, crawl or pages.
-    #[serde(rename_all = "camelCase")]
-    Credits {
-        /// Settings of the spec widget (`wid::credits`).
-        #[serde(flatten)]
-        x: crate::wid::credits::Config,
-    },
     /// Columns, areas, lines or pie.
     #[serde(rename_all = "camelCase")]
     Chart {
@@ -754,15 +643,6 @@ fn default_font() -> String {
 fn default_clock_format() -> String {
     "HH:mm:ss".into()
 }
-fn default_separator() -> String {
-    "   •   ".into()
-}
-fn default_ticker_speed() -> f64 {
-    180.0
-}
-fn default_roll_speed() -> f64 {
-    60.0
-}
 
 fn default_weight() -> u16 {
     400
@@ -790,7 +670,7 @@ pub struct Layer {
     pub visible: bool,
     #[serde(default)]
     pub locked: bool,
-    /// Timed widgets (timer, ticker…) wait for the operator to start them:
+    /// Timed widgets (timer, a list going by…) wait for the operator to start them:
     /// on Continue, or on the trigger `start_trigger` when `start_on` is
     /// "trigger".
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1322,7 +1202,9 @@ pub enum Resume {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TriggerEvent {
-    /// A ticker or a credit roll is done: after `passes` passes (0 = at its end).
+    /// The Ticker or the Credits of before are done (after `passes`
+    /// passes): never now (they are list folders), kept so that the Logics
+    /// that wait for it still read.
     ScrollEnd {
         layer: String,
         #[serde(default)]
@@ -1396,6 +1278,8 @@ pub const MARKER_MODEL: u8 = 2;
 #[serde(rename_all = "camelCase")]
 pub enum FieldKind {
     Text,
+    /// Also the entries of the Credits of before (JSON `[{"kind", "a", "b"}…]`).
+    #[serde(alias = "credits")]
     Multiline,
     Number,
     Color,
@@ -1404,8 +1288,6 @@ pub enum FieldKind {
     Boolean,
     /// Rows of a table typed or imported by the operator (JSON `[[header…], [cells…], …]`).
     Table,
-    /// Entries of credits (JSON `[{"kind", "a", "b"}…]`), edited as a table.
-    Credits,
 }
 
 /// A data input exposed to the operator (a field of the template).
@@ -1758,8 +1640,9 @@ pub struct Template {
     pub markers: Vec<Marker>,
     #[serde(default)]
     pub fields: Vec<Field>,
-    /// Layers in paint order (first = bottom).
-    #[serde(default)]
+    /// Layers in paint order (first = bottom). The widgets of before are
+    /// read as what they became ([`crate::old_widgets`]).
+    #[serde(default, deserialize_with = "crate::old_widgets::layers")]
     pub layers: Vec<Layer>,
     /// Zone the template plays in by default (see [`Zone`]).
     #[serde(default)]
@@ -1791,42 +1674,6 @@ pub struct Template {
     /// anchored layers follow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub camera: Option<String>,
-}
-
-/// The widget a scrolling Text of older projects becomes: horizontal, the
-/// Ticker it was drawn as (its lines are the items); vertical, the Credits
-/// (its lines are the names, at its speed in px/s, in its font).
-fn legacy_scroll(kind: &LayerKind) -> Option<LayerKind> {
-    let LayerKind::Text {
-        text,
-        font_family,
-        scroll,
-        speed,
-        ..
-    } = kind
-    else {
-        return None;
-    };
-    match scroll {
-        TextScroll::None => None,
-        TextScroll::Horizontal => kind.scrolling_as(),
-        TextScroll::Vertical => {
-            use crate::wid::credits::{parse, Config, SpeedMode};
-            let mut x = Config::default();
-            // Wired to one value (`{{key}}`): the credits read it as their text.
-            let t = text.trim();
-            if t.starts_with("{{") && t.ends_with("}}") && t.matches("{{").count() == 1 {
-                x.link = t.to_string();
-                x.entries.clear();
-            } else {
-                x.entries = parse(text);
-            }
-            x.speed_mode = SpeedMode::Pxs;
-            x.pxs = *speed;
-            x.font = font_family.clone();
-            Some(LayerKind::Credits { x })
-        }
-    }
 }
 
 impl Template {
@@ -2037,11 +1884,6 @@ impl Template {
                     l.lock_ratio = true;
                     changed = true;
                 }
-            }
-            // A scrolling Text is now a Ticker (horizontal) or Credits (vertical).
-            if let Some(kind) = legacy_scroll(&l.kind) {
-                l.kind = kind;
-                changed = true;
             }
             // A timer started by hand (« Manual » / « External ») now waits for Continue (F2)
             // as every layer does (manual_start): its own start mode is At the In from then on.
@@ -3445,50 +3287,5 @@ mod setting_tests {
         q.save_draft(s.clone());
         assert_eq!(q.drop_empty_starter(), None);
         assert!(q.starter.is_none() && q.template(&s.id).is_some());
-    }
-
-    #[test]
-    fn scrolling_texts_become_a_ticker_or_credits() {
-        let mut t = Template::blank("T", "", 50.0);
-        let text = |id: &str, scroll: &str, body: &str| -> Layer {
-            serde_json::from_value(serde_json::json!({
-                "id": id, "name": id, "type": "text", "text": body, "fontFamily": "Oswald",
-                "scroll": scroll, "speed": 90.0, "separator": " | "
-            }))
-            .unwrap()
-        };
-        t.layers.push(text("h", "horizontal", "One\nTwo"));
-        t.layers
-            .push(text("v", "vertical", "Directed by | Jane\nThanks"));
-        t.layers.push(text("w", "vertical", "{{roll}}"));
-        t.layers.push(text("f", "none", "Fixed"));
-        assert!(t.upgrade_layers());
-        let LayerKind::Ticker {
-            text,
-            separator,
-            speed,
-            font,
-            ..
-        } = &t.layers[0].kind
-        else {
-            panic!("{:?}", t.layers[0].kind)
-        };
-        assert_eq!(
-            (text.as_str(), separator.as_str(), *speed),
-            ("One\nTwo", " | ", 90.0)
-        );
-        assert_eq!(font.font_family, "Oswald");
-        let LayerKind::Credits { x } = &t.layers[1].kind else {
-            panic!("{:?}", t.layers[1].kind)
-        };
-        assert_eq!(x.entries.len(), 2);
-        assert_eq!((x.pxs, x.font.as_str()), (90.0, "Oswald"));
-        assert_eq!(x.speed_mode, crate::wid::credits::SpeedMode::Pxs);
-        let LayerKind::Credits { x } = &t.layers[2].kind else {
-            panic!()
-        };
-        assert_eq!(x.link, "{{roll}}");
-        assert!(matches!(t.layers[3].kind, LayerKind::Text { .. }));
-        assert!(!t.upgrade_layers());
     }
 }

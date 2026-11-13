@@ -1,4 +1,4 @@
-//! Prefabricated widgets: clocks, tickers and rolls.
+//! Prefabricated widgets: clocks, counters, rotators…
 //!
 //! Everything here is a pure function of (wall-clock time, time on air) so
 //! the Rust renderer and the HTML5 renderer (`web/src/engine/widgets.ts`,
@@ -199,40 +199,6 @@ pub fn clock_text(
     }
 }
 
-/// Start positions (along the scroll axis) of the copies of a scrolling
-/// strip of length `cycle` in a box of length `len`, `travelled` pixels
-/// after it started entering from the far edge.
-/// A crawl's speed on air: the nearest whole number of pixels per frame (at
-/// least one), so every frame moves the text by the same whole step and its
-/// glyphs are drawn the same each time — no shimmer, no uneven steps.
-pub fn frame_speed(px_s: f64, fps: f64) -> f64 {
-    if fps.is_nan() || fps < 1.0 || !px_s.is_finite() {
-        return px_s;
-    }
-    (px_s / fps).round().max(1.0) * fps
-}
-
-pub fn scroll_positions(len: f64, cycle: f64, travelled: f64, looping: bool) -> Vec<f64> {
-    if cycle <= 0.0 || len <= 0.0 {
-        return Vec::new();
-    }
-    let first = len - travelled;
-    if first >= 0.0 || !looping {
-        return if first + cycle > 0.0 {
-            vec![first]
-        } else {
-            Vec::new()
-        };
-    }
-    let mut x = -((travelled - len).rem_euclid(cycle));
-    let mut out = Vec::new();
-    while x < len {
-        out.push(x);
-        x += cycle;
-    }
-    out
-}
-
 fn ease_out(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     1.0 - (1.0 - t).powi(3)
@@ -410,19 +376,6 @@ pub fn clock_hands(timezone: &str, ctx: &TimeCtx) -> (f64, f64, f64) {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn a_crawl_moves_whole_pixels_per_frame() {
-        use super::frame_speed;
-        // 110 px/s at 50 fps = 2.2 px per frame: 2 px per frame, 100 px/s.
-        assert_eq!(frame_speed(110.0, 50.0), 100.0);
-        assert_eq!(frame_speed(130.0, 50.0), 150.0);
-        // At least one pixel a frame; 25 fps: steps of 25 px/s.
-        assert_eq!(frame_speed(10.0, 50.0), 50.0);
-        assert_eq!(frame_speed(110.0, 25.0), 100.0);
-        // No frame rate known: the speed as set.
-        assert_eq!(frame_speed(110.0, 0.0), 110.0);
-    }
-
     use super::*;
 
     fn ctx(now_ms: i64, age: f64) -> TimeCtx<'static> {
@@ -551,18 +504,5 @@ mod tests {
             (h, m, sec),
             ((8.0 + 5.0 / 60.0) * 30.0, (5.0 + 9.0 / 60.0) * 6.0, 54.0)
         );
-    }
-
-    #[test]
-    fn scrolling() {
-        // Entering from the right.
-        assert_eq!(scroll_positions(100.0, 300.0, 40.0, true), vec![60.0]);
-        // Looping: copies tile the box.
-        assert_eq!(
-            scroll_positions(100.0, 60.0, 130.0, true),
-            vec![-30.0, 30.0, 90.0]
-        );
-        // Non-looping roll has gone past.
-        assert!(scroll_positions(100.0, 50.0, 200.0, false).is_empty());
     }
 }

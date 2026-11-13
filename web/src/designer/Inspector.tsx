@@ -611,30 +611,6 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
           )}
         </>
       );
-    case 'ticker':
-      return (
-        <>
-          <span className="prop-label">{t('Items (one per line)')}</span>
-          {text('text', true)}
-          <Row label={t('Separator')}>
-            <input value={layer.separator} onChange={(e) => set('separator', e.target.value, true)} onKeyDown={(e) => e.stopPropagation()} />
-          </Row>
-          <Row label={t('Speed')}>
-            <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" px/s" />
-          </Row>
-        </>
-      );
-    case 'roll':
-      return (
-        <>
-          <span className="prop-label">{t('Text (scrolls upwards)')}</span>
-          {text('text', true)}
-          <Row label={t('Speed')}>
-            <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" px/s" />
-          </Row>
-          {check('loop', t('Loop'))}
-        </>
-      );
     case 'counter':
       return (
         <>
@@ -921,47 +897,7 @@ function LayerGeneral({ layer }: { layer: Layer }) {
               ]}
             />
           </div>
-          <div className="row">
-            <span className="prop-label">{t('Scroll')}</span>
-            <Segmented
-              value={layer.scroll ?? 'none'}
-              onChange={(v) => edit((l) => void (l.type === 'text' && (l.scroll = v === 'none' ? undefined : v)))}
-              options={[
-                {
-                  value: 'none',
-                  label: <span title={t('The text stays in place')}>{t('Fixed')}</span>,
-                },
-                {
-                  value: 'horizontal',
-                  label: <span title={t('The lines one after the other, right to left (ticker)')}>{t('Horizontal')}</span>,
-                },
-                {
-                  value: 'vertical',
-                  label: <span title={t('Bottom to top (credit roll)')}>{t('Vertical')}</span>,
-                },
-              ]}
-            />
-          </div>
-          {layer.scroll && layer.scroll !== 'none' && (
-            <>
-              <div className="row">
-                <span className="prop-label">{t('Speed')}</span>
-                <NumberField value={layer.speed ?? 120} min={1} max={2000} suffix="px/s" onChange={(v) => edit((l) => void (l.type === 'text' && (l.speed = v)), `speed-${layer.id}`)} />
-              </div>
-              {layer.scroll === 'horizontal' ? (
-                <div className="row">
-                  <span className="prop-label">{t('Separator')}</span>
-                  <TextInput value={layer.separator ?? '   •   '} onChange={(v) => set('separator', v, true)} />
-                </div>
-              ) : (
-                <label className="check">
-                  <input type="checkbox" checked={!!layer.looping} onChange={(e) => edit((l) => void (l.type === 'text' && (l.looping = e.target.checked || undefined)))} />
-                  {t('Loop (comes round again)')}
-                </label>
-              )}
-            </>
-          )}
-          {(!layer.scroll || layer.scroll === 'none') && <TextFitControls layer={layer} edit={edit} />}
+          <TextFitControls layer={layer} edit={edit} />
         </>
       )}
       {TEXT_LIKE.has(layer.type) && (

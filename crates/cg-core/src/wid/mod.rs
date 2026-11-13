@@ -8,7 +8,6 @@
 
 pub mod chart;
 pub mod counter;
-pub mod credits;
 pub mod ellipse;
 pub mod image;
 pub mod map;
@@ -23,7 +22,6 @@ pub mod socialbadge;
 pub mod socialwall;
 pub mod table;
 pub mod text;
-pub mod ticker;
 pub mod timer;
 pub mod typewriter;
 pub mod web;
@@ -58,8 +56,6 @@ pub fn widget_id(kind: &LayerKind) -> Option<&'static str> {
         LayerKind::Pen { .. } => "pen",
         LayerKind::Clock { .. } => "timer",
         LayerKind::Table { .. } => "table",
-        LayerKind::Ticker { .. } => "ticker",
-        LayerKind::Credits { .. } => "credits",
         LayerKind::Typewriter { .. } => "typewriter",
         LayerKind::Counter { .. } => "counter",
         LayerKind::Progress { .. } => "progress",
@@ -99,8 +95,6 @@ pub fn act(
         LayerKind::Pen { .. } => go!(pen),
         LayerKind::Clock { .. } => go!(timer),
         LayerKind::Table { .. } => go!(table),
-        LayerKind::Ticker { .. } => go!(ticker),
-        LayerKind::Credits { .. } => go!(credits),
         LayerKind::Typewriter { .. } => go!(typewriter),
         LayerKind::Counter { .. } => go!(counter),
         LayerKind::Progress { .. } => go!(progress),
@@ -140,7 +134,6 @@ pub fn on_continue(layer: &Layer, state: &mut Value, ctx: &ActCtx) -> bool {
         LayerKind::Chart { .. } => go!(chart),
         LayerKind::Map { .. } => go!(map),
         LayerKind::Typewriter { .. } => go!(typewriter),
-        LayerKind::Credits { .. } => go!(credits),
         _ => false,
     }
 }
@@ -169,7 +162,6 @@ pub fn on_trigger(layer: &Layer, state: &mut Value, name: &str, ctx: &ActCtx) ->
         LayerKind::Chart { .. } => go!(chart),
         LayerKind::Map { .. } => go!(map),
         LayerKind::Typewriter { .. } => go!(typewriter),
-        LayerKind::Credits { .. } => go!(credits),
         _ => false,
     }
 }

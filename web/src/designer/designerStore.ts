@@ -310,8 +310,6 @@ export const LABELS: Record<LayerType, string> = {
   text: 'Text',
   image: 'Image',
   clock: 'Clock',
-  ticker: 'Ticker',
-  roll: 'Credits roll',
   counter: 'Counter',
   progress: 'Progress bar',
   rotator: 'Rotator',
@@ -322,7 +320,6 @@ export const LABELS: Record<LayerType, string> = {
   polygon: 'Polygon',
   pen: 'Pen',
   table: 'Table',
-  credits: 'Credits',
   chart: 'Chart',
   map: 'Map',
   scoreboard: 'Scoreboard',
@@ -394,26 +391,6 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
       return { ...base, type, src: '', fit: 'contain', props: centered(400, 300) };
     case 'clock':
       return { ...base, type, mode: 'time', format: 'HH:mm:ss', timezone: '', target: '', ...font('center'), props: { ...centered(300, 90), fontSize: 64, fill: DEFAULTS.fill } };
-    case 'ticker':
-      return {
-        ...base,
-        type,
-        text: 'First headline of the ticker\nSecond headline\nThird headline',
-        separator: '   •   ',
-        speed: 180,
-        ...font('left', 600),
-        props: { x: 0, y: parent ? 0 : height - 140, width: parent ? 1000 : width, height: 64, fontSize: 36, fill: DEFAULTS.fill },
-      };
-    case 'roll':
-      return {
-        ...base,
-        type,
-        text: 'PRESENTED BY\nJane Doe\n\nDIRECTED BY\nJohn Smith\n\nPRODUCED BY\nStrata',
-        speed: 60,
-        loop: true,
-        ...font('center', 600),
-        props: { ...centered(900, 800), fontSize: 44, fill: DEFAULTS.fill },
-      };
     case 'counter':
       return {
         ...base,

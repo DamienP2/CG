@@ -160,7 +160,6 @@ export function setPath(o: unknown, path: string, v: unknown) {
 
 export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 export const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
-export const ease = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 export const easeOut = (k: number) => 1 - Math.pow(1 - k, 3);
 /** `#rrggbb[aa]` → CSS colour. */
 export const hex = (s: string | undefined, fallback = 'transparent') => {
@@ -914,9 +913,6 @@ export function headerRows(a: unknown[]): { head: string[]; rows: string[][] } |
   const [h, ...rows] = a as unknown[][];
   return { head: h.map(cellOf), rows: rows.map((r) => r.map(cellOf)) };
 }
-/** The column named one of `names` (any case), or -1. */
-export const findCol = (head: string[], names: string[]) => head.findIndex((h) => names.includes(h.trim().toLowerCase()));
-
 export function parseCsv(text: string): string[][] {
   const lines = text
     .replace(/\r/g, '')
@@ -956,35 +952,6 @@ export function useFrame(active = true): number {
   const [now, setNow] = useState(Date.now);
   useEffect(() => (active ? onFrames(() => setNow(Date.now()), fps) : undefined), [active, fps]);
   return active ? now : Date.now();
-}
-
-/**
- * A value read from the time on each frame (at most ReadoutFps a second, while `active`) that
- * redraws the component only when it changes (Object.is): a readout that changes once a
- * second, a state that flips at the end of a list…, without drawing the whole row each frame.
- */
-export function useFrameValue<T>(compute: () => T, active = true): T {
-  const fps = useContext(ReadoutFps);
-  const value = compute();
-  const fn = useRef(compute);
-  fn.current = compute;
-  const last = useRef(value);
-  last.current = value;
-  const [, redraw] = useState(0);
-  useEffect(
-    () =>
-      active
-        ? onFrames(() => {
-            const v = fn.current();
-            if (!Object.is(v, last.current)) {
-              last.current = v;
-              redraw((n) => n + 1);
-            }
-          }, fps)
-        : undefined,
-    [active, fps],
-  );
-  return value;
 }
 
 /**

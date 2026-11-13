@@ -454,9 +454,7 @@ export const operator: Record<string, string> = {
   'Column {n}': 'Colonne {n}',
   'Remove the last column': 'Retirer la dernière colonne',
   // Compact widget controls (tooltips).
-  'Next card': 'Carte suivante',
   'Previous view': 'Vue précédente',
-  'Next item': 'Élément suivant',
   'Split': 'Temps intermédiaire',
   'Empty playlist': 'Playlist vide',
   'Add a graphic': 'Ajouter un graphique',

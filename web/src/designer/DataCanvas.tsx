@@ -45,19 +45,11 @@ function contentOf(l: Layer): string[] {
   return typeof (l as { text?: unknown }).text === 'string' ? ['text'] : [];
 }
 /** Content ports taking a whole table (a data set's All rows). */
-const TABLE_PORTS: Record<string, string> = { table: 'link', credits: 'link', chart: 'csv', ticker: 'items', socialWall: 'items' };
+const TABLE_PORTS: Record<string, string> = { table: 'link', chart: 'csv', socialWall: 'items' };
 const takesTable = (l: Layer, port: string) => TABLE_PORTS[l.type] === port;
 /** The content port of a layer taking a data set's All rows, if it has one. */
 export const tablePortOf = (l: Layer): string | undefined => TABLE_PORTS[l.type];
-/** The layer's items are one text (the social wall's JSON), not a list (the ticker's). */
-const textItems = (l: Layer) => l.type === 'socialWall';
-type Item = { cat?: string; text?: string; on?: boolean };
-const contentValue = (l: Layer, port: string) => {
-  // The ticker's items are a list (the social wall's are a text).
-  const items = (l as { items?: unknown }).items;
-  if (port === 'items' && Array.isArray(items)) return (items as Item[]).map((i) => i.text ?? '').join('\n');
-  return String(getPath(l, port) ?? '');
-};
+const contentValue = (l: Layer, port: string) => String(getPath(l, port) ?? '');
 /** Wires `{{key}}` into a layer's content port (`x` is the draft layer). */
 function wireContent(x: Layer, port: string, key: string) {
   // A data set's rows into a text or a typewriter: a line per row (or only the current one, in the Operator).
@@ -67,8 +59,7 @@ function wireContent(x: Layer, port: string, key: string) {
   if (port === 'text') {
     const cur = String(l.text ?? '');
     if (!cur.includes(token)) l.text = cur.trim() && /\{\{\w+\}\}/.test(cur) ? `${cur} ${token}` : token;
-  } else if (port === 'items' && !textItems(x)) l.items = [{ cat: '', text: token, on: true }];
-  else {
+  } else {
     setPath(l, port, token);
     if (x.type === 'chart' && port === 'csv') l.source = 'csv';
   }
@@ -77,10 +68,6 @@ function wireContent(x: Layer, port: string, key: string) {
 function unwireContent(x: Layer, port: string, key: string) {
   const token = `{{${key}}}`;
   const l = x as unknown as Record<string, unknown>;
-  if (port === 'items' && !textItems(x)) {
-    l.items = ((l.items as Item[] | undefined) ?? []).filter((i) => !(i.text ?? '').includes(token));
-    return;
-  }
   setPath(
     l,
     port,
@@ -594,10 +581,8 @@ export function useDataLayer(o: DataLayerOpts) {
       const x = findLayer(t, l.id)!;
       const def = t.fields.find((f) => f.key === key)?.default ?? '';
       if (port.startsWith('s:')) unbindSetting(x, port.slice(2));
-      else if (contentOf(x).includes(port)) {
-        if (port === 'items' && !textItems(x)) (x as unknown as { items: Item[] }).items = def.split('\n').filter(Boolean).map((text) => ({ cat: '', text, on: true }));
-        else setPath(x, port, def);
-      } else delete x.bindings[port as Prop];
+      else if (contentOf(x).includes(port)) setPath(x, port, def);
+      else delete x.bindings[port as Prop];
       dropField(t, key);
     });
   const newField = (t: Template, label: string, kind: FieldKind, def: string): string => {
@@ -612,7 +597,7 @@ export function useDataLayer(o: DataLayerOpts) {
   const columnNode = new Map<string, string>();
   for (const n of flow.nodes)
     if (n.type === 'dataset') {
-      // All the rows first (for tables, credits…), then each column of the current row.
+      // All the rows first (for tables, charts…), then each column of the current row.
       const at = (i: number, key: string) => spot(`o:k:${key}`, { x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 });
       columnPorts.set(tableKey(n.key), at(0, tableKey(n.key)));
       columnPorts.set(linesKey(n.key), at(0, tableKey(n.key)));
@@ -1616,7 +1601,7 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
         <Rows3 size={11} className="dc-type" />
         <span className="ds-name">{t('All rows')}</span>
         <span className="ds-val">{tbl ? t('{rows} × {columns} table', { rows: total, columns: cols.length }) : ''}</span>
-        <span className="port out" style={DS_DOT} data-wire={`o:k:${tableKey(node.key)}`} data-pk={`key:${tableKey(node.key)}`} title={t('Drag to a Table, Credits, Ticker or Chart: the whole table (key {key})', { key: tableKey(node.key) })} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
+        <span className="port out" style={DS_DOT} data-wire={`o:k:${tableKey(node.key)}`} data-pk={`key:${tableKey(node.key)}`} title={t('Drag to a Table or a Chart: the whole table (key {key})', { key: tableKey(node.key) })} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
       </div>
       {cols.map((c, i) => {
         const Icon = TYPE_ICON[types[i]];

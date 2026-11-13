@@ -1325,13 +1325,7 @@ pub(crate) async fn advance(
             }
             // Pauses and on-air points waiting for an event that happened.
             let fired = {
-                static WIDTHS: std::sync::OnceLock<std::sync::Mutex<cg_render::TextWidths>> =
-                    std::sync::OnceLock::new();
-                let widths = WIDTHS.get_or_init(|| {
-                    std::sync::Mutex::new(cg_render::TextWidths::new(state.assets_dir()))
-                });
-                let mut w = widths.lock().unwrap_or_else(|e| e.into_inner());
-                let mut fired = st.event_resumes(p, &state.config.load().timezone, &mut *w);
+                let mut fired = st.event_resumes(p, &state.config.load().timezone);
                 // The project's Logic, and the playlists a Logic resumes or stops (on their outputs).
                 let buses = |pl: &str| crate::state::list_buses(&ch.config.load(), p, pl);
                 fired.extend(st.run_project(p, &buses));

@@ -32,7 +32,7 @@ import { friendlyError } from '../ui/serverError';
 import { t, tn } from '../i18n';
 import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
-import { convertOld, leaveBuilder, loadBuilder, refreshStale, saveBuilt } from './builder';
+import { leaveBuilder, loadBuilder, refreshStale, saveBuilt } from './builder';
 import { useWidgets } from '../widgetLibrary';
 import { navigate, projectPath } from '../router';
 import { BuilderCrumb, BuilderLeft, BuilderRight } from './BuilderPanels';
@@ -553,8 +553,8 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
   useEffect(() => {
     if (!project || !widgetsLoaded || staleFor.current === project.id || builderId) return;
     staleFor.current = project.id;
-    // Widgets made from an older version, then the Ticker and Credits of before: in the drafts.
-    void refreshStale().then(convertOld);
+    // Widgets made from an older version: in the drafts.
+    void refreshStale();
   }, [project, widgetsLoaded, builderId]);
   // The Builder page: its widget open. Left another way than its back button: saved, the Designer back on the templates.
   useEffect(() => {

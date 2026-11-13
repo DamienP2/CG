@@ -292,16 +292,6 @@ pub(crate) fn mul255(a: u32, b: u32) -> u32 {
     (p + (p >> 8)) >> 8
 }
 
-/// The premultiplied pixel `src` × `cov` (0..255) laid over `dst` (source over).
-#[inline(always)]
-pub(crate) fn over(dst: &mut [u8], src: [u32; 4], cov: u32) {
-    let sc = src.map(|v| mul255(v, cov));
-    let k = 255 - sc[3].min(255);
-    for c in 0..4 {
-        dst[c] = (sc[c] + mul255(dst[c] as u32, k)).min(255) as u8;
-    }
-}
-
 /// One premultiplied pixel over another, at full coverage.
 #[inline(always)]
 fn over_one(dp: &mut [u8; 4], sp: &[u8; 4]) {
@@ -316,8 +306,8 @@ fn over_one(dp: &mut [u8; 4], sp: &[u8; 4]) {
     }
 }
 
-/// A run of premultiplied pixels × `cov` laid over another (source over),
-/// the arithmetic of [`over`], four pixels at a time on x86-64.
+/// A run of premultiplied pixels × `cov` (0..255) laid over another
+/// (source over), four pixels at a time on x86-64.
 #[inline(always)]
 fn over_run(d: &mut [[u8; 4]], s: &[[u8; 4]], cov: u32) {
     #[cfg(target_arch = "x86_64")]

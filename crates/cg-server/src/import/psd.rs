@@ -2729,10 +2729,6 @@ impl Cx<'_, '_> {
                     TextDecoration::None
                 },
                 line_height: st.leading.map(|_| lh as f32),
-                scroll: Default::default(),
-                speed: 120.0,
-                separator: "   •   ".into(),
-                looping: false,
                 overflow: Default::default(),
                 squeeze: 0.8,
                 min_size: 0.6,

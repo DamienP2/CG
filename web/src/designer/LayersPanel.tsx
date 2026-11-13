@@ -1,4 +1,4 @@
-import { BadgeCheck, MessagesSquare, Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, Pilcrow, Puzzle, Repeat2, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, Minus, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Sparkles, Square, Timer, Type, Video } from 'lucide-react';
+import { BadgeCheck, MessagesSquare, Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, Pilcrow, Puzzle, Repeat2, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, Minus, QrCode, Repeat, SlidersHorizontal, Sparkles, Square, Timer, Type, Video } from 'lucide-react';
 import type { Layer, LayerType, Template } from '../engine/types';
 import { descendants, findLayer } from './designerStore';
 import { num, propValue } from '../engine/evaluate';
@@ -12,8 +12,6 @@ export const ICONS: Record<LayerType, typeof Square> = {
   text: Type,
   image: Image,
   clock: Clock,
-  ticker: MoveHorizontal,
-  roll: MoveVertical,
   counter: Hash,
   progress: SlidersHorizontal,
   rotator: Repeat,
@@ -24,7 +22,6 @@ export const ICONS: Record<LayerType, typeof Square> = {
   polygon: Pentagon,
   pen: PenTool,
   table: Table,
-  credits: ScrollText,
   chart: ChartColumn,
   map: MapIcon,
   scoreboard: Trophy,

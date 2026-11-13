@@ -29,23 +29,11 @@ export interface TimeCtx {
   lang?: string;
 }
 
-/** A scrolling text, as the ticker or roll it behaves like (mirrors LayerKind::scrolling_as). */
-export function scrollingAs(l: Layer): Layer | null {
-  if (l.type !== 'text' || !l.scroll || l.scroll === 'none') return null;
-  const font = { fontFamily: l.fontFamily, fontWeight: l.fontWeight, align: l.align, verticalAlign: l.verticalAlign, uppercase: l.uppercase || l.transform === 'upper' };
-  const base = { ...l, ...font };
-  return l.scroll === 'horizontal' ? ({ ...base, type: 'ticker', text: l.text, separator: l.separator ?? '   •   ', speed: l.speed ?? 120 } as Layer) : ({ ...base, type: 'roll', text: l.text, speed: l.speed ?? 120, loop: !!l.looping } as Layer);
-}
-
 /** Widgets whose animation follows the time on air (mirrors playout::is_timed). */
 export function isTimed(l: Layer): boolean {
   switch (l.type) {
-    case 'text':
-      return !!l.scroll && l.scroll !== 'none';
     case 'clock':
       return l.mode === 'elapsed' || l.mode === 'timer';
-    case 'ticker':
-    case 'roll':
     case 'counter':
     case 'progress':
     case 'rotator':
@@ -281,21 +269,6 @@ export function clockText(mode: ClockMode, format: string, timezone: string, tar
 }
 
 const remEuclid = (a: number, b: number) => ((a % b) + b) % b;
-
-/** A crawl's speed on air: the nearest whole number of pixels per frame (at least one), so every frame moves the text by the same whole step (mirrors frame_speed). */
-export function frameSpeed(pxs: number, fps?: number): number {
-  if (!fps || fps < 1 || !Number.isFinite(pxs)) return pxs;
-  return Math.max(1, Math.round(pxs / fps)) * fps;
-}
-
-export function scrollPositions(len: number, cycle: number, travelled: number, looping: boolean): number[] {
-  if (cycle <= 0 || len <= 0) return [];
-  const first = len - travelled;
-  if (first >= 0 || !looping) return first + cycle > 0 ? [first] : [];
-  const out: number[] = [];
-  for (let x = -remEuclid(travelled - len, cycle); x < len; x += cycle) out.push(x);
-  return out;
-}
 
 export function grow(duration: number, age: number): number {
   if (duration <= 0) return 1;

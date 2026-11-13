@@ -1892,28 +1892,10 @@ mod dataset_table_tests {
     use super::*;
 
     #[test]
-    fn a_data_set_table_feeds_table_credits_ticker_and_chart() {
+    fn a_data_set_table_feeds_table_and_chart() {
         let all = r#"[["Role","Name"],["Director","Ada"],["Writer","Linus"]]"#;
         assert_eq!(parse_rows(all)[2], vec!["Writer", "Linus"]);
         let data: Data = [("ds__table".to_string(), all.to_string())].into();
-        let c: super::super::credits::Config =
-            serde_json::from_value(serde_json::json!({"link": "{{ds__table}}"})).unwrap();
-        let es = super::super::credits::entries(&c, &data);
-        assert_eq!((es[0].a.as_str(), es[0].b.as_str()), ("Director", "Ada"));
-        assert_eq!(es.len(), 2);
-        let items = super::super::ticker::expand(
-            &[super::super::ticker::Item {
-                cat: String::new(),
-                text: "{{ds__table}}".into(),
-                on: true,
-                format: String::new(),
-            }],
-            &data,
-        );
-        assert_eq!(
-            items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>(),
-            ["Director", "Writer"]
-        );
         let ch: super::super::chart::Config =
             serde_json::from_value(serde_json::json!({"source": "csv", "csv": "{{ds__table}}"}))
                 .unwrap();

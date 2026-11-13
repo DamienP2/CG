@@ -3,7 +3,7 @@
 //! A clip (a crop, a group's box, a widget's box) is a frame-sized `Mask`.
 //! Intersected with the clip of the parents, tiny-skia fills the path into
 //! a second frame-sized mask and multiplies both over the whole frame; a
-//! ticker's faded zone is drawn into a frame-sized picture, cut by the parent
+//! list's faded box is drawn into a frame-sized picture, cut by the parent
 //! clip over the whole frame, then read back. Here the same arithmetic is done
 //! only where the path can cover (its bounds, plus a margin): elsewhere the
 //! result is 0 either way. The coverage is drawn by tiny-skia itself, into a
@@ -128,7 +128,7 @@ pub(crate) fn painted(
     })
 }
 
-/// Masks kept from frame to frame (a ticker's or a roll's faded zone: the
+/// Masks kept from frame to frame (the faded box of a list going by: the
 /// same while its box does not move), by a key of what they are made of.
 #[derive(Default)]
 pub(crate) struct Kept {

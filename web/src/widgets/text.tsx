@@ -13,7 +13,6 @@ import type { Data, Layer, Template, TextOverflow } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
 import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/textFit';
-import { frameSpeed, scrollPositions } from '../engine/widgets';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { Dropdown } from '../ui/Dropdown';
 import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
@@ -172,15 +171,8 @@ export interface TextLayout {
 /** The fit of the layer with these values (same as the Rust renderer). */
 export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string, rich?: (key: string) => boolean): TextLayout {
   const k = cfg(l);
-  let runs = k.dir === 'rtl' ? null : textRuns(l, data, rich);
-  let text = runs ? runs.map((x) => x.text).join('') : shownText(l, data, rich);
-  // A ticker: the lines one after the other, with the separator (mirror of wid/text.rs).
-  const scroll = l.scroll && l.scroll !== 'none' ? l.scroll : null;
-  const sep = l.separator ?? '   •   ';
-  if (scroll === 'horizontal') {
-    text = text.split('\n').join(sep) + sep;
-    runs = runs ? runs.map((x, i, a) => ({ ...x, text: x.text.split('\n').join(sep) + (i === a.length - 1 ? sep : '') })) : null;
-  }
+  const runs = k.dir === 'rtl' ? null : textRuns(l, data, rich);
+  const text = runs ? runs.map((x) => x.text).join('') : shownText(l, data, rich);
   const mw = l.fontWeight;
   const size0 = num(r.fontSize);
   const ls = num(r.letterSpacing);
@@ -191,7 +183,7 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string,
   const pics = inlineImages(l.text, data, rich ?? (() => false));
   const lh = l.lineHeight ?? 1.2;
   // The line breaking measures each part in its own style (mirror of wid/text.rs).
-  const enc = runs && !scroll ? encodeRuns(runs) : { text, table: [] as [string, number][] };
+  const enc = runs ? encodeRuns(runs) : { text, table: [] as [string, number][] };
   const measureLine = (s: string, size: number) => {
     if (!enc.table.length) return measureWith(fontCss(fam, mw, size, k.italic), ls, s, pics, size, lh);
     let total = 0;
@@ -218,19 +210,15 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string,
     flush();
     return total + ls * Math.max(0, parts - 1);
   };
-  const fit: FitLines =
-    scroll === 'horizontal'
-      ? { lines: [{ text, end: true }], size: size0, squeeze: 1, clip: true, ratio: 1, overflows: false, stage: 'fit', forced: false, hyphenated: false }
-      : fitLines(
+  const fit: FitLines = fitLines(
     enc.text,
     {
       size: size0,
       lineHeight: l.lineHeight ?? 1.2,
       boxW: avail,
-      // A roll: every line at its size, however long it is.
-      boxH: scroll ? 1e9 : num(r.height),
+      boxH: num(r.height),
       wrap: !!l.wrap,
-      overflow: scroll ? 'visible' : (l.overflow ?? 'fit'),
+      overflow: l.overflow ?? 'fit',
       squeeze: l.squeeze ?? 0.8,
       minSize: l.minSize ?? 0.6,
       maxLines: k.maxLines,
@@ -241,7 +229,6 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string,
     measureLine,
   );
   if (enc.table.length) fit.lines = fit.lines.map((x) => ({ ...x, text: decodeLine(x.text, enc.table) }));
-  if (scroll) fit.clip = true;
   return { fit, font: fontCss(fam, l.fontWeight, fit.size, k.italic), ls, pad, avail, text, runs, mw, pics };
 }
 
@@ -250,7 +237,7 @@ const fitBadge = (l: TextLayer, f: FitLines) => (f.overflows ? (l.overflow === '
 
 // --------------------------------------------------------------- render --
 
-function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string; ageSecs?: number; fps?: number }) {
+function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string }) {
   const k = cfg(layer);
   const rich = useContext(RichKeys);
   usePictures();
@@ -284,16 +271,7 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
   const shadowCss = k.shadow ? `${k.shadowX}px ${k.shadowY}px ${k.shadowBlur}px ${hex(k.shadowColor)}` : '';
   const deco = layer.decoration === 'underline' ? 'underline' : layer.decoration === 'lineThrough' ? 'line-through' : undefined;
   const bands: CSSProperties[] = [];
-  // Where the text is drawn: once, or each copy of a scroll on its way.
-  const travelled = frameSpeed(layer.speed ?? 120, fps) * Math.max(0, ageSecs);
-  const scroll = layer.scroll && layer.scroll !== 'none' ? layer.scroll : null;
-  const placements: [number, number][] =
-    scroll === 'horizontal'
-      ? scrollPositions(w, measureWith(fontCss(layer.fontFamily, L.mw, size, k.italic), ls, L.text, L.pics, size, lh) + ls, travelled, true).map((x) => [x, 0])
-      : scroll === 'vertical'
-        ? scrollPositions(h, layer.looping ? block + h : block, travelled, !!layer.looping).map((y) => [0, y - top])
-        : [[0, 0]];
-  const lines = placements.flatMap(([ox, oy], pi) => fit.lines.map((l, i) => {
+  const lines = fit.lines.map((l, i) => {
     const spaces = (l.text.match(/ /g) ?? []).length;
     const segs = parts?.[i];
     const segW = ([t, ri]: [string, number]) => {
@@ -305,8 +283,8 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
     const justified = k.justify && !l.end && spaces > 0 && lw0 < bw;
     const lw = justified ? bw : lw0;
     const eff = k.justify && !justified ? (rtl ? 'right' : 'left') : layer.align;
-    const x = scroll === 'horizontal' ? ox : justified ? 0 : eff === 'center' ? (bw - lw) / 2 : eff === 'right' ? bw - lw : 0;
-    const y = top + oy + tops[i];
+    const x = justified ? 0 : eff === 'center' ? (bw - lw) / 2 : eff === 'right' ? bw - lw : 0;
+    const y = top + tops[i];
     const lineY = y + heights[i] - lineH;
     const left = pad + x * sx;
     if (k.band && l.text.trim())
@@ -320,21 +298,17 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
         borderRadius: Math.min(k.bandRadius, (lw * sx + 2 * pad) / 2, Math.max(4, heights[i] - k.bandGap) / 2),
         boxShadow: k.bandAccent ? `inset ${rtl ? -8 : 8}px 0 ${hex(k.bandAccentColor)}` : undefined,
       });
-    // A scroll moves as a transform (no layout each frame, fractions of a pixel), on a layer of its own.
-    const dx = scroll === 'horizontal' ? x * sx : 0;
-    const dy = scroll === 'vertical' ? oy : 0;
     const st: CSSProperties = {
       position: 'absolute',
-      left: left - dx,
-      top: lineY - dy,
+      left,
+      top: lineY,
       width: lw + 1,
       height: lineH,
       lineHeight: `${lineH}px`,
       whiteSpace: justified ? 'nowrap' : 'pre',
       textAlign: justified ? 'justify' : rtl ? 'right' : 'left',
       textAlignLast: justified ? 'justify' : undefined,
-      transform: scroll ? `translate3d(${dx}px, ${dy}px, 0)${sx !== 1 ? ` scaleX(${sx})` : ''}` : sx !== 1 ? `scaleX(${sx})` : undefined,
-      willChange: scroll ? 'transform' : undefined,
+      transform: sx !== 1 ? `scaleX(${sx})` : undefined,
       transformOrigin: '0 0',
       direction: rtl ? 'rtl' : 'ltr',
       unicodeBidi: 'plaintext',
@@ -413,13 +387,13 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
           })
         : withPics(l.text, colours) || ' ';
     return (
-      <div key={`${pi}-${i}`}>
+      <div key={i}>
         {sw > 0 && k.strokeOutside && <div style={{ ...strokeSt, WebkitTextStroke: `${sw * 2}px ${stroke}`, color: stroke, WebkitTextFillColor: stroke } as CSSProperties}>{body(false)}</div>}
         <div style={st}>{body(true)}</div>
         {sw > 0 && !k.strokeOutside && <div style={strokeSt}>{body(false)}</div>}
       </div>
     );
-  }));
+  });
   const badge = designer ? fitBadge(layer, fit) : undefined;
   return (
     <>
@@ -793,10 +767,7 @@ export default defineWidget({
   create: () => ({}),
   ownsLook: true,
   content: ['text'],
-  // A scrolling text moves with its time on air.
-  live: (l) => !!l.scroll && l.scroll !== 'none',
-  ageOnly: true,
-  Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} ageSecs={time.ageSecs} fps={time.fps} />,
+  Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} />,
   Inspector: ({ layer, data, template, edit }) => <Inspector layer={layer} data={data} template={template} edit={edit} />,
   warnings: (layer, { data }) => {
     const out: Warning[] = [];

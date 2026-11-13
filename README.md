@@ -142,10 +142,10 @@ Chaque widget est rendu à l'identique en HTML5 et par le moteur Rust, s'anime (
 | Famille | Widgets |
 | --- | --- |
 | **Formes** | rectangle, polygone, ellipse, trait, plume (tracé libre), dégradés, contour, rayon, masque de groupe |
-| **Texte** | une ligne, paragraphe, styles par mot (gras, couleur…), défilement horizontal ou vertical, comportement quand le texte est trop long (ajuster, points de suspension, couper) |
+| **Texte** | une ligne, paragraphe, styles par mot (gras, couleur…), comportement quand le texte est trop long (ajuster, points de suspension, couper) |
 | **Image et vidéo** | image (et séquences GIF / APNG), vidéo depuis les ressources ou depuis une **entrée en direct**, animation Lottie |
 | **Temps** | horloge (chiffres ou cadran, villes, langues), temps (chronomètre, compte à rebours, lancement à l'envoi, à la main ou à une heure) |
-| **Données** | tableau (classements, résultats, couleurs par ligne), bandeau défilant, générique, machine à écrire, compteur animé, barre de progression, graphique (barres, lignes, aires, camembert), carte, QR code, tableau des scores |
+| **Données** | tableau (classements, résultats, couleurs par ligne), machine à écrire, compteur animé, barre de progression, graphique (barres, lignes, aires, camembert), carte, QR code, tableau des scores |
 | **Réseaux sociaux** | mur social (cartes des messages validés), badge social (plateforme ou avatar), bandeau et textes alimentés par la modération |
 | **Web** | page web (URL ou HTML, relais par le serveur pour les sites qui refusent l'intégration ; sortie HTML5 seulement) |
 
@@ -179,7 +179,7 @@ Le bouton **Données** ouvre le canvas qui relie les sources aux calques :
 - **Sources** du projet et sources partagées, avec leur valeur en direct et le chemin de chaque champ.
 - **Variables** : ce que l'opérateur remplit, ou ce qu'une source alimente (chemin simple comme `match.home.score`).
 - **En chemin** : *Filtrer* (conditions, colonnes, lignes), *Trier*, *Transformer* (opérations sur les textes), nœuds posés librement avec leur résultat.
-- **Jeu de données** : les lignes d'une liste, que le tableau, le bandeau, le générique, la courbe ou le mur social prennent par leur port *table*, et que l'opérateur fait défiler ligne par ligne.
+- **Jeu de données** : les lignes d'une liste, que le tableau, la courbe ou le mur social prennent par leur port *table*, et que l'opérateur fait défiler ligne par ligne.
 - Chaque propriété d'un calque est un port : couleur par ligne, taille, position… Une propriété câblée est en lecture seule dans l'inspecteur, avec sa valeur.
 
 ### 5.7 Formats multiples

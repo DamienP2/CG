@@ -25,7 +25,7 @@ import { shownText } from '../widgets/text';
 export { TimeContext } from './LiveTime';
 
 /** Layers whose look depends on the clock: they alone are redrawn on each frame (useLayerTime). */
-export const LIVE_TYPES: ReadonlySet<LayerType> = new Set(['clock', 'ticker', 'roll', 'counter', 'progress', 'rotator', 'typewriter', 'slideshow', 'barChart']);
+export const LIVE_TYPES: ReadonlySet<LayerType> = new Set(['clock', 'counter', 'progress', 'rotator', 'typewriter', 'slideshow', 'barChart']);
 
 interface SceneProps {
   template: Template;
@@ -76,7 +76,7 @@ export function textWarnings(template: Template, data: Data): TextWarning[] {
   const hold = holdFrame(template);
   const out: TextWarning[] = [];
   for (const l of template.layers) {
-    if (l.type !== 'text' || !l.visible || (l.scroll && l.scroll !== 'none') || (l.overflow ?? 'fit') === 'visible') continue;
+    if (l.type !== 'text' || !l.visible || (l.overflow ?? 'fit') === 'visible') continue;
     const fit = fitLayer(l, resolveLayer(l, hold, data, hold), layerText(l, data, typedKeys(template)));
     if (fit.overflows || fit.ratio < (l.warnBelow ?? 0.8)) out.push({ layer: l, ratio: fit.ratio, overflows: fit.overflows, keys: [...l.text.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]) });
   }
@@ -313,7 +313,6 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
   const h = num(r.height);
   const age = time.ageSecs;
   const up = (s: string, font: FontStyle) => (font.uppercase ? s.toUpperCase() : s);
-  const clip: CSSProperties = { position: 'absolute', inset: 0, overflow: 'hidden' };
   switch (layer.type) {
     case 'clock':
       return <TextBox text={up(W.clockText(layer.mode, layer.format, layer.timezone, layer.target, data, time), layer)} font={layer} r={r} align={layer.align} valign={layer.verticalAlign} box={[0, 0, w, h]} />;
@@ -326,32 +325,6 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
       if (!items.length) return null;
       const [idx, alpha] = W.rotatorState(items.length, layer.interval, layer.fade, age);
       return <TextBox text={up(items[idx], layer)} font={layer} r={r} align={layer.align} valign={layer.verticalAlign} box={[0, 0, w, h]} opacity={alpha} />;
-    }
-    case 'ticker': {
-      const items = W.lines(layer.text, data);
-      if (!items.length) return null;
-      const strip = up(items.join(layer.separator) + layer.separator, layer);
-      const ls = num(r.letterSpacing);
-      const cycle = W.textWidth(strip, layer.fontFamily, layer.fontWeight, num(r.fontSize), ls) + ls;
-      return (
-        <div style={clip}>
-          {W.scrollPositions(w, cycle, layer.speed * age, true).map((x, i) => (
-            <TextBox key={i} text={strip} font={layer} r={r} align="left" valign={layer.verticalAlign} box={[x, 0, cycle, h]} />
-          ))}
-        </div>
-      );
-    }
-    case 'roll': {
-      const body = up(interpolateText(layer.text, data), layer);
-      const block = body.split('\n').length * num(r.fontSize) * LINE_HEIGHT;
-      const cycle = layer.loop ? block + h : block;
-      return (
-        <div style={clip}>
-          {W.scrollPositions(h, cycle, layer.speed * age, layer.loop).map((y, i) => (
-            <TextBox key={i} text={body} font={layer} r={r} align={layer.align} valign="top" box={[0, y, w, block]} />
-          ))}
-        </div>
-      );
     }
     case 'progress': {
       const ratio = W.progressRatio(layer.value, layer.max, layer.duration, data, age);

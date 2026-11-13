@@ -21,7 +21,6 @@ export type VerticalAlign = 'top' | 'middle' | 'bottom';
 export type ImageFit = 'contain' | 'cover' | 'stretch';
 
 /** Text styling shared by the text-based widgets. */
-export type TextScroll = 'none' | 'horizontal' | 'vertical';
 export type TextTransform = 'none' | 'upper' | 'lower' | 'capitalize';
 export type TextDecoration = 'none' | 'underline' | 'lineThrough';
 
@@ -48,12 +47,6 @@ export type LayerKind =
       decoration?: TextDecoration;
       /** In font sizes (default 1.2). */
       lineHeight?: number;
-      /** Fixed, or scrolling like a ticker (horizontal) or a credit roll (vertical). */
-      scroll?: TextScroll;
-      /** px/s. */
-      speed?: number;
-      separator?: string;
-      looping?: boolean;
       /** When the text does not fit its box (default fit). */
       overflow?: TextOverflow;
       /** Fit: narrowest (fraction of the width), then smallest font size (fraction), default 0.8 and 0.6. */
@@ -65,8 +58,6 @@ export type LayerKind =
       import('../widgets/text').Config)
   | ({ type: 'image'; src: string; fit: ImageFit } & import('../widgets/image').Config)
   | (({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle) & import('../widgets/timer').Config)
-  | (({ type: 'ticker'; text: string; separator: string; speed: number } & FontStyle) & import('../widgets/ticker').Config)
-  | ({ type: 'roll'; text: string; speed: number; loop: boolean } & FontStyle)
   | (({ type: 'counter'; from: string; to: string; duration: number; decimals: number; prefix: string; suffix: string; grouping: boolean } & FontStyle) & import('../widgets/counter').Config)
   | ({ type: 'progress'; value: string; max: string; duration: number; track: string } & import('../widgets/progress').Config)
   | ({ type: 'rotator'; text: string; interval: number; fade: number } & FontStyle)
@@ -80,7 +71,6 @@ export type LayerKind =
   | ({ type: 'polygon' } & import('../widgets/polygon').Config)
   | ({ type: 'pen' } & import('../widgets/pen').Config)
   | ({ type: 'table' } & import('../widgets/table').Config)
-  | ({ type: 'credits' } & import('../widgets/credits').Config)
   | ({ type: 'chart' } & import('../widgets/chart').Config)
   | ({ type: 'map' } & import('../widgets/map').Config)
   | ({ type: 'scoreboard' } & import('../widgets/scoreboard').Config);
@@ -178,6 +168,7 @@ export interface GroupMask {
 export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string } | { type: 'triggers' };
 /** What an event node of the Triggers watches on air (the server). */
 export type TriggerEvent =
+  /** The Ticker or the Credits of before are done: never now (list folders), still read. */
   | { kind: 'scrollEnd'; layer: string; passes?: number }
   | { kind: 'timerZero'; layer: string }
   | { kind: 'timerAt'; layer: string; seconds: number }
@@ -190,7 +181,7 @@ export type TriggerEvent =
 /** Marker model of templates made by this version (see Template.markerModel). */
 export const MARKER_MODEL = 2;
 
-export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image' | 'boolean' | 'table' | 'credits';
+export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image' | 'boolean' | 'table';
 
 export interface Field {
   key: string;
@@ -876,7 +867,7 @@ export interface User {
 }
 
 /** Layer types whose text is styled with a FontStyle. */
-export const TEXT_LIKE = new Set<LayerType>(['text', 'clock', 'ticker', 'roll', 'counter', 'rotator', 'typewriter', 'barChart']);
+export const TEXT_LIKE = new Set<LayerType>(['text', 'clock', 'counter', 'rotator', 'typewriter', 'barChart']);
 
 /** A colour of a palette: the layers using its value follow it when it changes. */
 export interface NamedColor {

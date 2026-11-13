@@ -34,8 +34,6 @@ export function formatSetting(v: unknown): string {
 
 /** Field kind for a setting value. */
 export function settingKind(v: unknown, path: string): FieldKind {
-  // The entries of credits: a table.
-  if (path === 'entries') return 'credits';
   if (typeof v === 'number') return 'number';
   if (typeof v === 'boolean') return 'boolean';
   if (typeof v === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)) return 'color';
@@ -89,8 +87,6 @@ export function syncSettingDefaults(t: Template) {
       const f: Field | undefined = t.fields.find((x) => x.key === key);
       const cur = readPath(l, path);
       // A setting at the widget's default (not in the layer): its field keeps the value it was exposed with.
-      // Credits exposed before their table: edited as one now.
-      if (f && path === 'entries' && Array.isArray(cur) && f.kind !== 'credits') f.kind = 'credits';
       if (f && !f.binding?.source && cur !== undefined) {
         const v = formatSetting(cur);
         if (f.default !== v) f.default = v;

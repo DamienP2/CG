@@ -16,9 +16,20 @@ import { clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, RangeNum
 import { ADVANCE_MODES, Centre, Countdown, GAP, StartRow, WaitsContinue, WaitsTrigger, type AdvanceMode, type Line2Item } from './centre';
 import { fontCss, measure } from './text';
 import { useLiveTime } from './table-text';
-import { layerTime } from './ticker';
 import { confirmDialog } from '../ui/dialogs';
 import { t, tc } from '../i18n';
+
+/**
+ * The time of a widget's control centre on air: the layer's own time on air (its clock, 0 while
+ * a manual start waits for its Continue / trigger), still while it waits or its clock is paused.
+ * Once the widget runs on its own state (`started`), the time on air no longer matters.
+ */
+function layerTime<T extends { nowMs: number; ageSecs: number; held?: boolean; fps?: number }>(l: { id: string; manualStart?: boolean }, item: PlayoutItem | undefined, time: T, started: boolean): T {
+  if (!item || started) return time;
+  const c = item.clocks?.[l.id];
+  const still = c ? c.pausedAt != null : !!l.manualStart;
+  return { ...time, ageSecs: layerAgeFrames(item, item.age ?? 0, l as never) / (time.fps ?? 50), held: time.held || still };
+}
 
 export interface Config {
   /** Texts typed after the first one (`text`). */

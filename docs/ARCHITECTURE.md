@@ -40,7 +40,7 @@
 - **Logic** (`logic.rs`) : graphe de relations par template (sources → opérations → cibles), évalué à chaque image après l'animation et les bindings, dans l'ordre topologique (les cycles sont ignorés). La mesure des textes est fournie par le moteur de rendu (police réelle). Miroir TypeScript : `web/src/engine/logic.ts`.
 - **Import After Effects** (`lottie.rs`) : conversion d'un export Bodymovin / Lottie en `Template` (calques, parentage et précomps en groupes, keyframes et easing, textes en champs de données, marqueurs). `cg-server/src/ae_import.rs` lit les archives (`.zip`, `.lottie`), décode les images et refuse les `.mogrt` avec une explication.
 - **Données** (`datapath.rs`) : chemins de liaison (`rows[{row}].name`, `items[*].title`…) et remplissage des champs liés à partir des valeurs des sources. Le serveur (`cg-server/src/datasources.rs`) relit les sources (JSON, CSV / Google Sheets, RSS, XML) ou reçoit leurs valeurs (push), les convertit en JSON, les garde sur disque, et réapplique les liaisons aux graphiques à l'antenne quand une valeur change ; les clients HTML5 reçoivent donc des données déjà résolues.
-- **Widgets** (`widgets.rs`) : horloge, compte à rebours, minuteur, chronomètre, horloge analogique, ticker, générique, rotator, machine à écrire, compteur, barre de progression, graphique en barres, diaporama et QR code. Chaque widget est une **fonction pure** de l'heure du serveur et du temps passé à l'antenne (`PlayoutItem.age`, qui continue d'avancer pendant les pauses). Le rendu Rust et le rendu HTML5 (`web/src/engine/widgets.ts`) sont donc identiques. Les clients HTML5 reçoivent l'heure du serveur et extrapolent le temps à l'antenne entre deux évènements. Le QR code est calculé par le serveur (`/api/qr`) pour que les deux moteurs dessinent les mêmes modules.
+- **Widgets** (`widgets.rs`) : horloge, compte à rebours, minuteur, chronomètre, horloge analogique, rotator, machine à écrire, compteur, barre de progression, graphique en barres, diaporama et QR code. Chaque widget est une **fonction pure** de l'heure du serveur et du temps passé à l'antenne (`PlayoutItem.age`, qui continue d'avancer pendant les pauses). Le rendu Rust et le rendu HTML5 (`web/src/engine/widgets.ts`) sont donc identiques. Les clients HTML5 reçoivent l'heure du serveur et extrapolent le temps à l'antenne entre deux évènements. Le QR code est calculé par le serveur (`/api/qr`) pour que les deux moteurs dessinent les mêmes modules.
 
 ### Conventions de rendu (communes aux deux moteurs)
 - `x` et `y` désignent le coin haut-gauche de la boîte dans le repère du parent ; les enfants d'un groupe sont relatifs au groupe.
@@ -79,7 +79,7 @@ Le serveur repose sur axum et tokio.
 **Designer**
 - [ ] Éditeur de courbes de valeur et de vitesse (graph editor), poignées bezier dans la timeline.
 - [ ] Ombres, dégradés, flou, modes de fusion, masques par calque (track matte).
-- [x] Widgets préfabriqués : horloges, compte à rebours, ticker, générique, compteur, sondage, QR code…
+- [x] Widgets préfabriqués : horloges, compte à rebours, compteur, sondage, QR code… ; ticker et générique faits avec le Builder (listes qui défilent)
 - [ ] Animations de texte par caractère, texte auto-fit.
 - [ ] Séquences d'images et vidéo (alpha), compositions imbriquées (pré-compositions).
 - [ ] Import de fichiers Lottie / After Effects (bodymovin).

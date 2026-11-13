@@ -9,6 +9,7 @@ pub mod lists;
 pub mod logic;
 pub mod lottie;
 pub mod model;
+pub mod old_widgets;
 pub mod palette;
 pub mod playout;
 pub mod rich;

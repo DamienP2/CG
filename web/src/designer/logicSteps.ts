@@ -4,7 +4,7 @@ import type { CheckRow, Layer, Logic, LogicEdge, LogicNode, Template } from '../
 import { fromPortOf } from '../engine/logic';
 import { newId } from '../engine/evaluate';
 import { useApp } from '../store';
-import { isProjectLogic, scrollLayer, timerLayer, videoLayer } from './logicNodes';
+import { isProjectLogic, timerLayer, videoLayer } from './logicNodes';
 
 export interface Opt {
   value: string;
@@ -55,7 +55,6 @@ export function momentsOf(src: LogicNode | undefined, tpl: Template): Opt[] {
       const l = tpl.layers.find((x) => x.id === src.layer);
       if (!l) return [];
       return [
-        ...(scrollLayer(l) ? [{ value: 'scrollEnd', label: 'has scrolled to its end' }] : []),
         ...(timerLayer(l) ? [{ value: 'timerZero', label: 'reaches zero' }, { value: 'timerAt', label: 'shows a time' }] : []),
         ...(videoLayer(l) ? [{ value: 'videoEnd', label: 'the video ends' }] : []),
       ];
@@ -237,4 +236,4 @@ export function toSteps(logic: Logic) {
 }
 
 /** A layer can be the source of a When (it has moments). */
-export const hasMoments = (l: Layer) => scrollLayer(l) || timerLayer(l) || videoLayer(l);
+export const hasMoments = (l: Layer) => timerLayer(l) || videoLayer(l);

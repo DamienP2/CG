@@ -122,6 +122,29 @@ const add = (label: string, fr: string, en: string, done: () => boolean): Step =
   done,
 });
 
+/** A widget of the Library (built with the Builder) placed in the template: its folder. */
+const built = (def: string) => layers().find((l) => l.type === 'group' && l.widget?.def === def);
+
+/** The shared widget `name` of the + menu once open, else the +. */
+function sharedItem(name: string): Element | null {
+  for (const b of document.querySelectorAll<HTMLElement>('.add-menu .add-grid button')) if (b.textContent?.trim() === name && b.getClientRects().length) return b;
+  return shown('.menu-wrap > .opx-add');
+}
+
+/** Adds the Library's widget `name` (its definition `def`) from the + menu. */
+const shared = (name: string, def: string): Step => ({
+  say: { fr: `Cliquez + (Widgets), puis ${name} dans les widgets partagés.`, en: `Click + (Widgets), then ${name} in the shared widgets.` },
+  at: () => sharedItem(name),
+  done: () => !!built(def),
+});
+
+/** A widget of the Library is made of bricks: Edit the widget opens them in the Builder. */
+const edit: Step = {
+  say: { fr: 'Modifier le widget : ses briques s’ouvrent dans le Builder.', en: 'Edit the widget: its bricks open in the Builder.' },
+  at: () => seen(shown('.wk-wbar .btn')),
+  done: 'next',
+};
+
 const clockL = () => W('clock', (l) => l.mode === 'time');
 const timeL = () => W('clock', (l) => l.mode !== 'time');
 
@@ -240,22 +263,13 @@ export const lessons: Lesson[] = [
     title: { fr: 'Bandeau défilant', en: 'Ticker' },
     setup: { kind: 'designer' },
     steps: [
-      add('Ticker', 'Bandeau défilant', 'Ticker', () => !!W('ticker')),
+      shared('Ticker', 'ticker'),
       {
-        say: { fr: 'Contenu : tapez vos titres, un par ligne.', en: 'Content: type your headlines, one per line.' },
-        at: () => inSection('Content', '.wk-content'),
-        ...typed(() => W('ticker')?.text),
+        say: { fr: 'Infos : une ligne par info, avec sa catégorie. Elles défilent.', en: 'Infos: a row per item, with its category. They go by.' },
+        at: () => seen(shown('.pp-try')),
+        done: 'next',
       },
-      {
-        say: { fr: '▶ Lire : il défile.', en: '▶ Play: it scrolls.' },
-        at: mainButton,
-        done: () => !!stateOf(W('ticker'))?.running,
-      },
-      {
-        say: { fr: 'Vitesse : glissez le curseur.', en: 'Speed: drag the slider.' },
-        at: tryRow('Speed'),
-        done: () => (W('ticker')?.speed ?? 140) !== 140,
-      },
+      edit,
     ],
   },
   {
@@ -265,22 +279,13 @@ export const lessons: Lesson[] = [
     title: { fr: 'Générique', en: 'Credits' },
     setup: { kind: 'designer' },
     steps: [
-      add('Credits', 'Générique', 'Credits', () => !!W('credits')),
+      shared('Générique', 'credits'),
       {
-        say: { fr: 'Contenu : remplacez ce nom par le vôtre.', en: 'Content: replace this name with yours.' },
-        at: () => inSection('Content', '.cr-table tbody tr:nth-child(2) td:nth-child(4) input'),
-        ...typed(() => W('credits')?.entries),
+        say: { fr: 'Lignes : un titre, un nom et son rôle, un logo ou un espace par ligne. Elles montent.', en: 'Lines: a title, a name and its role, a logo or a space per row. They roll up.' },
+        at: () => seen(shown('.pp-try')),
+        done: 'next',
       },
-      {
-        say: { fr: 'Durée : tapez 0:20, puis Entrée.', en: 'Duration: type 0:20, then Enter.' },
-        at: tryRow('Duration'),
-        done: () => W('credits')?.duration === 20,
-      },
-      {
-        say: { fr: '▶ Lire : le générique défile.', en: '▶ Play: the credits roll.' },
-        at: mainButton,
-        done: () => !!stateOf(W('credits'))?.started,
-      },
+      edit,
     ],
   },
   {

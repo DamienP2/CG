@@ -1,10 +1,9 @@
 //! Table: drawing (same picture as `web/src/widgets/table.tsx`).
 
-use ab_glyph::FontArc;
 use cg_core::wid::table::{
     cell_in, cell_text, col_text, current_page, header_h, header_text, live, merge_of, model,
     page_count, rows_text, title_h as title_height, Align, CascadeStyle, ColKind, Config, Deco,
-    EmptyMode, FitMode, MRow, Model, Overflow, PageMode, RowPaint, State, Text, Then,
+    EmptyMode, FitMode, MRow, Model, PageMode, RowPaint, State, Text, Then,
 };
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{
@@ -37,73 +36,6 @@ pub(crate) fn rect(
 
 pub(crate) fn with_alpha(c: Color, a: f32) -> Color {
     Color([c.0[0], c.0[1], c.0[2], c.0[3] * a])
-}
-
-/// How a too-long text fits its box: shrink → squeeze → ellipsis.
-#[derive(Clone, Copy)]
-pub(crate) struct Fit {
-    pub overflow: Overflow,
-    pub min_size: f32,
-    pub min_squeeze: f32,
-}
-
-/// Lays out one line of text in (x, y, w, h), fitted; returns the path and whether it was fitted.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn fitted_path(
-    font: &FontArc,
-    s: &str,
-    size: f32,
-    ls: f32,
-    align: TextAlign,
-    (x, y, w, h): (f32, f32, f32, f32),
-    fit: Option<Fit>,
-) -> (Option<tiny_skia::Path>, bool) {
-    let mut style = tx::TextStyle {
-        size,
-        letter_spacing: ls,
-        align,
-        vertical_align: VerticalAlign::Middle,
-        box_w: w.max(1.0),
-        box_h: h.max(size),
-        line_height: tx::LINE_HEIGHT,
-        decoration: cg_core::TextDecoration::None,
-    };
-    let (mut text, mut sx, mut changed) = (s.to_string(), 1.0f32, false);
-    if let Some(f) = fit {
-        use cg_core::TextOverflow as O;
-        let r = match f.overflow {
-            Overflow::Ellipsis => tx::fit_text(font, s, &style, false, O::Ellipsis, 1.0, 1.0),
-            Overflow::Squeeze => {
-                tx::fit_text(font, s, &style, false, O::Fit, f.min_squeeze / 100.0, 1.0)
-            }
-            Overflow::Shrink => tx::fit_text(
-                font,
-                s,
-                &style,
-                false,
-                O::Fit,
-                f.min_squeeze / 100.0,
-                (f.min_size / size).min(1.0),
-            ),
-        };
-        changed = r.size != size || r.squeeze != 1.0 || r.text != s;
-        style.size = r.size;
-        sx = r.squeeze;
-        text = r.text;
-        if r.clip && f.overflow != Overflow::Ellipsis {
-            // At the minimum: cut with an ellipsis.
-            let mut st2 = tx::TextStyle {
-                box_w: w / sx,
-                ..style
-            };
-            st2.size = r.size;
-            text = tx::fit_text(font, &text, &st2, false, O::Ellipsis, 1.0, 1.0).text;
-        }
-    }
-    style.box_w = (w / sx).max(1.0);
-    let p = tx::layout_text(font, &text, &style)
-        .and_then(|p| p.transform(Transform::from_row(sx, 0.0, 0.0, 1.0, x, y)));
-    (p, changed)
 }
 
 /// A text cut to `max_w`: with "…" (`dots`) or plainly.

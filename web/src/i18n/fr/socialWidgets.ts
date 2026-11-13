@@ -14,6 +14,5 @@ export const socialWidgets: Record<string, string> = {
   'Photo': 'Photo',
   'Name size': 'Taille du nom',
   'New card': 'Nouvelle carte',
-  'Item format': 'Format des éléments',
   'Sparkline': 'Mini-graphique',
 };

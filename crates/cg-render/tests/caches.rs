@@ -1,5 +1,5 @@
-//! The pictures kept between frames (scaled pictures, roll strips, faded
-//! zones, the picture of the graphics over what moves) give the frames drawn
+//! The pictures kept between frames (scaled pictures, faded zones, the
+//! picture of the graphics over what moves) give the frames drawn
 //! without them: a frame only depends on what is on air, never on what was
 //! drawn before.
 
@@ -123,10 +123,10 @@ fn graphics_over_what_moves_are_kept() {
     assert!(cache.tops() >= 10, "{}", cache.tops());
 }
 
-/// Credits rolling (a strip drawn once, shown through the box): the same
-/// frames however they are drawn, and they move.
+/// Credits rolling (a list going up in its box): the same frames however
+/// they are drawn, and they move.
 #[test]
-fn a_roll_is_the_same_from_its_strip() {
+fn a_roll_is_the_same_kept_or_not() {
     let p = Arc::new(sample::demo_project());
     let mut st = ChannelState::default();
     take_in(&mut st, &p, "credits", None, Some("full-screen"));
