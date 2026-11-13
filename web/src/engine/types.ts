@@ -111,6 +111,12 @@ export type Layer = LayerKind & {
   motion?: Motion;
   /** Anchored to the scene: follows the camera of its template (Template.camera); top-level layers only. */
   anchor?: Track;
+  /** A widget built with the Builder: this folder holds the elements generated from its definition (Project.widgets; engine/built.ts). */
+  widget?: WidgetInstance;
+  /** A copy made by a Repeater: drawn in full while the number in `data[key]` is above `index`, else at `off` of its opacity. */
+  lit?: { key: string; index: number; off?: number };
+  /** Builder: this folder is a Repeater — its content is drawn `count` times (the elements of a widget). */
+  repeat?: Repeat;
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
@@ -652,6 +658,8 @@ export interface Project {
   formats: Format[];
   /** Designer drafts not yet published (the operator uses `templates`). */
   drafts?: Template[];
+  /** Widgets built with the Builder (engine/built.ts). */
+  widgets?: WidgetDef[];
   /** Project settings changed in the Designer, waiting for Publish (the Operator uses the fields above). */
   pending?: Pending;
   /** The empty template a new project starts with: the server removes it at a publish while it has no layer. */
@@ -881,3 +889,106 @@ export interface Motion {
   from: number;
 }
 export type MotionKind = 'pulse' | 'blink' | 'swing' | 'float' | 'shake' | 'kenBurns';
+
+// ---------------------------------------------------------------- built widgets --
+// Mirror of crates/cg-core/src/built.rs (the definition the server reads: vars, controls).
+
+/** A widget made with the Builder: its elements, its variables, the options the Designer sets and the controls the Operator gets. */
+export interface WidgetDef {
+  id: string;
+  name: string;
+  /** A Lucide icon name. */
+  icon?: string;
+  /** Its frame (the elements are placed in it). */
+  width: number;
+  height: number;
+  /** Its elements (ids of the widget; parent null = at its top). */
+  layers: Layer[];
+  vars: WidgetVar[];
+  options: WidgetOption[];
+  controls: BuiltControl[];
+  /** Also in the shared Library (the other projects can add it). */
+  shared?: boolean;
+}
+
+export interface WidgetVar {
+  name: string;
+  kind?: 'number' | 'text' | 'list' | 'bool' | 'team';
+  /** Its value at the start (the template's start value comes first). */
+  initial: string;
+  /** The values it goes through (a list: Q1, Q2…). */
+  list?: string[];
+  /** Kept after the graphic has been on air (default); false: each take starts again. */
+  keep?: boolean;
+}
+
+/** A setting of the widget the Designer sets: it drives properties of its elements. */
+export interface WidgetOption {
+  id: string;
+  name: string;
+  /** Its group in the inspector (Équipe 1, Style…). */
+  group?: string;
+  kind: 'text' | 'number' | 'color' | 'font' | 'bool' | 'image' | 'choice';
+  default: unknown;
+  /** The properties it sets: an element and a dotted path in it (`text`, `props.fill`, `fontFamily`…). */
+  targets: { layer: string; path: string }[];
+  choices?: [string, string][];
+}
+
+/** A control of the widget: a button (or a field, a switch) of the Operator. */
+export interface BuiltControl {
+  id: string;
+  label: string;
+  /** A Lucide icon name (buttons of line 2) or none: its label. */
+  icon?: string;
+  key?: string;
+  kind?: 'button' | 'field' | 'toggle';
+  /** Line 2 (its buttons), a row of buttons (`row`: its label, a team's short name…), or line 3 (settings rows). */
+  place?: 'actions' | 'row' | 'settings';
+  row?: string;
+  /** The main action (Lire / Pause): its label shows in the Operator. */
+  main?: boolean;
+  tone?: 'red';
+  /** Asks first on air. */
+  confirm?: boolean;
+  /** The Designer chooses whether the Operator gets it (a radio in the template); else always there. */
+  choose?: boolean;
+  /** A field: its placeholder (mm:ss…). */
+  placeholder?: string;
+  /** A switch: the variable it shows. */
+  shows?: string;
+  actions: CtlAction[];
+}
+
+/** One thing a control does (see built.rs `Action`). */
+export interface CtlAction {
+  op: 'add' | 'set' | 'toggle' | 'next' | 'prev' | 'cycle' | 'reset' | 'undo' | 'timer';
+  var?: string;
+  value?: string;
+  /** timer: the Temps element (its id in the widget). */
+  layer?: string;
+  /** timer: its argument (seconds, a time; `$value`: typed). */
+  arg?: string;
+}
+
+/** A built widget placed in a template. */
+export interface WidgetInstance {
+  def: string;
+  /** Start values of its variables in this template. */
+  vars: Record<string, string>;
+  /** Its options as the template sets them (option id → value). */
+  options?: Record<string, unknown>;
+}
+
+/** A Repeater (Builder): its content drawn `count` times, side by side. */
+export interface Repeat {
+  count: number;
+  /** The variable lighting the copies (copy i lit while it is above i). */
+  lit?: string;
+  layout: 'row' | 'column' | 'grid';
+  /** Copies per row (grid). */
+  cols?: number;
+  gap: number;
+  /** Opacity of an unlit copy (0: not drawn). */
+  off: number;
+}

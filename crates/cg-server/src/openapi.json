@@ -978,6 +978,62 @@
     }
    }
   },
+  "/api/projects/{id}/widgets/{wid}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "wid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Widget id"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Save a widget built with the Builder",
+    "description": "Its elements, variables, options and controls. Templates using it get its new elements in their drafts (on air at Publish).\n\n**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Remove a widget built with the Builder",
+    "description": "Only when no template uses it.\n\n**Rights:** admin, designer.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
   "/api/projects/{id}/templates/{tid}": {
    "parameters": [
     {

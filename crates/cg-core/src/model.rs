@@ -845,6 +845,54 @@ pub struct Layer {
     /// ([`Template::camera`]); top-level layers only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<crate::tracking::Track>,
+    /// A widget built with the Builder: this folder holds the elements
+    /// generated from its definition ([`crate::built`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget: Option<WidgetInstance>,
+    /// A copy made by a Repeater: drawn in full only while a value is above
+    /// its index.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lit: Option<Lit>,
+}
+
+/// A built widget placed in a template (see [`crate::built`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetInstance {
+    /// Its definition ([`crate::built::Def::id`] in the project).
+    pub def: String,
+    /// Start values of its variables in this template (name → value).
+    #[serde(default)]
+    pub vars: BTreeMap<String, String>,
+    /// Its options as the template sets them (option id → value).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, serde_json::Value>,
+}
+
+/// A copy made by a Repeater: drawn in full while the number in the value
+/// `key` is above `index`, else at `off` of its opacity (0: not drawn).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lit {
+    pub key: String,
+    pub index: u32,
+    #[serde(default)]
+    pub off: f64,
+}
+
+impl Lit {
+    /// The opacity factor of the copy with these values.
+    pub fn factor(&self, data: &crate::anim::Data) -> f64 {
+        let n = data
+            .get(&self.key)
+            .and_then(|v| v.trim().replace(',', ".").parse::<f64>().ok())
+            .unwrap_or(0.0);
+        if n > self.index as f64 {
+            1.0
+        } else {
+            self.off.clamp(0.0, 1.0)
+        }
+    }
 }
 
 /// A movement a layer repeats (see [`crate::anim::apply_motion`]).
@@ -1959,12 +2007,23 @@ impl Template {
             .map(|m| m.frame.min(self.duration))
     }
 
-    /// Default data built from field defaults.
+    /// Default data built from field defaults, and the start values of its
+    /// built widgets' variables.
     pub fn default_data(&self) -> BTreeMap<String, String> {
-        self.fields
+        let mut d: BTreeMap<String, String> = self
+            .fields
             .iter()
             .map(|f| (f.key.clone(), f.default.clone()))
-            .collect()
+            .collect();
+        for l in &self.layers {
+            if let Some(w) = &l.widget {
+                for (n, v) in &w.vars {
+                    d.entry(crate::built::var_key(&l.id, n))
+                        .or_insert_with(|| v.clone());
+                }
+            }
+        }
+        d
     }
 }
 
@@ -2267,6 +2326,9 @@ pub struct Project {
     /// there. A draft without a published template is a new template.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub drafts: Vec<Template>,
+    /// Widgets built with the Builder ([`crate::built`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub widgets: Vec<crate::built::Def>,
     /// The empty template a new project starts with: removed at a publish
     /// while it still has no layer ([`Project::drop_empty_starter`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2371,6 +2433,7 @@ impl Project {
             playlists: Vec::new(),
             drafts: Vec::new(),
             logic_flows: Vec::new(),
+            widgets: Vec::new(),
             pending: None,
             ..self.clone()
         }

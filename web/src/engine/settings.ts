@@ -44,7 +44,7 @@ export function settingKind(v: unknown, path: string): FieldKind {
   return 'text';
 }
 
-function writePath(o: Record<string, unknown>, path: string, v: unknown) {
+export function writePath(o: Record<string, unknown>, path: string, v: unknown) {
   const ks = path.split('.');
   let a = o;
   for (let i = 0; i < ks.length - 1; i++) {

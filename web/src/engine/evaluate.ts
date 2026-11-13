@@ -1,4 +1,5 @@
 // Animation evaluation — mirror of crates/cg-core/src/{easing,anim}.rs.
+import { varKey } from './built';
 import { asNumber } from './expr';
 import { COLOR_PROPS, PROPS, type Color, type Data, type Easing, type Keyframe, type Layer, type Prop, type Template, type TextTransform, type Value } from './types';
 
@@ -249,6 +250,11 @@ export function resolveLayer(layer: Layer, frame: number, data: Data, hold = 0):
     for (const [a, b] of lockedPairs(layer)) for (const p of [a, b]) own[p] = propValue(layer, p, frame);
     keepRatios(layer, own, out);
   }
+  // A Repeater's copy: dimmed (or not drawn) while its value is not above its index.
+  if (layer.lit) {
+    const n = parseFloat((data[layer.lit.key] ?? '').trim().replace(',', '.'));
+    if (!(n > layer.lit.index) && typeof out.opacity === 'number') out.opacity *= Math.max(0, Math.min(1, layer.lit.off ?? 0));
+  }
   return out;
 }
 
@@ -287,7 +293,10 @@ export const num = (v: Value) => (typeof v === 'number' ? v : 0);
 export const col = (v: Value): Color => (Array.isArray(v) ? v : [0, 0, 0, 0]);
 
 export function defaultData(t: Template): Data {
-  return Object.fromEntries(t.fields.map((f) => [f.key, f.default]));
+  const d: Data = Object.fromEntries(t.fields.map((f) => [f.key, f.default]));
+  // The start values of its built widgets' variables (mirror of Template::default_data).
+  for (const l of t.layers) for (const [n, v] of Object.entries(l.widget?.vars ?? {})) d[varKey(l.id, n)] ??= v;
+  return d;
 }
 
 export function outFrame(t: Template): number | undefined {

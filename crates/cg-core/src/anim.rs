@@ -253,6 +253,15 @@ pub fn resolve_layer<'a>(
             .collect();
         keep_ratios(layer, &own, &mut values);
     }
+    // A Repeater's copy: dimmed (or not drawn) while its value is not above its index.
+    if let Some(lit) = &layer.lit {
+        let f = lit.factor(data);
+        if f < 1.0 {
+            if let Some(Value::Number(o)) = values.get_mut(&Prop::Opacity) {
+                *o *= f;
+            }
+        }
+    }
     let (text, image_src) = match &layer.kind {
         LayerKind::Text {
             text,

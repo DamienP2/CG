@@ -26,6 +26,8 @@ fn layer(
 ) -> Layer {
     Layer {
         anchor: None,
+        widget: None,
+        lit: None,
         id: id.into(),
         name: name.into(),
         parent: parent.map(Into::into),
@@ -1106,6 +1108,7 @@ fn demo_project_layers() -> Project {
         template_secs: None,
         colors: Vec::new(),
         logic_flows: Vec::new(),
+        widgets: Vec::new(),
         logic: Default::default(),
         id: "demo".into(),
         name: "Demo show".into(),

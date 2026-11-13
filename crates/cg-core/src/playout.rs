@@ -2066,11 +2066,50 @@ impl ChannelState {
                     .layers
                     .iter()
                     .find(|l| {
-                        crate::wid::widget_id(&l.kind).is_some()
+                        (crate::wid::widget_id(&l.kind).is_some() || l.widget.is_some())
                             && (l.id == target || l.name.eq_ignore_ascii_case(target.trim()))
                     })
                     .ok_or_else(|| PlayoutError::UnknownWidget(target.clone()))?;
                 let fps = project.frame_rate.as_f64().max(1.0);
+                // A widget built with the Builder: its control changes its
+                // variables (values of the graphic) and tells its Temps.
+                if let Some(w) = &l.widget {
+                    let def = project
+                        .widgets
+                        .iter()
+                        .find(|d| d.id == w.def)
+                        .ok_or_else(|| PlayoutError::UnknownWidget(target.clone()))?;
+                    let mut st = item
+                        .widgets
+                        .get(&l.id)
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
+                    let sent = crate::built::act(def, l, &mut item.data, &mut st, &op, &args)
+                        .map_err(PlayoutError::Widget)?;
+                    item.widgets.insert(l.id.clone(), st);
+                    for f in sent {
+                        let inner = t
+                            .layers
+                            .iter()
+                            .find(|x| x.id == f.layer)
+                            .ok_or_else(|| PlayoutError::UnknownWidget(f.layer.clone()))?;
+                        let ctx = crate::wid::ActCtx {
+                            now_ms: now_ms(),
+                            age_secs: item.layer_age(inner) / fps,
+                            fps,
+                            data: &item.data,
+                        };
+                        let mut st = item
+                            .widgets
+                            .get(&inner.id)
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null);
+                        crate::wid::act(inner, &mut st, &f.op, &f.args, &ctx)
+                            .map_err(PlayoutError::Widget)?;
+                        item.widgets.insert(inner.id.clone(), st);
+                    }
+                    return Ok(());
+                }
                 // The layer's own time on air (still while it waits for its start, or paused).
                 let ctx = crate::wid::ActCtx {
                     now_ms: now_ms(),
@@ -3136,6 +3175,7 @@ mod tests {
             template_secs: None,
             colors: Vec::new(),
             logic_flows: Vec::new(),
+            widgets: Vec::new(),
             logic: Default::default(),
             id: "p".into(),
             name: "p".into(),

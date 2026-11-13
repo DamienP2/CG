@@ -99,6 +99,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/locks", get(project_locks))
         .route("/api/projects/{id}/rundown", put(put_rundown))
         .route("/api/projects/{id}/zones", put(put_zones))
+        .route(
+            "/api/projects/{id}/widgets/{wid}",
+            put(put_widget).delete(delete_widget),
+        )
         .route("/api/projects/{id}/playlists", put(put_playlists))
         .route("/api/projects/{id}/formats", put(put_formats))
         .route("/api/projects/{id}/guides", put(put_guides))
@@ -770,6 +774,7 @@ async fn create_project(
             template_secs: None,
             colors: Vec::new(),
             logic_flows: Vec::new(),
+            widgets: Vec::new(),
             logic: Default::default(),
             id: String::new(),
             name: String::new(),
@@ -1152,6 +1157,7 @@ async fn import_create(
         template_secs: None,
         colors: Vec::new(),
         logic_flows: Vec::new(),
+        widgets: Vec::new(),
         logic: Default::default(),
         id: cg_core::new_id(),
         name: c.name.trim().to_string(),
@@ -1990,6 +1996,53 @@ async fn put_rundown(
             cg_core::merge_rundown(&p.rundown, &keep(base), &keep(rundown))
         }
     };
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Saves a widget built with the Builder (new or changed). Its templates
+/// get its new elements in their drafts (the Designer), on air at Publish.
+async fn put_widget(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, wid)): Path<(String, String)>,
+    Json(def): Json<cg_core::built::Def>,
+) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
+    require(me.can_design(&id))?;
+    if def.id != wid {
+        return Err(bad("the widget id does not match the address"));
+    }
+    if def.name.trim().is_empty() {
+        return Err(bad("a widget needs a name"));
+    }
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    match p.widgets.iter_mut().find(|w| w.id == wid) {
+        Some(w) => *w = def,
+        None => p.widgets.push(def),
+    }
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Removes a widget built with the Builder no template uses any more.
+async fn delete_widget(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, wid)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let used = p.templates.iter().chain(&p.drafts).find(|t| {
+        t.layers
+            .iter()
+            .any(|l| l.widget.as_ref().is_some_and(|w| w.def == wid))
+    });
+    if let Some(t) = used {
+        return Err(bad(format!("template “{}” still uses this widget", t.name)));
+    }
+    p.widgets.retain(|w| w.id != wid);
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }

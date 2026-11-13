@@ -794,6 +794,7 @@ impl AppState {
             }
         }
         let action = crate::antenna::action_name(&cmd);
+        let acted = matches!(cmd, Command::Act { .. });
         let mut values = BTreeMap::new();
         let snapshot = {
             let mut st = ch.state.write().await;
@@ -909,7 +910,59 @@ impl AppState {
             state: snapshot.clone(),
             server_time: now_ms(),
         });
+        if acted {
+            self.keep_widget_values(&project, &snapshot).await;
+        }
         Ok(snapshot)
+    }
+
+    /// What the operator did on air to built widgets stays with their
+    /// rundown item: the next take starts from it (their variables marked to
+    /// keep; the others start again).
+    async fn keep_widget_values(&self, project: &Project, st: &ChannelState) {
+        let mut changes = Vec::new();
+        for item in st.layers.values() {
+            let (Some(rid), Some(t)) = (&item.rundown_id, project.template(&item.template_id))
+            else {
+                continue;
+            };
+            if !t.layers.iter().any(|l| l.widget.is_some()) {
+                continue;
+            }
+            let kept = cg_core::built::kept(&project.widgets, &t.layers, &item.data);
+            let drop = cg_core::built::not_kept(&project.widgets, &t.layers);
+            let Some(r) = project.rundown.iter().find(|r| &r.id == rid) else {
+                continue;
+            };
+            if kept.iter().all(|(k, v)| r.data.get(k) == Some(v))
+                && drop.iter().all(|k| !r.data.contains_key(k))
+            {
+                continue;
+            }
+            changes.push((rid.clone(), kept, drop));
+        }
+        if changes.is_empty() {
+            return;
+        }
+        // A project being saved right now: the next action keeps it all.
+        let Ok(_edit) = self.edits.try_lock() else {
+            return;
+        };
+        let Some(p) = self.project(&project.id).await else {
+            return;
+        };
+        let mut p = (*p).clone();
+        for (rid, kept, drop) in changes {
+            if let Some(r) = p.rundown.iter_mut().find(|r| r.id == rid) {
+                r.data.extend(kept);
+                for k in drop {
+                    r.data.remove(&k);
+                }
+            }
+        }
+        if let Err(e) = self.save_project(p).await {
+            tracing::warn!(error = %e, "could not keep the widgets' values in the rundown");
+        }
     }
 
     /// Puts the channel back as it was before its last action that can be

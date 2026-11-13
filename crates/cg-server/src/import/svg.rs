@@ -3772,6 +3772,8 @@ fn same(a: Value, b: Value) -> bool {
 fn layer(id: &str, name: &str, parent: Option<&str>, kind: LayerKind) -> Layer {
     Layer {
         anchor: None,
+        widget: None,
+        lit: None,
         id: id.to_string(),
         name: name.to_string(),
         parent: parent.map(str::to_string),
