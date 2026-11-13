@@ -11,9 +11,9 @@ import type { BuiltControl, CtlAction, Layer, Prop, Template, WidgetOption, Widg
 import { t } from '../i18n';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Dropdown } from '../ui/Dropdown';
-import { BUILT_ICONS } from '../widgets/built';
+import { BUILT_ICONS, BuiltTry } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
-import { closeBuilder, varFields } from './builder';
+import { closeBuilder, defOf, varFields } from './builder';
 import { findLayer, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 
@@ -470,8 +470,10 @@ function ControlsPane() {
     [t('Rows of buttons'), b.controls.filter((x) => place(x) === 'row')],
     [t('Settings'), b.controls.filter((x) => place(x) === 'settings')],
   ];
+  const def = defOf(tpl);
   return (
     <>
+      {def && def.controls.length > 0 && <BuiltTry def={def} />}
       {groups.map(([g, list]) =>
         list.length ? (
           <Section key={g} id={`bctl-${g}`} title={g}>

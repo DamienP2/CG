@@ -9,7 +9,7 @@ import { useApp } from '../store';
 import { findLayer, useDesigner } from '../designer/designerStore';
 import { openBuilder } from '../designer/builder';
 import { t } from '../i18n';
-import { Bound, ColorPick, defineWidget, Msg, Num, Row, Section, Seg, setPath, Text, Toggle, useCentreMode, type OperatorProps } from './kit';
+import { Bound, CentreModeContext, ColorPick, defineWidget, Msg, Num, Row, Section, Seg, setPath, Text, Toggle, useCentreMode, type OperatorProps } from './kit';
 import { Centre, SetInput, type Line2Item } from './centre';
 
 /** The icons a control can have (Builder › Controls). */
@@ -66,12 +66,16 @@ function byRow(list: BuiltControl[]): [string, BuiltControl[]][] {
  * The control centre of a built widget. On air its controls go to the server (built::act); in the
  * Operator's preview they set the take's start values; in the Designer they try them on its values.
  */
-function BuiltCentre({ layer, data, act, item, setData }: OperatorProps) {
-  const def = useWidgetDef(layer);
+function BuiltCentre(p: OperatorProps) {
+  const def = useWidgetDef(p.layer);
+  return def ? <CentreOf {...p} def={def} /> : null;
+}
+
+/** The control centre of the widget `def` placed as `layer`. `builder`: tried in the Builder (its variables by their names, its elements by their ids). */
+function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorProps & { def: WidgetDef; builder?: boolean }) {
   const mode = useCentreMode();
   const toast = useApp((s) => s.toast);
   const st = useRef<BuiltState | undefined>(undefined);
-  if (!def) return null;
   const designer = mode === 'designer';
   const sb = layer.settingBindings ?? {};
   // What the Operator gets: every control, but those the Designer chooses (exposed in the template).
@@ -82,9 +86,12 @@ function BuiltCentre({ layer, data, act, item, setData }: OperatorProps) {
       const r = builtAct(def, layer, data, st.current, c.id, typed);
       st.current = r.state;
       if (designer) {
-        useDesigner.setState((s) => ({ previewData: { ...s.previewData, ...r.set } }));
+        // In the Builder: its variables are the template's fields, its elements its layers.
+        const own = (k: string, pre: string) => (builder && k.startsWith(pre) ? k.slice(pre.length) : k);
+        const set = Object.fromEntries(Object.entries(r.set).map(([k, v]) => [own(k, varKey(layer.id, '')), v]));
+        useDesigner.setState((s) => ({ previewData: { ...s.previewData, ...set } }));
         // Its Temps are tried too.
-        for (const f of r.forward) void useDesigner.getState().actWidget(f.layer, f.op, f.args);
+        for (const f of r.forward) void useDesigner.getState().actWidget(own(f.layer, `${layer.id}/`), f.op, f.args);
       } else setData?.(r.set);
     } catch (e) {
       const m = (e as Error).message;
@@ -135,6 +142,23 @@ function BuiltCentre({ layer, data, act, item, setData }: OperatorProps) {
     <Centre name={layer.name} actions={actions} rows={rows.length ? rows : undefined} l3Air>
       {settings.length ? settings : undefined}
     </Centre>
+  );
+}
+
+/** The widget being built, as one layer (its variables keyed as in a template). */
+const TRY_ID = 'builder';
+
+/** In the Builder: the control centre its controls make (the Operator's preview and its On air card), tried on the stage. */
+export function BuiltTry({ def }: { def: WidgetDef }) {
+  const previewData = useDesigner((s) => s.previewData);
+  const layer = { id: TRY_ID, name: def.name, type: 'group', parent: null, visible: true, locked: false, props: {}, tracks: {}, bindings: {}, widget: { def: def.id, vars: {}, options: {} } } as unknown as Layer;
+  const data = Object.fromEntries(def.vars.map((v) => [varKey(TRY_ID, v.name), previewData[v.name] ?? v.initial]));
+  return (
+    <div className="pp-try">
+      <CentreModeContext.Provider value="designer">
+        <CentreOf def={def} layer={layer} data={data} act={() => {}} state={undefined} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} builder />
+      </CentreModeContext.Provider>
+    </div>
   );
 }
 
