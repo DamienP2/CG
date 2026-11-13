@@ -4,6 +4,7 @@
 import { interpolateText } from './evaluate';
 import type { ClockMode, Data, Layer, PlayoutItem } from './types';
 import { lineWidth } from './textFit';
+import { rollClock } from './lists';
 
 export interface TimeCtx {
   /** Wall-clock time (server clock), Unix ms. */
@@ -68,7 +69,8 @@ export function lottieFrame(group: Layer, frame: number, hold: number, time: Tim
 
 /** Mirrors PlayoutItem::layer_age (frames). */
 export function layerAgeFrames(item: PlayoutItem, age: number, layer: Layer): number {
-  const c = item.clocks?.[layer.id];
+  // A scrolling folder's moving group (`G~roll`) runs on the folder's clock (lists.ts).
+  const c = item.clocks?.[rollClock(layer.id)];
   if (c) return Math.max(0, (c.pausedAt ?? age) - c.offset);
   return layer.manualStart ? 0 : age;
 }

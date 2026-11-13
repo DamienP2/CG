@@ -1,5 +1,5 @@
 import { SceneLayers } from './sceneLayers';
-import { RichKeys, runs as richRuns, typedKeys } from './rich';
+import { hasMarkup, plain, RichKeys, runs as richRuns, typedKeys } from './rich';
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
 import { Boundary } from '../ui/Boundary';
@@ -7,15 +7,16 @@ import { Sparkles } from 'lucide-react';
 import { t } from '../i18n';
 import { withSettings } from './settings';
 import { ValueMotionContext, valueTransform } from './valueMotion';
-import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
+import { createContext, memo, use, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
 import { TimeContext, useLayerTime, type Motion } from './LiveTime';
-import { col, cssColor, holdFrame, interpolateText, keepingRatios, num, transformText, parseHex, resolveLayer, tweakValue, type Resolved } from './evaluate';
+import { col, cssColor, holdFrame, interpolateText, keepingRatios, layerDefault, num, transformText, parseHex, resolveLayer, tweakValue, type Resolved } from './evaluate';
 import type { Data, FontStyle, GroupMask, Layer, LayerType, Template, TextAlign, Tweak, VerticalAlign } from './types';
 import * as W from './widgets';
 import { applyLogic, clockAt, targeted, logicUsesTime, measureLayer, patchedLayers, wiredLayers, withOutputs } from './logic';
 import type { Clock } from './expr';
 import { fitText, type Fitted } from './textFit';
 import { applyMotion } from './motion';
+import { expandLists, ROLL, rollClock } from './lists';
 import { applyTrack, TemplateCamera, useTrackedCamera } from './tracking';
 import { useFonts } from './fonts';
 import { widgetOf } from '../widgets';
@@ -137,6 +138,8 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
       if (layer.props.fill !== undefined || layer.tracks.fill) style.background = fill;
       if (layer.clip) style.overflow = 'hidden';
       style.borderRadius = num(r.cornerRadius);
+      // A scrolling folder (lists.ts): faded at both ends of its axis.
+      Object.assign(style, rollFade(layer, w, h));
       return { style };
     case 'rect':
       style.background = fill;
@@ -432,7 +435,9 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
   const logic0 = useContext(LogicContext).get(layer.id);
   // A repeated movement (Layer.motion): follows the layer's age, also while it holds on air (the rest stands still).
   const lt = useLayerTime(layer.motion ? 'wall' : false);
-  const moved = layer.motion ? applyMotion(logic0 ?? resolveLayer(layer, frame, data, hold), layer.motion, frame, lt.fps ?? 50, lt.layerAge ? lt.layerAge(layer) : lt.ageSecs) : logic0;
+  // A scrolling folder's moving group (`G~roll`): on the folder's clock (its Play / Pause / Reset).
+  const clockOf = layer.motion && layer.id.endsWith(ROLL) ? (use(SceneLayers).find((l) => l.id === rollClock(layer.id)) ?? layer) : layer;
+  const moved = layer.motion ? applyMotion(logic0 ?? resolveLayer(layer, frame, data, hold), layer.motion, frame, lt.fps ?? 50, lt.layerAge ? lt.layerAge(clockOf) : lt.ageSecs) : logic0;
   // Anchored to the scene: where its camera sees it now (redrawn on each sample).
   const tracked = useTrackedCamera(layer);
   const logic = tracked ? applyTrack(moved ?? resolveLayer(layer, frame, data, hold), layer.anchor!, tracked.cam, tracked.w, tracked.h) : moved;
@@ -505,6 +510,33 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
     </div>
   );
 });
+
+/**
+ * The mask of a scrolling folder (a clipping group with `roll.fade`): what it draws faded over
+ * `fade` px at both ends of its axis, alpha 0 at the edge, 1 at `fade` px in, at most half its
+ * box (lists.ts; cg-render: faded_box).
+ */
+function rollFade(layer: Layer, w: number, h: number): CSSProperties | undefined {
+  const fade = layer.type === 'group' && layer.clip ? (layer.roll?.fade ?? 0) : 0;
+  if (!(fade > 0)) return undefined;
+  const up = layer.roll!.dir === 'up';
+  const len = up ? h : w;
+  const f = Math.min(fade, len / 2);
+  const mask = `linear-gradient(to ${up ? 'bottom' : 'right'}, transparent 0px, #000 ${f}px, #000 ${len - f}px, transparent ${len}px)`;
+  return { maskImage: mask, WebkitMaskImage: mask };
+}
+
+/** A list copy's text width on one line, as the Text widget shows it (tags out, fields filled in, case changed): lists.ts's measure. */
+const listMeasure =
+  (data: Data) =>
+  (l: Layer, s: string): number => {
+    if (l.type !== 'text') return 0;
+    const t = interpolateText(hasMarkup(s) ? plain(s) : s, data);
+    const shown = l.uppercase ? t.toUpperCase() : transformText(t, l.transform);
+    const size = num(l.props.fontSize ?? layerDefault(l, 'fontSize'));
+    const ls = num(l.props.letterSpacing ?? layerDefault(l, 'letterSpacing'));
+    return Math.max(0, ...shown.split('\n').map((line) => W.textWidth(line, l.fontFamily, l.fontWeight, size, ls)));
+  };
 
 /** Room around a folder that excludes: its layers seen outside its box too. */
 const MASK_PAD = 400;
@@ -637,12 +669,15 @@ function SceneBody({ template, frame, data, interactive, clock, tweaks }: SceneP
   data = computed;
   const patched = useMemo(() => patchedLayers(template, frame, data, holdAt, resolveLayer, clock), [template, frame, data, clock.secs]); // eslint-disable-line react-hooks/exhaustive-deps
   if (patched !== template.layers) template = { ...template, layers: patched };
+  // Text measured by the logic and the lists changes when fonts finish loading.
+  const fontsReady = useFonts((s) => s.ready);
+  // A list folder's content once per row of its list, going by in its box (lists.ts; after the Logic, as cg-render's prepared()).
+  const listed = useMemo(() => expandLists(template.layers, data, listMeasure(data)), [template.layers, data, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (listed !== template.layers) template = { ...template, layers: listed };
   // Kept from one frame to the next: the layers that do not change are not drawn again.
   const childrenOf = useMemo(() => childrenMap(template.layers), [template.layers]);
   const framed = useMemo(() => framedLayers(template.layers, childrenOf, template.logic), [template.layers, childrenOf, template.logic]);
   const hold = holdFrame(template);
-  // Text measured by the logic changes when fonts finish loading.
-  const fontsReady = useFonts((s) => s.ready);
   // Relations: resolve every layer, run the graph, keep the changed ones.
   const logic = useMemo(() => {
     if (!template.logic?.nodes.length && !tweaks?.length) return NO_LOGIC;

@@ -123,6 +123,14 @@ const ZOOM_MAX = 4;
 const clampZoom = (z: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
 
 /** The canvas's zoom, in the canvas toolbar: a slider, Fit (once) and Auto (fits and follows the panels' size). */
+
+/** The layer a drawn copy stands for: a Repeater's or a list's copy (`#2`, `#2@1`, `#2@w`), a list's roll (`~roll`). */
+const modelOf = (id: string) => id.replace(/~roll$/, '').replace(/#\d+(@\w+)?$/, '');
+
+/** What is drawn of a layer on the stage: itself, else its first copy (a list's model is drawn as its rows). */
+const drawnEl = (root: ParentNode | null | undefined, id: string) =>
+  root?.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`) ?? root?.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(`${id}#0`)}"]`) ?? null;
+
 export function StageZoom() {
   const { stageZoom, stageFit } = useDesigner(useShallow((s) => ({ stageZoom: s.stageZoom, stageFit: s.stageFit })));
   const zoom = stageZoom ?? stageFit;
@@ -358,21 +366,21 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
       same(
         was,
         parents.flatMap((id) => {
-          const el = root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
+          const el = drawnEl(root, id);
           return el ? [box(id, el)].filter((b) => b.width > 0 && b.height > 0) : [];
         }),
       ),
     );
     // One layer selected: its frame as it is seen, for the handles.
     const one = selected.length === 1 && template ? findLayer(template, selected[0]) : undefined;
-    const oneEl = one && root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(one.id)}"]`);
+    const oneEl = one && drawnEl(root, one.id);
     const pts = one && oneEl ? seenAt(oneEl, [...QUAD_AT, [num(propValue(one, 'anchorX', frame)), num(propValue(one, 'anchorY', frame))]], origin) : null;
     setQuad((was) => (!pts || !one ? null : was && was.id === one.id && was.pts.every((p, i) => p[0] === pts[i][0] && p[1] === pts[i][1]) ? was : { id: one.id, pts }));
     setBoxes((was) =>
       same(
         was,
         selected.flatMap((id) => {
-          const el = root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
+          const el = drawnEl(root, id);
           if (!el) return [];
           const r = el.getBoundingClientRect();
           return [{ id, left: r.left - origin.left, top: r.top - origin.top, width: r.width, height: r.height }];
@@ -595,7 +603,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
       }
       const v = (k: 'x' | 'y' | 'width' | 'height' | 'anchorX' | 'anchorY' | 'rotation' | 'scaleX' | 'scaleY' | 'skewX' | 'skewY') => num(propValue(l, k, st.frame));
       // As it is seen: turned and scaled around its anchor.
-      const el = root0?.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
+      const el = drawnEl(root0, id);
       const r = el?.getBoundingClientRect();
       const seenBox = r && origin0 && r.width > 0 ? { l: (r.left - origin0.left) / scale, t: (r.top - origin0.top) / scale, w: r.width / scale, h: r.height / scale } : undefined;
       start[id] = {
@@ -623,7 +631,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     const root = sceneRef.current;
     if (root) {
       const origin = root.getBoundingClientRect();
-      const moving = ids.map((id) => root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`)).filter((el): el is HTMLElement => !!el);
+      const moving = ids.map((id) => drawnEl(root, id)).filter((el): el is HTMLElement => !!el);
       for (const el of root.querySelectorAll<HTMLElement>('[data-layer-id]')) {
         if (moving.some((m) => m === el || m.contains(el) || el.contains(m))) continue;
         const r = el.getBoundingClientRect();
@@ -649,9 +657,11 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const owner = (id: string | undefined) => {
     const tpl = useDesigner.getState().template;
     if (!id || !tpl) return id;
+    // A copy (a Repeater's, a list's row, its repeats) or a list's roll: its model.
+    const model = findLayer(tpl, id) ? id : modelOf(id);
     let top: string | undefined;
-    for (let l = findLayer(tpl, id); l; l = l.parent ? findLayer(tpl, l.parent) : undefined) if (l.widget) top = l.id;
-    return top ?? (findLayer(tpl, id) ? id : id.replace(/#\d+$/, ''));
+    for (let l = findLayer(tpl, model); l; l = l.parent ? findLayer(tpl, l.parent) : undefined) if (l.widget) top = l.id;
+    return top ?? model;
   };
   const layerAtRaw = (e: { target: EventTarget; clientX: number; clientY: number }) => {
     const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]');
