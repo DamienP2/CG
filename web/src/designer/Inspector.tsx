@@ -1206,13 +1206,14 @@ function LayerInspector({ layer }: { layer: Layer }) {
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
       <OperatorPreview layer={layer} />
-      {/* Builder: a folder repeated per row of a list, going by in its box; an element of such a folder. */}
+      {/* Builder: a folder repeated per row of a list, going by in its box; an element of such a folder. Elsewhere: how a folder goes by. */}
       {template?.builder && layer.type === 'group' && folder && (
         <>
           <RepeatGroup layer={layer} />
           <RollGroup layer={layer} />
         </>
       )}
+      {!template?.builder && folder && layer.roll && <RollGroup layer={layer} />}
       {template?.builder && inList && <InListGroup layer={layer} folder={inList} />}
       {(layer.type !== 'group' || layer.mask) && <MaskGroup layer={layer} />}
       {spec?.Inspector ? (

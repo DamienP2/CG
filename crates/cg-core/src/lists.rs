@@ -30,6 +30,28 @@ pub type Row = BTreeMap<String, String>;
 /// A row whose `on` is `false` is left out; values that are not strings are
 /// their JSON text. Not a JSON array: one row per line that is not empty
 /// (trimmed), in the column `texte`. Missing: no rows.
+/// A list folder's rows: from the data under its key, else its own; their
+/// values filled from the data (a row's `{{q1}}` shows the value `q1`).
+pub fn list_rows(list: &crate::ListRepeat, data: &Data) -> Vec<Row> {
+    let mut out = match data.get(&list.key).filter(|_| !list.key.is_empty()) {
+        Some(v) => rows(Some(v)),
+        None => list
+            .rows
+            .iter()
+            .filter(|r| r.get("on").map(String::as_str) != Some("false"))
+            .cloned()
+            .collect(),
+    };
+    for r in &mut out {
+        for v in r.values_mut() {
+            if v.contains("{{") {
+                *v = crate::anim::interpolate_text(v, data);
+            }
+        }
+    }
+    out
+}
+
 pub fn rows(value: Option<&str>) -> Vec<Row> {
     let Some(value) = value else {
         return Vec::new();
@@ -417,7 +439,7 @@ fn expand_folder(
     measure: &mut dyn FnMut(&Layer, &str) -> f64,
 ) -> (Layer, Option<Layer>, Vec<Layer>) {
     let list = g.list.as_ref().expect("a list folder");
-    let rows = rows(data.get(&list.key).map(String::as_str));
+    let rows = list_rows(list, data);
     let roll = g.roll.as_ref();
     let top = match roll {
         Some(_) => format!("{}{ROLL_SUFFIX}", g.id),
@@ -976,5 +998,25 @@ mod tests {
     fn a_roll_group_runs_on_its_folders_clock() {
         assert_eq!(clock_id("G~roll"), "G");
         assert_eq!(clock_id("G"), "G");
+    }
+
+    #[test]
+    fn a_folders_own_rows_and_values_from_the_data() {
+        let list: crate::ListRepeat = serde_json::from_value(serde_json::json!({
+            "key": "absent", "layout": "row", "gap": 0,
+            "rows": [{ "texte": "{{q1}}", "cat": "{{d1}}" }, { "texte": "off", "on": "false" }]
+        }))
+        .unwrap();
+        let data: Data = [
+            ("q1".to_string(), "CAC 40".to_string()),
+            ("d1".to_string(), "▲".to_string()),
+        ]
+        .into();
+        let r = list_rows(&list, &data);
+        assert_eq!(r.len(), 1);
+        assert_eq!(
+            (r[0]["texte"].as_str(), r[0]["cat"].as_str()),
+            ("CAC 40", "▲")
+        );
     }
 }

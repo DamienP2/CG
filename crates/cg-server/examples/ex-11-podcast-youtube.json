@@ -362,12 +362,12 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 1250.0,
-       "y": 54.0,
-       "width": 600.0,
-       "height": 84.0,
-       "anchorX": 0.0,
-       "anchorY": 0.0
+       "x": 1250,
+       "y": 54,
+       "width": 600,
+       "height": 84,
+       "anchorX": 0,
+       "anchorY": 0
       },
       "tracks": {},
       "bindings": {},
@@ -375,11 +375,11 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 60.0,
-         "y": 280.0,
+         "x": 60,
+         "y": 280,
          "scaleX": 1.6,
          "scaleY": 1.6,
-         "width": 960.0,
+         "width": 960,
          "height": 134.4
         }
        }
@@ -393,45 +393,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 600.0,
-       "height": 84.0
+       "x": 0,
+       "y": 0,
+       "width": 600,
+       "height": 84
       },
       "tracks": {
        "x": [
         {
-         "frame": 0.0,
-         "value": 640.0,
+         "frame": 0,
+         "value": 640,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 22.0,
-         "value": 0.0,
+         "frame": 22,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 40.0,
-         "value": 0.0,
+         "frame": 40,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 52.0,
-         "value": 640.0,
+         "frame": 52,
+         "value": 640,
          "easing": {
           "type": "linear"
          }
@@ -439,29 +439,29 @@
        ],
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 10.0,
-         "value": 1.0,
+         "frame": 10,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 40.0,
-         "value": 1.0,
+         "frame": 40,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 50.0,
-         "value": 0.0,
+         "frame": 50,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -479,21 +479,21 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 600.0,
-       "height": 84.0,
+       "x": 0,
+       "y": 0,
+       "width": 600,
+       "height": 84,
        "fill": [
         0.1216,
         0.102,
         0.1412,
         0.9
        ],
-       "cornerRadius": 42.0,
+       "cornerRadius": 42,
        "stroke": [
-        1.0,
-        1.0,
-        1.0,
+        1,
+        1,
+        1,
         0.08
        ],
        "strokeWidth": 1.5
@@ -509,15 +509,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 12.0,
-       "y": 12.0,
-       "width": 60.0,
-       "height": 60.0,
+       "x": 12,
+       "y": 12,
+       "width": 60,
+       "height": 60,
        "fill": [
-        1.0,
+        1,
         0.3529,
         0.2353,
-        1.0
+        1
        ]
       },
       "tracks": {},
@@ -531,17 +531,17 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 12.0,
-       "y": 10.0,
-       "width": 60.0,
-       "height": 60.0,
+       "x": 12,
+       "y": 10,
+       "width": 60,
+       "height": 60,
        "fill": [
         0.0784,
         0.0667,
         0.0902,
-        1.0
+        1
        ],
-       "fontSize": 32.0
+       "fontSize": 32
       },
       "tracks": {},
       "bindings": {},
@@ -556,39 +556,63 @@
      {
       "id": "social-6",
       "name": "Comptes",
+      "type": "group",
       "parent": "social-2",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 92.0,
-       "y": 0.0,
-       "width": 490.0,
-       "height": 84.0,
+       "x": 92,
+       "y": 0,
+       "width": 490,
+       "height": 84
+      },
+      "tracks": {},
+      "bindings": {},
+      "clip": true,
+      "list": {
+       "key": "handles",
+       "layout": "column",
+       "gap": 0
+      },
+      "roll": {
+       "mode": "one",
+       "dir": "up",
+       "by": "speed",
+       "speed": 120,
+       "duration": 30,
+       "pause": 3,
+       "fade": 0
+      }
+     },
+     {
+      "id": "social-6-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "social-6",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 490,
+       "height": 84,
+       "fontSize": 26,
        "fill": [
         0.9647,
         0.9412,
         0.9098,
-        1.0
-       ],
-       "fontSize": 26.0
+        1
+       ]
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{handles}}",
-      "separator": "   ",
-      "speed": 110.0,
-      "mode": "flip",
-      "fontFamily": "Space Grotesk",
-      "fontWeight": 500,
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "symbol",
-      "startFull": true,
-      "itemDur": 3.0,
-      "transDur": 0.5,
-      "trans": "slide"
+      "fontFamily": "Space Grotesk",
+      "fontWeight": 500,
+      "overflow": "fit"
      }
     ],
     "zone": "social",

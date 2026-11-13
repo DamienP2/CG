@@ -291,45 +291,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 990.0,
-       "width": 1920.0,
-       "height": 56.0
+       "x": 0,
+       "y": 990,
+       "width": 1920,
+       "height": 56
       },
       "tracks": {
        "y": [
         {
-         "frame": 0.0,
-         "value": 1080.0,
+         "frame": 0,
+         "value": 1080,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 18.0,
-         "value": 990.0,
+         "frame": 18,
+         "value": 990,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 30.0,
-         "value": 990.0,
+         "frame": 30,
+         "value": 990,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 42.0,
-         "value": 1080.0,
+         "frame": 42,
+         "value": 1080,
          "easing": {
           "type": "linear"
          }
@@ -347,10 +347,10 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1920.0,
-       "height": 56.0,
+       "x": 0,
+       "y": 0,
+       "width": 1920,
+       "height": 56,
        "fill": [
         0.0275,
         0.0353,
@@ -369,15 +369,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1920.0,
-       "height": 2.0,
+       "x": 0,
+       "y": 0,
+       "width": 1920,
+       "height": 2,
        "fill": [
-        1.0,
+        1,
         0.6902,
         0.1255,
-        1.0
+        1
        ]
       },
       "tracks": {},
@@ -391,15 +391,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 2.0,
-       "width": 280.0,
-       "height": 54.0,
+       "x": 0,
+       "y": 2,
+       "width": 280,
+       "height": 54,
        "fill": [
         0.0627,
         0.0784,
         0.1059,
-        1.0
+        1
        ]
       },
       "tracks": {},
@@ -413,18 +413,18 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 96.0,
-       "y": 2.0,
-       "width": 184.0,
-       "height": 54.0,
+       "x": 96,
+       "y": 2,
+       "width": 184,
+       "height": 54,
        "fill": [
-        1.0,
+        1,
         0.6902,
         0.1255,
-        1.0
+        1
        ],
-       "fontSize": 24.0,
-       "letterSpacing": 2.0
+       "fontSize": 24,
+       "letterSpacing": 2
       },
       "tracks": {},
       "bindings": {},
@@ -439,105 +439,181 @@
      {
       "id": "ticker-6",
       "name": "Indices",
+      "type": "group",
       "parent": "ticker-1",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 300.0,
-       "y": 2.0,
-       "width": 1620.0,
-       "height": 54.0,
+       "x": 300,
+       "y": 2,
+       "width": 1620,
+       "height": 54
+      },
+      "tracks": {},
+      "bindings": {},
+      "clip": true,
+      "list": {
+       "key": "",
+       "layout": "row",
+       "gap": 56,
+       "rows": [
+        {
+         "texte": "{{q1}}",
+         "catégorie": "{{d1}}"
+        },
+        {
+         "texte": "{{q2}}",
+         "catégorie": "{{d2}}"
+        },
+        {
+         "texte": "{{q3}}",
+         "catégorie": "{{d3}}"
+        },
+        {
+         "texte": "{{q4}}",
+         "catégorie": "{{d4}}"
+        },
+        {
+         "texte": "{{q5}}",
+         "catégorie": "{{d5}}"
+        },
+        {
+         "texte": "{{q6}}",
+         "catégorie": "{{d6}}"
+        },
+        {
+         "texte": "{{q7}}",
+         "catégorie": "{{d7}}"
+        },
+        {
+         "texte": "{{q8}}",
+         "catégorie": "{{d8}}"
+        }
+       ]
+      },
+      "roll": {
+       "mode": "continuous",
+       "dir": "left",
+       "by": "speed",
+       "speed": 110,
+       "duration": 30,
+       "pause": 4,
+       "fade": 50
+      }
+     },
+     {
+      "id": "ticker-6-cat",
+      "name": "Catégorie",
+      "type": "rect",
+      "parent": "ticker-6",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 9.719999999999999,
+       "width": 40.120000000000005,
+       "height": 34.56,
+       "cornerRadius": 4,
+       "fill": [
+        0.09803921568627451,
+        0.8313725490196079,
+        0.48627450980392156,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "inList": {
+       "when": {
+        "col": "catégorie",
+        "test": "filled"
+       },
+       "colors": [
+        {
+         "prop": "fill",
+         "col": "catégorie",
+         "map": {
+          "▲": "#19d47c",
+          "▼": "#ff4d5e"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "ticker-6-catt",
+      "name": "Texte de la catégorie",
+      "type": "text",
+      "parent": "ticker-6",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 9.719999999999999,
+       "width": 40.120000000000005,
+       "height": 34.56,
+       "fontSize": 18.2,
+       "fill": [
+        0.027450980392156862,
+        0.03529411764705882,
+        0.050980392156862744,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{catégorie}}",
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false,
+      "fontFamily": "JetBrains Mono",
+      "fontWeight": 700,
+      "inList": {
+       "when": {
+        "col": "catégorie",
+        "test": "filled"
+       },
+       "colors": [
+        {
+         "prop": "fill",
+         "col": "catégorie",
+         "map": {
+          "▲": "#07090d",
+          "▼": "#ffffff"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "ticker-6-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "ticker-6",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 52.120000000000005,
+       "y": 0,
+       "width": 1567.88,
+       "height": 54,
+       "fontSize": 26,
        "fill": [
         0.9098,
         0.9294,
         0.9529,
-        1.0
-       ],
-       "fontSize": 26.0
+        1
+       ]
       },
       "tracks": {},
       "bindings": {},
-      "text": "",
-      "separator": "   ",
-      "speed": 110.0,
-      "mode": "crawl",
-      "fontFamily": "JetBrains Mono",
-      "fontWeight": 500,
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "none",
-      "startFull": true,
-      "spacing": 56.0,
-      "fade": true,
-      "fadeW": 50.0,
-      "items": [
-       {
-        "cat": "▲",
-        "text": "{{q1}}",
-        "on": true
-       },
-       {
-        "cat": "▼",
-        "text": "{{q2}}",
-        "on": true
-       },
-       {
-        "cat": "▲",
-        "text": "{{q3}}",
-        "on": true
-       },
-       {
-        "cat": "▲",
-        "text": "{{q4}}",
-        "on": true
-       },
-       {
-        "cat": "▼",
-        "text": "{{q5}}",
-        "on": true
-       },
-       {
-        "cat": "▲",
-        "text": "{{q6}}",
-        "on": true
-       },
-       {
-        "cat": "▼",
-        "text": "{{q7}}",
-        "on": true
-       },
-       {
-        "cat": "▲",
-        "text": "{{q8}}",
-        "on": true
-       }
-      ],
-      "cats": [
-       {
-        "name": "▲",
-        "bg": "#19d47c",
-        "color": "#07090d",
-        "text": ""
-       },
-       {
-        "name": "▼",
-        "bg": "#ff4d5e",
-        "color": "#ffffff",
-        "text": ""
-       }
-      ],
-      "settingBindings": {
-       "items.0.cat": "d1",
-       "items.1.cat": "d2",
-       "items.2.cat": "d3",
-       "items.3.cat": "d4",
-       "items.4.cat": "d5",
-       "items.5.cat": "d6",
-       "items.6.cat": "d7",
-       "items.7.cat": "d8"
-      }
+      "fontFamily": "JetBrains Mono",
+      "fontWeight": 500,
+      "overflow": "visible"
      }
     ],
     "zone": "ticker",
@@ -3674,45 +3750,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 1404.0,
-       "y": 64.0,
-       "width": 420.0,
-       "height": 110.0
+       "x": 1404,
+       "y": 64,
+       "width": 420,
+       "height": 110
       },
       "tracks": {
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 10.0,
-         "value": 1.0,
+         "frame": 10,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 30.0,
-         "value": 1.0,
+         "frame": 30,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 38.0,
-         "value": 0.0,
+         "frame": 38,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -3720,37 +3796,37 @@
        ],
        "x": [
         {
-         "frame": 0.0,
-         "value": 1450.0,
+         "frame": 0,
+         "value": 1450,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 20.0,
-         "value": 1404.0,
+         "frame": 20,
+         "value": 1404,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 30.0,
-         "value": 1404.0,
+         "frame": 30,
+         "value": 1404,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 38.0,
-         "value": 1450.0,
+         "frame": 38,
+         "value": 1450,
          "easing": {
           "type": "linear"
          }
@@ -3768,22 +3844,22 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 420.0,
-       "height": 110.0,
+       "x": 0,
+       "y": 0,
+       "width": 420,
+       "height": 110,
        "fill": [
         0.0275,
         0.0353,
         0.051,
         0.94
        ],
-       "cornerRadius": 6.0,
+       "cornerRadius": 6,
        "stroke": [
         0.1451,
         0.1725,
         0.2196,
-        1.0
+        1
        ],
        "strokeWidth": 1.5
       },
@@ -3798,18 +3874,18 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 24.0,
-       "y": 10.0,
-       "width": 300.0,
-       "height": 30.0,
+       "x": 24,
+       "y": 10,
+       "width": 300,
+       "height": 30,
        "fill": [
-        1.0,
+        1,
         0.6902,
         0.1255,
-        1.0
+        1
        ],
-       "fontSize": 18.0,
-       "letterSpacing": 3.0
+       "fontSize": 18,
+       "letterSpacing": 3
       },
       "tracks": {},
       "bindings": {},
@@ -3824,39 +3900,63 @@
      {
       "id": "fx-4",
       "name": "Cours",
+      "type": "group",
       "parent": "fx-1",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 24.0,
-       "y": 42.0,
-       "width": 372.0,
-       "height": 56.0,
+       "x": 24,
+       "y": 42,
+       "width": 372,
+       "height": 56
+      },
+      "tracks": {},
+      "bindings": {},
+      "clip": true,
+      "list": {
+       "key": "items",
+       "layout": "column",
+       "gap": 0
+      },
+      "roll": {
+       "mode": "one",
+       "dir": "up",
+       "by": "speed",
+       "speed": 120,
+       "duration": 30,
+       "pause": 3,
+       "fade": 0
+      }
+     },
+     {
+      "id": "fx-4-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "fx-4",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 372,
+       "height": 56,
+       "fontSize": 32,
        "fill": [
         0.9098,
         0.9294,
         0.9529,
-        1.0
-       ],
-       "fontSize": 32.0
+        1
+       ]
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{items}}",
-      "separator": "   ",
-      "speed": 110.0,
-      "mode": "flip",
-      "fontFamily": "JetBrains Mono",
-      "fontWeight": 700,
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "none",
-      "startFull": true,
-      "itemDur": 3.0,
-      "transDur": 0.5,
-      "trans": "flip"
+      "fontFamily": "JetBrains Mono",
+      "fontWeight": 700,
+      "overflow": "fit"
      }
     ],
     "zone": "corner",

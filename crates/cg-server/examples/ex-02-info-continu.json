@@ -68,10 +68,10 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 856.0,
-       "width": 1920.0,
-       "height": 188.0
+       "x": 0,
+       "y": 856,
+       "width": 1920,
+       "height": 188
       },
       "tracks": {},
       "bindings": {},
@@ -79,8 +79,8 @@
       "overrides": {
        "vertical": {
         "props": {
-         "y": 1478.0,
-         "width": 1080.0
+         "y": 1478,
+         "width": 1080
         }
        }
       }
@@ -93,58 +93,58 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 96.0,
-       "y": 0.0,
-       "width": 200.0,
-       "height": 38.0,
+       "x": 96,
+       "y": 0,
+       "width": 200,
+       "height": 38,
        "fill": [
-        1.0,
+        1,
         0.8392,
         0.0392,
-        1.0
+        1
        ]
       },
       "tracks": {
        "cropRight": [
         {
-         "frame": 0.0,
-         "value": 1.0,
+         "frame": 0,
+         "value": 1,
          "easing": {
           "type": "hold"
          }
         },
         {
-         "frame": 8.0,
-         "value": 1.0,
+         "frame": 8,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 22.0,
-         "value": 0.0,
+         "frame": 22,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 48.0,
-         "value": 0.0,
+         "frame": 48,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 58.0,
-         "value": 1.0,
+         "frame": 58,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
@@ -155,7 +155,7 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 60.0
+         "x": 60
         }
        }
       }
@@ -168,60 +168,60 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 112.0,
-       "y": 0.0,
-       "width": 600.0,
-       "height": 38.0,
+       "x": 112,
+       "y": 0,
+       "width": 600,
+       "height": 38,
        "fill": [
         0.051,
         0.0549,
         0.0667,
-        1.0
+        1
        ],
-       "fontSize": 25.0,
+       "fontSize": 25,
        "letterSpacing": 1.5
       },
       "tracks": {
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "hold"
          }
         },
         {
-         "frame": 14.0,
-         "value": 0.0,
+         "frame": 14,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 24.0,
-         "value": 1.0,
+         "frame": 24,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 48.0,
-         "value": 1.0,
+         "frame": 48,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 54.0,
-         "value": 0.0,
+         "frame": 54,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -239,7 +239,7 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 76.0
+         "x": 76
         }
        }
       }
@@ -252,10 +252,10 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 96.0,
-       "y": 38.0,
-       "width": 1560.0,
-       "height": 96.0,
+       "x": 96,
+       "y": 38,
+       "width": 1560,
+       "height": 96,
        "fill": [
         0.0863,
         0.0941,
@@ -266,37 +266,37 @@
       "tracks": {
        "cropRight": [
         {
-         "frame": 0.0,
-         "value": 1.0,
+         "frame": 0,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 20.0,
-         "value": 0.0,
+         "frame": 20,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 44.0,
-         "value": 0.0,
+         "frame": 44,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 56.0,
-         "value": 1.0,
+         "frame": 56,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
@@ -307,14 +307,14 @@
       "fillStyle": {
        "kind": "linear",
        "color2": "#22252cf5",
-       "angle": 180.0
+       "angle": 180
       },
       "overrides": {
        "vertical": {
         "props": {
-         "x": 60.0,
-         "width": 808.0,
-         "height": 124.0
+         "x": 60,
+         "width": 808,
+         "height": 124
         }
        }
       }
@@ -327,15 +327,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 96.0,
-       "y": 38.0,
-       "width": 8.0,
-       "height": 96.0,
+       "x": 96,
+       "y": 38,
+       "width": 8,
+       "height": 96,
        "fill": [
-        1.0,
+        1,
         0.8392,
         0.0392,
-        1.0
+        1
        ]
       },
       "tracks": {},
@@ -343,8 +343,8 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 60.0,
-         "height": 124.0
+         "x": 60,
+         "height": 124
         }
        }
       }
@@ -357,60 +357,60 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 130.0,
-       "y": 38.0,
-       "width": 1500.0,
-       "height": 96.0,
+       "x": 130,
+       "y": 38,
+       "width": 1500,
+       "height": 96,
        "fill": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
+        1,
+        1,
+        1,
+        1
        ],
-       "fontSize": 52.0,
+       "fontSize": 52,
        "letterSpacing": 0.2
       },
       "tracks": {
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "hold"
          }
         },
         {
-         "frame": 10.0,
-         "value": 0.0,
+         "frame": 10,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 24.0,
-         "value": 1.0,
+         "frame": 24,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 40.0,
-         "value": 1.0,
+         "frame": 40,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 48.0,
-         "value": 0.0,
+         "frame": 48,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -418,44 +418,44 @@
        ],
        "y": [
         {
-         "frame": 0.0,
-         "value": 58.0,
+         "frame": 0,
+         "value": 58,
          "easing": {
           "type": "hold"
          }
         },
         {
-         "frame": 10.0,
-         "value": 58.0,
+         "frame": 10,
+         "value": 58,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 30.0,
-         "value": 38.0,
+         "frame": 30,
+         "value": 38,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 40.0,
-         "value": 38.0,
+         "frame": 40,
+         "value": 38,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 48.0,
-         "value": 58.0,
+         "frame": 48,
+         "value": 58,
          "easing": {
           "type": "linear"
          }
@@ -473,15 +473,15 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 92.0,
-         "width": 752.0,
-         "height": 124.0,
-         "fontSize": 44.0
+         "x": 92,
+         "width": 752,
+         "height": 124,
+         "fontSize": 44
         }
        }
       },
       "wrap": true,
-      "lineHeight": 1.0,
+      "lineHeight": 1,
       "maxLines": 2
      },
      {
@@ -492,58 +492,58 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 1664.0,
-       "y": 38.0,
-       "width": 160.0,
-       "height": 96.0,
+       "x": 1664,
+       "y": 38,
+       "width": 160,
+       "height": 96,
        "fill": [
-        1.0,
+        1,
         0.8392,
         0.0392,
-        1.0
+        1
        ]
       },
       "tracks": {
        "cropBottom": [
         {
-         "frame": 0.0,
-         "value": 1.0,
+         "frame": 0,
+         "value": 1,
          "easing": {
           "type": "hold"
          }
         },
         {
-         "frame": 4.0,
-         "value": 1.0,
+         "frame": 4,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 20.0,
-         "value": 0.0,
+         "frame": 20,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 44.0,
-         "value": 0.0,
+         "frame": 44,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 54.0,
-         "value": 1.0,
+         "frame": 54,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
@@ -554,9 +554,9 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 876.0,
-         "width": 144.0,
-         "height": 124.0
+         "x": 876,
+         "width": 144,
+         "height": 124
         }
        }
       }
@@ -569,59 +569,59 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 1664.0,
-       "y": 38.0,
-       "width": 160.0,
-       "height": 96.0,
+       "x": 1664,
+       "y": 38,
+       "width": 160,
+       "height": 96,
        "fill": [
         0.051,
         0.0549,
         0.0667,
-        1.0
+        1
        ],
-       "fontSize": 50.0
+       "fontSize": 50
       },
       "tracks": {
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "hold"
          }
         },
         {
-         "frame": 12.0,
-         "value": 0.0,
+         "frame": 12,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 22.0,
-         "value": 1.0,
+         "frame": 22,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 44.0,
-         "value": 1.0,
+         "frame": 44,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 50.0,
-         "value": 0.0,
+         "frame": 50,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -643,9 +643,9 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 876.0,
-         "width": 144.0,
-         "height": 124.0
+         "x": 876,
+         "width": 144,
+         "height": 124
         }
        }
       }
@@ -658,52 +658,52 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 96.0,
-       "y": 140.0,
-       "width": 1728.0,
-       "height": 46.0
+       "x": 96,
+       "y": 140,
+       "width": 1728,
+       "height": 46
       },
       "tracks": {
        "cropRight": [
         {
-         "frame": 0.0,
-         "value": 1.0,
+         "frame": 0,
+         "value": 1,
          "easing": {
           "type": "hold"
          }
         },
         {
-         "frame": 14.0,
-         "value": 1.0,
+         "frame": 14,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 36.0,
-         "value": 0.0,
+         "frame": 36,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 40.0,
-         "value": 0.0,
+         "frame": 40,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 50.0,
-         "value": 1.0,
+         "frame": 50,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
@@ -715,9 +715,9 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 60.0,
-         "y": 170.0,
-         "width": 960.0
+         "x": 60,
+         "y": 170,
+         "width": 960
         }
        }
       }
@@ -730,15 +730,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1728.0,
-       "height": 46.0,
+       "x": 0,
+       "y": 0,
+       "width": 1728,
+       "height": 46,
        "fill": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
+        1,
+        1,
+        1,
+        1
        ]
       },
       "tracks": {},
@@ -746,7 +746,7 @@
       "overrides": {
        "vertical": {
         "props": {
-         "width": 960.0
+         "width": 960
         }
        }
       }
@@ -759,15 +759,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 160.0,
-       "height": 46.0,
+       "x": 0,
+       "y": 0,
+       "width": 160,
+       "height": 46,
        "fill": [
         0.051,
         0.0549,
         0.0667,
-        1.0
+        1
        ]
       },
       "tracks": {},
@@ -781,17 +781,17 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 160.0,
-       "height": 46.0,
+       "x": 0,
+       "y": 0,
+       "width": 160,
+       "height": 46,
        "fill": [
-        1.0,
+        1,
         0.8392,
         0.0392,
-        1.0
+        1
        ],
-       "fontSize": 24.0,
+       "fontSize": 24,
        "letterSpacing": 1.5
       },
       "tracks": {},
@@ -807,46 +807,93 @@
      {
       "id": "bandeau-13",
       "name": "Défilant",
+      "type": "group",
       "parent": "bandeau-9",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 176.0,
-       "y": 0.0,
-       "width": 1552.0,
-       "height": 46.0,
+       "x": 176,
+       "y": 0,
+       "width": 1552,
+       "height": 46
+      },
+      "tracks": {},
+      "bindings": {},
+      "clip": true,
+      "list": {
+       "key": "wire",
+       "layout": "row",
+       "gap": 26
+      },
+      "roll": {
+       "mode": "continuous",
+       "dir": "left",
+       "by": "speed",
+       "speed": 110,
+       "duration": 30,
+       "pause": 4,
+       "fade": 0
+      }
+     },
+     {
+      "id": "bandeau-13-sep",
+      "name": "Séparateur",
+      "type": "text",
+      "parent": "bandeau-13",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 25,
+       "height": 46,
+       "fontSize": 15,
+       "fill": [
+        1,
+        0.8392156862745098,
+        0.0392156862745098,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "■",
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false,
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "overflow": "visible"
+     },
+     {
+      "id": "bandeau-13-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "bandeau-13",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 37,
+       "y": 0,
+       "width": 1515,
+       "height": 46,
+       "fontSize": 25,
        "fill": [
         0.051,
         0.0549,
         0.0667,
-        1.0
-       ],
-       "fontSize": 25.0
+        1
+       ]
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{wire}}",
-      "separator": "   ",
-      "speed": 110.0,
-      "mode": "crawl",
-      "fontFamily": "Inter",
-      "fontWeight": 600,
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "symbol",
-      "startFull": true,
-      "sepSymbol": "■",
-      "sepColor": "#ffd60a",
-      "spacing": 26.0,
-      "overrides": {
-       "vertical": {
-        "props": {
-         "width": 784.0
-        }
-       }
-      }
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "overflow": "visible"
      }
     ],
     "zone": "bandeau",

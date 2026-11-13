@@ -793,12 +793,12 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 952.0,
-       "width": 1920.0,
-       "height": 82.0,
-       "anchorX": 0.0,
-       "anchorY": 0.0
+       "x": 0,
+       "y": 952,
+       "width": 1920,
+       "height": 82,
+       "anchorX": 0,
+       "anchorY": 0
       },
       "tracks": {},
       "bindings": {},
@@ -812,45 +812,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1920.0,
-       "height": 82.0
+       "x": 0,
+       "y": 0,
+       "width": 1920,
+       "height": 82
       },
       "tracks": {
        "y": [
         {
-         "frame": 0.0,
-         "value": 90.0,
+         "frame": 0,
+         "value": 90,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 16.0,
-         "value": 0.0,
+         "frame": 16,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 50.0,
-         "value": 0.0,
+         "frame": 50,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 62.0,
-         "value": 90.0,
+         "frame": 62,
+         "value": 90,
          "easing": {
           "type": "linear"
          }
@@ -858,29 +858,29 @@
        ],
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 10.0,
-         "value": 1.0,
+         "frame": 10,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 50.0,
-         "value": 1.0,
+         "frame": 50,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 60.0,
-         "value": 0.0,
+         "frame": 60,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -891,50 +891,168 @@
       "clip": false
      },
      {
-      "id": "band-3",
-      "name": "Messages",
+      "id": "band-3-bar",
+      "name": "Fond",
+      "type": "rect",
       "parent": "band-2",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1920.0,
-       "height": 82.0,
+       "x": 0,
+       "y": 0,
+       "width": 1920,
+       "height": 82,
        "fill": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
-       ],
-       "fontSize": 30.0
+        0.043137254901960784,
+        0.058823529411764705,
+        0.10196078431372549,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "band-3-tbg",
+      "name": "Bloc du titre",
+      "type": "rect",
+      "parent": "band-2",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 250,
+       "height": 82,
+       "fill": [
+        0.8823529411764706,
+        0.11372549019607843,
+        0.2823529411764706,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "band-3-ttl",
+      "name": "Titre",
+      "type": "text",
+      "parent": "band-2",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 250,
+       "height": 82,
+       "fontSize": 24,
+       "fill": [
+        1,
+        1,
+        1,
+        1
+       ]
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{msgs}}",
-      "separator": "   ",
-      "speed": 120.0,
-      "mode": "crawl",
+      "text": "VOS MESSAGES",
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false,
+      "fontFamily": "Inter",
+      "fontWeight": 800
+     },
+     {
+      "id": "band-3",
+      "name": "Messages",
+      "type": "group",
+      "parent": "band-2",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 250,
+       "y": 0,
+       "width": 1670,
+       "height": 82
+      },
+      "tracks": {},
+      "bindings": {},
+      "clip": true,
+      "list": {
+       "key": "msgs",
+       "layout": "row",
+       "gap": 40
+      },
+      "roll": {
+       "mode": "continuous",
+       "dir": "left",
+       "by": "speed",
+       "speed": 120,
+       "duration": 30,
+       "pause": 4,
+       "fade": 0
+      }
+     },
+     {
+      "id": "band-3-sep",
+      "name": "Séparateur",
+      "type": "text",
+      "parent": "band-3",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 30,
+       "height": 82,
+       "fontSize": 18,
+       "fill": [
+        1,
+        1,
+        1,
+        0.5019607843137255
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "◆",
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false,
       "fontFamily": "Inter",
       "fontWeight": 600,
+      "overflow": "visible"
+     },
+     {
+      "id": "band-3-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "band-3",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 42,
+       "y": 0,
+       "width": 1628,
+       "height": 82,
+       "fontSize": 30,
+       "fill": [
+        1,
+        1,
+        1,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "symbol",
-      "startFull": true,
-      "itemFormat": "{name} · {text}",
-      "barBg": "#0b0f1a",
-      "sepSymbol": "◆",
-      "sepColor": "#ffffff80",
-      "spacing": 40,
-      "title": {
-       "on": true,
-       "text": "VOS MESSAGES",
-       "bg": "#e11d48",
-       "color": "#ffffff",
-       "w": 250.0
-      }
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "overflow": "visible"
      }
     ],
     "zone": "band",

@@ -384,12 +384,12 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 1330.0,
-       "y": 48.0,
-       "width": 530.0,
-       "height": 74.0,
-       "anchorX": 0.0,
-       "anchorY": 0.0
+       "x": 1330,
+       "y": 48,
+       "width": 530,
+       "height": 74,
+       "anchorX": 0,
+       "anchorY": 0
       },
       "tracks": {},
       "bindings": {},
@@ -397,11 +397,11 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 43.0,
-         "y": 230.0,
+         "x": 43,
+         "y": 230,
          "scaleX": 1.6,
          "scaleY": 1.6,
-         "width": 848.0,
+         "width": 848,
          "height": 118.4
         }
        }
@@ -415,45 +415,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 530.0,
-       "height": 74.0
+       "x": 0,
+       "y": 0,
+       "width": 530,
+       "height": 74
       },
       "tracks": {
        "cropLeft": [
         {
-         "frame": 0.0,
-         "value": 1.0,
+         "frame": 0,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 14.0,
-         "value": 0.0,
+         "frame": 14,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 40.0,
-         "value": 0.0,
+         "frame": 40,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 52.0,
-         "value": 1.0,
+         "frame": 52,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
@@ -471,10 +471,10 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 530.0,
-       "height": 74.0,
+       "x": 0,
+       "y": 0,
+       "width": 530,
+       "height": 74,
        "fill": [
         0.0392,
         0.0392,
@@ -485,7 +485,7 @@
       "tracks": {},
       "bindings": {},
       "shape": "parallelogram",
-      "skewPx": -16.0
+      "skewPx": -16
      },
      {
       "id": "sponsor-4",
@@ -495,18 +495,18 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 38.0,
-       "y": 0.0,
-       "width": 120.0,
-       "height": 74.0,
+       "x": 38,
+       "y": 0,
+       "width": 120,
+       "height": 74,
        "fill": [
         0.8314,
-        1.0,
+        1,
         0.2275,
-        1.0
+        1
        ],
-       "fontSize": 17.0,
-       "letterSpacing": 2.0
+       "fontSize": 17,
+       "letterSpacing": 2
       },
       "tracks": {},
       "bindings": {},
@@ -527,15 +527,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 150.0,
-       "y": 18.0,
-       "width": 3.0,
-       "height": 38.0,
+       "x": 150,
+       "y": 18,
+       "width": 3,
+       "height": 38,
        "fill": [
         0.8314,
-        1.0,
+        1,
         0.2275,
-        1.0
+        1
        ]
       },
       "tracks": {},
@@ -544,39 +544,63 @@
      {
       "id": "sponsor-6",
       "name": "Noms",
+      "type": "group",
       "parent": "sponsor-2",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 170.0,
-       "y": 0.0,
-       "width": 340.0,
-       "height": 74.0,
-       "fill": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
-       ],
-       "fontSize": 34.0
+       "x": 170,
+       "y": 0,
+       "width": 340,
+       "height": 74
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{sponsors}}",
-      "separator": "   ",
-      "speed": 110.0,
-      "mode": "flip",
-      "fontFamily": "Barlow Condensed",
-      "fontWeight": 800,
+      "clip": true,
+      "list": {
+       "key": "sponsors",
+       "layout": "column",
+       "gap": 0
+      },
+      "roll": {
+       "mode": "one",
+       "dir": "up",
+       "by": "speed",
+       "speed": 120,
+       "duration": 30,
+       "pause": 4,
+       "fade": 0
+      }
+     },
+     {
+      "id": "sponsor-6-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "sponsor-6",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 340,
+       "height": 74,
+       "fontSize": 34,
+       "fill": [
+        1,
+        1,
+        1,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "symbol",
-      "startFull": true,
-      "itemDur": 4.0,
-      "transDur": 0.35,
-      "trans": "push"
+      "fontFamily": "Barlow Condensed",
+      "fontWeight": 800,
+      "overflow": "fit"
      }
     ],
     "zone": "sponsor",

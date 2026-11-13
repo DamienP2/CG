@@ -1,9 +1,9 @@
 // Lists: a folder's content drawn once per row of a list (Layer.list), going by in its box
 // (Layer.roll). Mirror of crates/cg-core/src/lists.rs: one algorithm written twice, keep in sync
 // (same test vectors).
-import { DEFAULTS, num, parseHex } from './evaluate';
+import { DEFAULTS, interpolateText, num, parseHex } from './evaluate';
 import { asNumber } from './expr';
-import { COLOR_PROPS, PROPS, type Data, type InList, type Layer, type Motion, type Prop, type Value } from './types';
+import { COLOR_PROPS, PROPS, type Data, type InList, type Layer, type ListRepeat, type Motion, type Prop, type Value } from './types';
 
 /** The id suffix of a scrolling folder's moving group (`G~roll`). */
 export const ROLL = '~roll';
@@ -24,6 +24,14 @@ export type Row = Record<string, string>;
  * The enabled rows of a list's value, in order: a JSON array of objects, else (a text) one row
  * `{texte: line}` per non-empty line, trimmed; none when it is missing.
  */
+/** A list folder's rows: from the data under its key, else its own; their values filled from the data (a row's `{{q1}}` shows the value `q1`). Mirror of lists::list_rows. */
+export function folderRows(list: ListRepeat, data: Data): Row[] {
+  const own = list.key && data[list.key] !== undefined;
+  const rows = own ? listRows(data[list.key]) : (list.rows ?? []).filter((r) => r.on !== 'false').map((r) => ({ ...r }));
+  for (const r of rows) for (const k of Object.keys(r)) if (r[k].includes('{{')) r[k] = interpolateText(r[k], data);
+  return rows;
+}
+
 export function listRows(value: string | undefined): Row[] {
   if (value === undefined) return [];
   let parsed: unknown;
@@ -74,7 +82,7 @@ export function expandLists(layers: Layer[], data: Data, measure: Measure): Laye
   for (const g of folders) {
     const model = layers.filter((l) => ancestors.get(l.id)!.includes(g));
     for (const m of model) modelOf.set(m.id, g.id);
-    done.set(g.id, expand(g, model, listRows(data[g.list!.key]), measure));
+    done.set(g.id, expand(g, model, folderRows(g.list!, data), measure));
   }
   const out: Layer[] = [];
   const placed = new Set<string>();

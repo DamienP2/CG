@@ -5222,45 +5222,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 990.0,
-       "width": 1920.0,
-       "height": 56.0
+       "x": 0,
+       "y": 990,
+       "width": 1920,
+       "height": 56
       },
       "tracks": {
        "y": [
         {
-         "frame": 0.0,
-         "value": 1080.0,
+         "frame": 0,
+         "value": 1080,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 18.0,
-         "value": 990.0,
+         "frame": 18,
+         "value": 990,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 30.0,
-         "value": 990.0,
+         "frame": 30,
+         "value": 990,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 42.0,
-         "value": 1080.0,
+         "frame": 42,
+         "value": 1080,
          "easing": {
           "type": "linear"
          }
@@ -5278,10 +5278,10 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1920.0,
-       "height": 56.0,
+       "x": 0,
+       "y": 0,
+       "width": 1920,
+       "height": 56,
        "fill": [
         0.0314,
         0.0784,
@@ -5300,15 +5300,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 260.0,
-       "height": 56.0,
+       "x": 0,
+       "y": 0,
+       "width": 260,
+       "height": 56,
        "fill": [
         0.1216,
         0.3569,
-        1.0,
-        1.0
+        1,
+        1
        ]
       },
       "tracks": {},
@@ -5316,7 +5316,7 @@
       "fillStyle": {
        "kind": "linear",
        "color2": "#123fcf",
-       "angle": 90.0
+       "angle": 90
       }
      },
      {
@@ -5327,17 +5327,17 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 96.0,
-       "y": 0.0,
-       "width": 164.0,
-       "height": 56.0,
+       "x": 96,
+       "y": 0,
+       "width": 164,
+       "height": 56,
        "fill": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
+        1,
+        1,
+        1,
+        1
        ],
-       "fontSize": 22.0,
+       "fontSize": 22,
        "letterSpacing": 2.5
       },
       "tracks": {},
@@ -5353,41 +5353,93 @@
      {
       "id": "ticker-5",
       "name": "Défilant",
+      "type": "group",
       "parent": "ticker-1",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 290.0,
-       "y": 0.0,
-       "width": 1630.0,
-       "height": 56.0,
-       "fill": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
-       ],
-       "fontSize": 27.0
+       "x": 290,
+       "y": 0,
+       "width": 1630,
+       "height": 56
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{items}}",
-      "separator": "   ",
-      "speed": 120.0,
-      "mode": "crawl",
+      "clip": true,
+      "list": {
+       "key": "items",
+       "layout": "row",
+       "gap": 28
+      },
+      "roll": {
+       "mode": "continuous",
+       "dir": "left",
+       "by": "speed",
+       "speed": 120,
+       "duration": 30,
+       "pause": 4,
+       "fade": 60
+      }
+     },
+     {
+      "id": "ticker-5-sep",
+      "name": "Séparateur",
+      "type": "text",
+      "parent": "ticker-5",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 27,
+       "height": 56,
+       "fontSize": 16.2,
+       "fill": [
+        0.4980392156862745,
+        0.6980392156862745,
+        1,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "■",
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false,
       "fontFamily": "Inter",
       "fontWeight": 500,
+      "overflow": "visible"
+     },
+     {
+      "id": "ticker-5-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "ticker-5",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 39,
+       "y": 0,
+       "width": 1591,
+       "height": 56,
+       "fontSize": 27,
+       "fill": [
+        1,
+        1,
+        1,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "symbol",
-      "startFull": true,
-      "sepSymbol": "■",
-      "sepColor": "#7fb2ff",
-      "spacing": 28.0,
-      "fade": true,
-      "fadeW": 60.0
+      "fontFamily": "Inter",
+      "fontWeight": 500,
+      "overflow": "visible"
      }
     ],
     "zone": "ticker",

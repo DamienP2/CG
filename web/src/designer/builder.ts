@@ -7,6 +7,7 @@ import { designTemplates } from '../engine/drafts';
 import { zoneArea } from '../engine/zones';
 import { newId } from '../engine/evaluate';
 import { actionsLogic, isControlWhen } from '../engine/widgetLogic';
+import { convertOldWidgets } from '../engine/convertOld';
 import { MARKER_MODEL, type Field, type Template, type WidgetDef } from '../engine/types';
 import { t } from '../i18n';
 import { navigate, projectPath } from '../router';
@@ -125,6 +126,20 @@ export async function refreshStale() {
       if (def && (f.widget!.rev ?? 0) !== (def.rev ?? 0)) layers = regenerate(layers, f.id, def);
     }
     if (layers !== tpl.layers) await app.saveTemplate({ ...tpl, layers });
+  }
+}
+
+/**
+ * Templates of the open project with a Ticker or Credits of before: made into list folders (the
+ * Builder's bricks), in their drafts (on air at Publish). Once per opening of a project.
+ */
+export async function convertOld() {
+  const app = useApp.getState();
+  const p = app.project;
+  if (!p || p.id === HOST_PROJECT) return;
+  for (const tpl of designTemplates(p)) {
+    const next = convertOldWidgets(tpl);
+    if (next) await app.saveTemplate(next);
   }
 }
 

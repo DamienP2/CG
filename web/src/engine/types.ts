@@ -918,6 +918,8 @@ export type MotionKind = 'pulse' | 'blink' | 'swing' | 'float' | 'shake' | 'kenB
 /** A folder's content once per row of the list in `data[key]` (a JSON array of objects). */
 export interface ListRepeat {
   key: string;
+  /** Its rows when the data has none under `key` (a converted widget's own). */
+  rows?: Record<string, string>[];
   layout: 'row' | 'column' | 'grid';
   /** grid: copies per row. */
   cols?: number;

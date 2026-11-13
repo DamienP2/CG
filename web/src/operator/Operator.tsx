@@ -2295,7 +2295,7 @@ function AirControls({ project, zone, item, command, widget, bare, lead }: { pro
       </div>
     );
   // A Text scrolls by itself: no start / pause for it in the Operator.
-  const timed = tpl.layers.filter((l) => isTimed(l) && l.type !== 'text');
+  const timed = tpl.layers.filter((l) => isTimed(l) && l.type !== 'text' && !insideWidget(tpl.layers, l));
   // Pauses waiting for a trigger, and values set by hand until one.
   // …and the widgets' triggers (a start, the next page): every setting named `…Trigger` of a layer.
   const widgetTriggers = tpl.layers.flatMap((l) => Object.entries(l as unknown as Record<string, unknown>).flatMap(([k, v]) => (/Trigger$/.test(k) && typeof v === 'string' && v.trim() ? [v.trim()] : [])));

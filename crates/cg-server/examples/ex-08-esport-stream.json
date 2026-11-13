@@ -1225,45 +1225,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 1360.0,
-       "y": 960.0,
-       "width": 470.0,
-       "height": 72.0
+       "x": 1360,
+       "y": 960,
+       "width": 470,
+       "height": 72
       },
       "tracks": {
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 10.0,
-         "value": 1.0,
+         "frame": 10,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 30.0,
-         "value": 1.0,
+         "frame": 30,
+         "value": 1,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 38.0,
-         "value": 0.0,
+         "frame": 38,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -1271,37 +1271,37 @@
        ],
        "y": [
         {
-         "frame": 0.0,
-         "value": 1000.0,
+         "frame": 0,
+         "value": 1000,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 20.0,
-         "value": 960.0,
+         "frame": 20,
+         "value": 960,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 30.0,
-         "value": 960.0,
+         "frame": 30,
+         "value": 960,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 38.0,
-         "value": 1000.0,
+         "frame": 38,
+         "value": 1000,
          "easing": {
           "type": "linear"
          }
@@ -1319,21 +1319,21 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 470.0,
-       "height": 72.0,
+       "x": 0,
+       "y": 0,
+       "width": 470,
+       "height": 72,
        "fill": [
         0.0706,
         0.0588,
         0.1216,
         0.92
        ],
-       "cornerRadius": 36.0,
+       "cornerRadius": 36,
        "stroke": [
-        1.0,
-        1.0,
-        1.0,
+        1,
+        1,
+        1,
         0.12
        ],
        "strokeWidth": 1.5
@@ -1349,18 +1349,18 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 28.0,
-       "y": 0.0,
-       "width": 90.0,
-       "height": 72.0,
+       "x": 28,
+       "y": 0,
+       "width": 90,
+       "height": 72,
        "fill": [
         0.6039,
         0.5843,
         0.7412,
-        1.0
+        1
        ],
-       "fontSize": 16.0,
-       "letterSpacing": 3.0
+       "fontSize": 16,
+       "letterSpacing": 3
       },
       "tracks": {},
       "bindings": {},
@@ -1380,15 +1380,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 104.0,
-       "y": 22.0,
-       "width": 2.0,
-       "height": 28.0,
+       "x": 104,
+       "y": 22,
+       "width": 2,
+       "height": 28,
        "fill": [
         0.4824,
         0.3608,
-        1.0,
-        1.0
+        1,
+        1
        ]
       },
       "tracks": {},
@@ -1397,40 +1397,63 @@
      {
       "id": "sponsors-5",
       "name": "Noms",
+      "type": "group",
       "parent": "sponsors-1",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 124.0,
-       "y": 0.0,
-       "width": 320.0,
-       "height": 72.0,
-       "fill": [
-        0.9569,
-        0.949,
-        1.0,
-        1.0
-       ],
-       "fontSize": 34.0
+       "x": 124,
+       "y": 0,
+       "width": 320,
+       "height": 72
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{list}}",
-      "separator": "   ",
-      "speed": 110.0,
-      "mode": "flip",
-      "fontFamily": "Bebas Neue",
-      "fontWeight": 400,
+      "clip": true,
+      "list": {
+       "key": "list",
+       "layout": "column",
+       "gap": 0
+      },
+      "roll": {
+       "mode": "one",
+       "dir": "up",
+       "by": "speed",
+       "speed": 120,
+       "duration": 30,
+       "pause": 4,
+       "fade": 0
+      }
+     },
+     {
+      "id": "sponsors-5-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "sponsors-5",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 320,
+       "height": 72,
+       "fontSize": 34,
+       "fill": [
+        0.9569,
+        0.949,
+        1,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "none",
-      "startFull": true,
-      "itemDur": 4.0,
-      "transDur": 0.5,
-      "trans": "slide",
-      "spacing": 0.0
+      "fontFamily": "Bebas Neue",
+      "fontWeight": 400,
+      "overflow": "fit"
      }
     ],
     "zone": "sponsor",

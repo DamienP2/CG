@@ -53,9 +53,9 @@ export function isTimed(l: Layer): boolean {
     case 'slideshow':
     case 'barChart':
       return true;
-    // A Lottie animation: the operator pauses, plays and restarts it.
+    // A Lottie animation, a folder going by in its box: the operator pauses, plays and restarts it.
     case 'group':
-      return l.lottie !== undefined;
+      return l.lottie !== undefined || !!l.roll;
     default:
       return false;
   }

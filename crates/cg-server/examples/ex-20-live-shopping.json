@@ -2213,12 +2213,12 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 60.0,
-       "y": 920.0,
-       "width": 1000.0,
-       "height": 100.0,
-       "anchorX": 0.0,
-       "anchorY": 0.0
+       "x": 60,
+       "y": 920,
+       "width": 1000,
+       "height": 100,
+       "anchorX": 0,
+       "anchorY": 0
       },
       "tracks": {},
       "bindings": {},
@@ -2226,12 +2226,12 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 40.0,
-         "y": 1665.0,
-         "scaleX": 1.0,
-         "scaleY": 1.0,
-         "width": 1000.0,
-         "height": 100.0
+         "x": 40,
+         "y": 1665,
+         "scaleX": 1,
+         "scaleY": 1,
+         "width": 1000,
+         "height": 100
         }
        }
       }
@@ -2244,45 +2244,45 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1000.0,
-       "height": 100.0
+       "x": 0,
+       "y": 0,
+       "width": 1000,
+       "height": 100
       },
       "tracks": {
        "y": [
         {
-         "frame": 0.0,
-         "value": 60.0,
+         "frame": 0,
+         "value": 60,
          "easing": {
           "type": "bezier",
           "x1": 0.16,
-          "y1": 1.0,
+          "y1": 1,
           "x2": 0.3,
-          "y2": 1.0
+          "y2": 1
          }
         },
         {
-         "frame": 16.0,
-         "value": 0.0,
+         "frame": 16,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 50.0,
-         "value": 0.0,
+         "frame": 50,
+         "value": 0,
          "easing": {
           "type": "bezier",
           "x1": 0.7,
-          "y1": 0.0,
+          "y1": 0,
           "x2": 0.84,
-          "y2": 0.0
+          "y2": 0
          }
         },
         {
-         "frame": 62.0,
-         "value": 60.0,
+         "frame": 62,
+         "value": 60,
          "easing": {
           "type": "linear"
          }
@@ -2290,29 +2290,29 @@
        ],
        "opacity": [
         {
-         "frame": 0.0,
-         "value": 0.0,
+         "frame": 0,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 10.0,
-         "value": 1.0,
+         "frame": 10,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 50.0,
-         "value": 1.0,
+         "frame": 50,
+         "value": 1,
          "easing": {
           "type": "linear"
          }
         },
         {
-         "frame": 60.0,
-         "value": 0.0,
+         "frame": 60,
+         "value": 0,
          "easing": {
           "type": "linear"
          }
@@ -2330,21 +2330,21 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 0.0,
-       "y": 0.0,
-       "width": 1000.0,
-       "height": 100.0,
+       "x": 0,
+       "y": 0,
+       "width": 1000,
+       "height": 100,
        "fill": [
         0.0902,
         0.0824,
         0.1176,
         0.88
        ],
-       "cornerRadius": 50.0,
+       "cornerRadius": 50,
        "stroke": [
-        1.0,
-        1.0,
-        1.0,
+        1,
+        1,
+        1,
         0.1
        ],
        "strokeWidth": 1.5
@@ -2360,15 +2360,15 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 16.0,
-       "y": 16.0,
-       "width": 68.0,
-       "height": 68.0,
+       "x": 16,
+       "y": 16,
+       "width": 68,
+       "height": 68,
        "fill": [
-        1.0,
+        1,
         0.8471,
         0.302,
-        1.0
+        1
        ]
       },
       "tracks": {},
@@ -2382,24 +2382,24 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 38.0,
-       "y": 30.0,
-       "width": 24.0,
-       "height": 16.0,
+       "x": 38,
+       "y": 30,
+       "width": 24,
+       "height": 16,
        "fill": [
         0.0471,
         0.0431,
         0.0627,
         0
        ],
-       "cornerRadius": 8.0,
+       "cornerRadius": 8,
        "stroke": [
         0.0471,
         0.0431,
         0.0627,
-        1.0
+        1
        ],
-       "strokeWidth": 3.0
+       "strokeWidth": 3
       },
       "tracks": {},
       "bindings": {}
@@ -2412,17 +2412,17 @@
       "visible": true,
       "locked": false,
       "props": {
-       "x": 33.0,
-       "y": 40.0,
-       "width": 34.0,
-       "height": 28.0,
+       "x": 33,
+       "y": 40,
+       "width": 34,
+       "height": 28,
        "fill": [
         0.0471,
         0.0431,
         0.0627,
-        1.0
+        1
        ],
-       "cornerRadius": 4.0
+       "cornerRadius": 4
       },
       "tracks": {},
       "bindings": {}
@@ -2430,38 +2430,63 @@
      {
       "id": "buyers-7",
       "name": "Pilule · Achats",
+      "type": "group",
       "parent": "buyers-2",
-      "type": "ticker",
       "visible": true,
       "locked": false,
       "props": {
-       "x": 104.0,
-       "y": 0.0,
-       "width": 870.0,
-       "height": 100.0,
-       "fill": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
-       ],
-       "fontSize": 28.0
+       "x": 104,
+       "y": 0,
+       "width": 870,
+       "height": 100
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{feed}}",
-      "separator": "   ",
-      "speed": 110.0,
-      "mode": "roll",
-      "fontFamily": "Inter",
-      "fontWeight": 700,
+      "clip": true,
+      "list": {
+       "key": "feed",
+       "layout": "column",
+       "gap": 0
+      },
+      "roll": {
+       "mode": "one",
+       "dir": "up",
+       "by": "speed",
+       "speed": 120,
+       "duration": 30,
+       "pause": 3,
+       "fade": 0
+      }
+     },
+     {
+      "id": "buyers-7-txt",
+      "name": "Texte",
+      "type": "text",
+      "parent": "buyers-7",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0,
+       "y": 0,
+       "width": 870,
+       "height": 100,
+       "fontSize": 28,
+       "fill": [
+        1,
+        1,
+        1,
+        1
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{texte}}",
       "align": "left",
       "verticalAlign": "middle",
       "uppercase": false,
-      "sepType": "symbol",
-      "startFull": true,
-      "itemDur": 3.0,
-      "transDur": 0.45
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "overflow": "fit"
      }
     ],
     "zone": "buyers",

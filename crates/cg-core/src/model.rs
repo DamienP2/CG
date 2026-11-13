@@ -870,7 +870,11 @@ pub struct Layer {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListRepeat {
+    #[serde(default)]
     pub key: String,
+    /// Its rows when the data has none under `key` (a converted widget's own).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rows: Vec<BTreeMap<String, String>>,
     #[serde(default)]
     pub layout: ListLayout,
     /// Grid: copies per row (3 when unset).

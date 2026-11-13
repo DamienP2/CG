@@ -297,6 +297,8 @@ export const home: Record<string, string> = {
   'Loads projects on channels, plays graphics, edits rundown data.': 'Charge les projets sur les canaux, envoie les graphiques, modifie les données du conducteur.',
   'Read-only: sees projects and program monitors.': 'Lecture seule : voit les projets et les moniteurs programme.',
   'restored automatically': 'remise automatiquement',
+  'installed': 'installée',
+  'rolled back': 'annulée',
   // Performance page, usage meters (perf/, ui/LoadMeter.tsx)
   'Performance': 'Performances',
   'perf|Overview': 'Vue d’ensemble',
