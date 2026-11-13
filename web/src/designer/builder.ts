@@ -6,6 +6,7 @@ import { regenerate, placeWidget } from '../engine/built';
 import { designTemplates } from '../engine/drafts';
 import { zoneArea } from '../engine/zones';
 import { newId } from '../engine/evaluate';
+import { actionsLogic, isControlWhen } from '../engine/widgetLogic';
 import { MARKER_MODEL, type Field, type Template, type WidgetDef } from '../engine/types';
 import { t } from '../i18n';
 import { navigate, projectPath } from '../router';
@@ -21,7 +22,7 @@ export const varFields = (vars: WidgetDef['vars']): Field[] => vars.map((v) => (
 
 /** The widget as a template the Designer edits. */
 export function builderTemplate(def: WidgetDef): Template {
-  const { layers, ...rest } = structuredClone(def);
+  const { layers, logic, ...rest } = structuredClone(def);
   return {
     id: BUILDER_ID + def.id,
     name: def.name,
@@ -29,6 +30,8 @@ export function builderTemplate(def: WidgetDef): Template {
     markers: [{ id: 'builder-air', frame: 25, name: 'On air', kind: 'out' }],
     fields: varFields(def.vars),
     layers,
+    // Its Logic: the Logic canvas of the Builder (older widgets: their controls' actions).
+    logic: logic ?? actionsLogic(def),
     zone: '',
     revision: 0,
     markerModel: MARKER_MODEL,
@@ -43,7 +46,7 @@ export function defOf(t: Template | null | undefined): WidgetDef | null {
   const tops = t.layers.filter((l) => !l.parent);
   const right = Math.max(0, ...tops.map((l) => Number(l.props.x ?? 0) + Number(l.props.width ?? 0)));
   const bottom = Math.max(0, ...tops.map((l) => Number(l.props.y ?? 0) + Number(l.props.height ?? 0)));
-  return { ...t.builder, name: t.name, layers: t.layers, width: Math.round(right) || t.builder.width, height: Math.round(bottom) || t.builder.height };
+  return { ...t.builder, name: t.name, layers: t.layers, logic: t.logic, width: Math.round(right) || t.builder.width, height: Math.round(bottom) || t.builder.height };
 }
 
 /** Saves the widget a Builder template stands for, where it is kept (its version up). */
@@ -183,4 +186,17 @@ export async function addWidget(id: string, size: { width: number; height: numbe
   const layers = placeWidget(def, folder, Math.max(0, Math.min(size.width - def.width, x)), Math.max(0, Math.min(size.height - def.height, y)));
   st.update((tpl) => void tpl.layers.push(...layers));
   st.select([folder]);
+}
+
+/** Opens the Builder's Logic with the flow of the button `control` (its « When » made if it has none). */
+export function openControlLogic(control: string) {
+  const st = useDesigner.getState();
+  if (!st.template?.builder) return;
+  if (!(st.template.logic?.nodes ?? []).some((n) => isControlWhen(n, control)))
+    st.update((x) => {
+      const logic = (x.logic ??= { nodes: [], edges: [] });
+      const y = logic.nodes.length ? Math.max(...logic.nodes.map((n) => n.y)) + 200 : 0;
+      logic.nodes.push({ id: newId(), x: 0, y, type: 'when', on: 'control', name: control });
+    });
+  window.dispatchEvent(new Event('strata:open-triggers'));
 }

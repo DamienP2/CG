@@ -26,7 +26,8 @@ import { hasMoments, lineFor, momentsOf, needsSteps, needsValue, sourceOf, subje
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { t, tc } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
-import { entries, FAMS, isProjectLogic, kindOf, layerNode, propsOf, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, type Entry, type Fam } from './logicNodes';
+import { ELEMENT_OPS, WVAR_OPS } from './widgetOps';
+import { entries, entryLabel, FAMS, isProjectLogic, kindOf, layerNode, propsOf, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, wvarOp, type Entry, type Fam } from './logicNodes';
 
 /*
  * The Logic canvas. Every node has its inputs on the left and its outputs on the right; value
@@ -38,6 +39,8 @@ import { entries, FAMS, isProjectLogic, kindOf, layerNode, propsOf, rowLabel, ro
  */
 
 const NODE_W = 210;
+/** The widget's own families (Builder): first in the palette. */
+const WIDGET_FAMS = new Set<Fam>(['wbtn', 'wvar', 'wel']);
 const WIDE = new Set(['expr', 'if', 'lookup', 'layer', 'check', 'when', 'how', 'animate', 'playSound']);
 const FRAME_COLORS = ['#8fa3ff', '#a78bfa', '#22d3ee', '#f59e0b', '#f472b6', '#4ade80', '#fb7185', '#facc15'];
 const CLIP_KEY = 'strata.logic.clipboard';
@@ -1559,6 +1562,14 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
                 onChange={(on) => set({ on, ...(on === 'lastRow' && lastRowOf(src) ? { dataset: lastRowOf(src) } : {}) } as Partial<LogicNode>)}
               />
               {n.on === 'trigger' && <TextInput value={n.name ?? ''} placeholder={t('goal, next, line2…')} onChange={(x) => set({ name: x } as Partial<LogicNode>, `lx-${n.id}-n`)} />}
+              {n.on === 'control' && (
+                <Dropdown
+                  value={n.name ?? ''}
+                  placeholder={t('Choose a button')}
+                  options={(template.builder?.controls ?? []).map((c) => ({ value: c.id, label: c.row ? `${c.row} · ${c.label}` : c.label }))}
+                  onChange={(name) => set({ name } as Partial<LogicNode>)}
+                />
+              )}
               {(n.on === 'every' || n.on === 'timerAt') && (
                 <NumberField value={n.seconds ?? 0} min={n.on === 'every' ? 0.1 : 0} step={1} precision={1} suffix="s" onChange={(x) => set({ seconds: Math.max(n.on === 'every' ? 0.1 : 0, x) } as Partial<LogicNode>, `lx-${n.id}-s`)} />
               )}
@@ -1645,7 +1656,48 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
           </>
         );
       }
+      case 'wvar': {
+        const vars = template.builder?.vars ?? [];
+        const all = !n.var;
+        const typed = n.op === 'add' || n.op === 'set';
+        return (
+          <>
+            {flowRows(
+              <>
+                <div className="lx-field">
+                  <span>{t('Variable')}</span>
+                  <Dropdown
+                    value={n.var}
+                    options={[...(n.op === 'reset' ? [{ value: '', label: t('All') }] : []), ...vars.map((x) => ({ value: x.name, label: x.name }))]}
+                    onChange={(x) => set({ var: x, ...(x && all ? { op: wvarOp(vars.find((y) => y.name === x)?.kind) } : {}) } as Partial<LogicNode>)}
+                  />
+                </div>
+                <div className="lx-field">
+                  <span>{t('Operation')}</span>
+                  <Dropdown value={n.op} options={WVAR_OPS().filter(([o]) => !all || o === 'reset').map(([value, label]) => ({ value, label }))} onChange={(op) => set({ op } as Partial<LogicNode>)} />
+                </div>
+              </>,
+            )}
+            {typed && (
+              <Row n={n} inP={pIn(n, 'value')}>
+                <span className="lx-lab">{t('Value')}</span>
+                {wiredIn.has(`${n.id}|value`) ? <Val v={v(n, 'in:value')} /> : <TextInput value={n.value} placeholder={n.op === 'add' ? '1' : '$value'} onChange={(x) => set({ value: x } as Partial<LogicNode>, `lx-${n.id}-v`)} />}
+              </Row>
+            )}
+          </>
+        );
+      }
+      case 'wundo':
+        return flowRows();
       case 'widget':
+        if (template.builder)
+          return flowRows(
+            <>
+              <Dropdown value={n.layer} placeholder={t('Choose a layer')} options={template.layers.filter(timedLayer).map((l) => ({ value: l.id, label: l.name }))} onChange={(layer) => set({ layer } as Partial<LogicNode>)} />
+              <Dropdown value={n.control} options={ELEMENT_OPS().map(([value, label]) => ({ value, label }))} onChange={(control) => set({ control } as Partial<LogicNode>)} />
+              {(n.control === 'adjust' || n.control === 'set') && <TextInput value={n.arg ?? ''} placeholder={n.control === 'adjust' ? '10' : '0:30'} onChange={(arg) => set({ arg } as Partial<LogicNode>, `lx-${n.id}-a`)} />}
+            </>,
+          );
         return flowRows(
           <>
             <Dropdown value={n.layer} placeholder={t('Choose a layer')} options={template.layers.filter(timedLayer).map((l) => ({ value: l.id, label: l.name }))} onChange={(layer) => set({ layer } as Partial<LogicNode>)} />
@@ -1749,6 +1801,37 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     setDisplayPref('logic.folded', next);
   };
 
+  /** A family of the palette: its entries (folded or not). */
+  const famBlock = (f: (typeof FAMS)[number]) => {
+    const list = shown.filter((e) => e.fam === f.id);
+    const total = all.filter((e) => e.fam === f.id).length;
+    if (!list.length) return null;
+    const open = !folded.includes(f.id) || !!q;
+    return (
+      <div key={f.id} className={`lx-fam fam-${f.id}`}>
+        <button className="lx-famhead" onClick={() => toggleFold(f.id)}>
+          {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          <i />
+          {t(f.label)}
+          <em>{list.length === total ? total : `${list.length} / ${total}`}</em>
+        </button>
+        {open &&
+          list.map((e) => (
+            <div key={e.key} className={`lx-entry ${placed.has(e.key) ? 'placed' : ''}`}>
+              <button onClick={(ev) => ev.detail < 2 && addEntry(e)} title={t('Add')}>
+                <e.icon size={13} />
+                <strong>{entryLabel(e)}</strong>
+                {placed.has(e.key) ? <em>{t('placed')}</em> : e.note ? <em>{e.note}</em> : null}
+              </button>
+              <button className={`lx-star ${favs.includes(e.key) ? 'on' : ''}`} title={t('Favourite')} onClick={() => toggleFav(e.key)}>
+                <Star size={11} />
+              </button>
+            </div>
+          ))}
+      </div>
+    );
+  };
+
   // The menu of a dropped wire: the nodes that take it.
   const quickList = (() => {
     if (!quick) return [];
@@ -1766,7 +1849,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       }
       const make = (x: number, y: number) => e.make(template, x, y);
       if (!fits(make(0, 0), want)) continue;
-      out.push({ key: e.key, label: t(e.label), fam: e.fam, make });
+      out.push({ key: e.key, label: entryLabel(e), fam: e.fam, make });
     }
     const qq = fold(qSearch.trim());
     return out.filter((o) => !qq || fold(o.label).includes(qq));
@@ -1848,6 +1931,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          {FAMS.filter((f) => WIDGET_FAMS.has(f.id)).map((f) => famBlock(f))}
           {!proj && scope !== 'fav' && !typeFilter && (!q || /donn|data|sourc|variab|filtr|tri|sort|transf|jeu/.test(q)) && (
             <div className="lx-fam fam-data">
               <button className="lx-famhead" onClick={() => toggleFold('data')}>
@@ -1858,35 +1942,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
               {(!folded.includes('data') || !!q) && data.palette}
             </div>
           )}
-          {FAMS.map((f) => {
-            const list = shown.filter((e) => e.fam === f.id);
-            const total = all.filter((e) => e.fam === f.id).length;
-            if (!list.length) return null;
-            const open = !folded.includes(f.id) || !!q;
-            return (
-              <div key={f.id} className={`lx-fam fam-${f.id}`}>
-                <button className="lx-famhead" onClick={() => toggleFold(f.id)}>
-                  {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                  <i />
-                  {t(f.label)}
-                  <em>{list.length === total ? total : `${list.length} / ${total}`}</em>
-                </button>
-                {open &&
-                  list.map((e) => (
-                    <div key={e.key} className={`lx-entry ${placed.has(e.key) ? 'placed' : ''}`}>
-                      <button onClick={(ev) => ev.detail < 2 && addEntry(e)} title={t('Add')}>
-                        <e.icon size={13} />
-                        <strong>{e.fam === 'layer' || e.fam === 'graphic' || e.fam === 'playlist' ? e.label : t(e.label)}</strong>
-                        {placed.has(e.key) ? <em>{t('placed')}</em> : e.note ? <em>{e.note}</em> : null}
-                      </button>
-                      <button className={`lx-star ${favs.includes(e.key) ? 'on' : ''}`} title={t('Favourite')} onClick={() => toggleFav(e.key)}>
-                        <Star size={11} />
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            );
-          })}
+          {FAMS.filter((f) => !WIDGET_FAMS.has(f.id)).map((f) => famBlock(f))}
           {(() => {
             const mine: (LogicFlow & { scope: string })[] = [...projectFlows.map((f) => ({ ...f, scope: t('project') })), ...shared.map((f) => ({ ...f, scope: t('shared flow') }))].filter((f) => scope !== 'fav' && !typeFilter && (!q || fold(f.name).includes(q)));
             if (!mine.length) return null;

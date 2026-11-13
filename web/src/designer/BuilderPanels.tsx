@@ -2,20 +2,21 @@
 // its variables, in the toolbar the way back to the template, on the right Element / Options /
 // Controls.
 import { useState } from 'react';
-import { ArrowLeft, Braces, CaseSensitive, ChevronRight, Hash, Image, List, Palette, Plus, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
+import { ArrowLeft, Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { setOption } from '../engine/built';
 import { DEFAULTS, newId, propValue } from '../engine/evaluate';
 import { readPath, writePath } from '../engine/settings';
-import type { BuiltControl, CtlAction, Layer, Prop, Template, WidgetOption, WidgetVar } from '../engine/types';
-import { t } from '../i18n';
+import type { BuiltControl, Layer, Prop, Template, WidgetOption, WidgetVar } from '../engine/types';
+import { t, tn } from '../i18n';
+import { controlSteps } from '../engine/widgetLogic';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Dropdown } from '../ui/Dropdown';
 import { useApp } from '../store';
 import { shareWidget } from '../widgetLibrary';
 import { BUILT_ICONS, BuiltTry } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
-import { closeBuilder, defOf, openedFromTemplate, varFields } from './builder';
+import { closeBuilder, defOf, openControlLogic, openedFromTemplate, varFields } from './builder';
 import { findLayer, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 
@@ -437,29 +438,6 @@ const ICON_NAMES: Record<string, string> = {
   puzzle: 'Puzzle',
 };
 
-/** What an action does (the list, in the interface's language). */
-const OPS = (): [CtlAction['op'], string][] => [
-  ['add', t('Add to')],
-  ['set', t('Give the value')],
-  ['toggle', t('Invert')],
-  ['next', t('Next value of')],
-  ['prev', t('Previous value of')],
-  ['cycle', t('Next value (round) of')],
-  ['reset', t('Back to the start')],
-  ['undo', t('Undo')],
-  ['timer', t('Temps')],
-];
-/** What an action does to a Temps. */
-const TIMER_OPS = (): [string, string][] => [
-  ['toggle', t('Play / Pause')],
-  ['start', t('Play it')],
-  ['pause', t('Pause')],
-  ['reset', t('Reset')],
-  ['restart', t('Restart')],
-  ['adjust', t('± seconds')],
-  ['set', t('Set to')],
-];
-
 /** The widget's controls: the Operator's buttons, rows and fields, and what each does. */
 function ControlsPane() {
   const tpl = useDesigner((s) => s.template)!;
@@ -467,14 +445,13 @@ function ControlsPane() {
   const [sel, setSel] = useState<string | null>(b.controls[0]?.id ?? null);
   const c = b.controls.find((x) => x.id === sel);
   const setCtl = (id: string, patch: Partial<BuiltControl>) => edit((d) => void (d.controls = d.controls.map((x) => (x.id === id ? { ...x, ...patch } : x))), `ctl-${id}`);
-  const setAct = (i: number, patch: Partial<CtlAction>) => c && setCtl(c.id, { actions: c.actions.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
+  const logic = tpl.logic ?? { nodes: [], edges: [] };
+  const steps = (id: string) => controlSteps(logic, id);
   const add = () => {
     const id = newId();
     edit((d) => void d.controls.push({ id, label: t('Button'), place: 'actions', actions: [] }));
     setSel(id);
   };
-  const temps = tpl.layers.filter((l) => l.type === 'clock');
-  const vars = b.vars.map((v) => ({ value: v.name, label: v.name }));
   const place = (x: BuiltControl) => x.place ?? 'actions';
   const groups: [string, BuiltControl[]][] = [
     [t('Buttons'), b.controls.filter((x) => place(x) === 'actions')],
@@ -494,7 +471,7 @@ function ControlsPane() {
                 <button key={x.id} className={`row wk-row bl-ctl ${sel === x.id ? 'sel' : ''}`} onClick={() => setSel(x.id)}>
                   <span className="bl-ic">{Icon ? <Icon size={14} /> : <span className="cc-txt">{x.label}</span>}</span>
                   <span className="prop-label">{x.row ? `${x.row} · ${x.label}` : x.label}</span>
-                  <span className="bl-act">{x.actions.map((a) => actionText(a, tpl)).join(' · ') || '—'}</span>
+                  <span className="bl-act">{steps(x.id) ? tn(steps(x.id), '{n} action', '{n} actions') : '—'}</span>
                   {x.key ? <kbd className="kc">{x.key}</kbd> : <span />}
                 </button>
               );
@@ -578,37 +555,15 @@ function ControlsPane() {
                 <input value={c.row ?? ''} onChange={(e) => setCtl(c.id, { row: e.target.value })} />
               </label>
             )}
-            {/* What it does: its actions, one after the other. */}
-            <div className="bl-row bl-row-top">
-              <span className="prop-label">{t('Does')}</span>
-              <div className="bl-acts">
-                {c.actions.map((a, i) => (
-                  <div key={i} className="bl-act-card">
-                    <span className="bl-act-n">{i + 1}</span>
-                    <div className="bl-act-body">
-                      <Dropdown value={a.op} options={OPS().map(([v, l]) => ({ value: v, label: l }))} onChange={(op) => setAct(i, { op: op as CtlAction['op'] })} />
-                      {a.op === 'timer' ? (
-                        <div className="bl-act-args">
-                          <Dropdown value={a.layer ?? ''} options={temps.map((l) => ({ value: l.id, label: l.name }))} onChange={(v) => setAct(i, { layer: v })} />
-                          <Dropdown value={a.value ?? 'toggle'} options={TIMER_OPS().map(([v, l]) => ({ value: v, label: l }))} onChange={(v) => setAct(i, { value: v })} />
-                          {(a.value === 'adjust' || a.value === 'set') && <input className="bl-val" value={a.arg ?? ''} placeholder={c.kind === 'field' ? '$value' : a.value === 'adjust' ? '10' : '0:30'} onChange={(e) => setAct(i, { arg: e.target.value })} />}
-                        </div>
-                      ) : a.op === 'undo' ? null : (
-                        <div className="bl-act-args">
-                          <Dropdown value={a.var ?? ''} options={a.op === 'reset' ? [{ value: '', label: t('All') }, ...vars] : vars} onChange={(v) => setAct(i, { var: v })} />
-                          {(a.op === 'add' || a.op === 'set') && <input className="bl-val" value={a.value ?? ''} placeholder={c.kind === 'field' ? '$value' : '1'} onChange={(e) => setAct(i, { value: e.target.value })} />}
-                        </div>
-                      )}
-                    </div>
-                    <button className="icon-btn ghost" title={t('Remove')} onClick={() => setCtl(c.id, { actions: c.actions.filter((_, j) => j !== i) })}>
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-                <button className="btn small ghost" onClick={() => setCtl(c.id, { actions: [...c.actions, { op: 'add', var: b.vars[0]?.name ?? '', value: '1' }] })}>
-                  <Plus size={13} /> {t('Action')}
+            {/* What it does: its flow in the widget's Logic. */}
+            <div className="bl-row">
+              <span className="prop-label">{t('Logic')}</span>
+              <span className="bl-logic">
+                <button className="btn small" onClick={() => openControlLogic(c.id)}>
+                  <Link2 size={13} /> {t('Open its logic')}
                 </button>
-              </div>
+                {steps(c.id) > 0 && <em>{tn(steps(c.id), '{n} action', '{n} actions')}</em>}
+              </span>
             </div>
             <div className="bl-row">
               <span className="prop-label">{t('Ask on air')}</span>
@@ -630,19 +585,6 @@ function ControlsPane() {
       )}
     </>
   );
-}
-
-/** What an action does, in a few words. */
-function actionText(a: CtlAction, tpl: Template): string {
-  if (a.op === 'timer') {
-    const op = TIMER_OPS().find(([v]) => v === a.value)?.[1];
-    return `${(a.layer && findLayer(tpl, a.layer)?.name) || a.layer || ''} : ${op ?? a.value ?? ''}${a.arg ? ` ${a.arg}` : ''}`;
-  }
-  if (a.op === 'add') return a.value?.startsWith('-') ? `${a.var} − ${a.value.slice(1)}` : `${a.var} + ${a.value}`;
-  if (a.op === 'set') return `${a.var} = ${a.value}`;
-  if (a.op === 'undo') return t('Undo');
-  if (a.op === 'reset') return a.var ? `${a.var} ↺` : t('All ↺');
-  return `${a.var} ${a.op === 'prev' ? '←' : a.op === 'toggle' ? '⇄' : '→'}`;
 }
 
 /** The right panel of the Builder: the element selected, the options, the controls. */

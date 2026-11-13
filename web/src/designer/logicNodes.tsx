@@ -1,5 +1,8 @@
 import {
   AlarmClock,
+  RotateCcw,
+  MousePointerClick,
+  Undo2,
   Move,
   MoveRight,
   GitBranch,
@@ -66,9 +69,13 @@ import { t } from '../i18n';
  * the labels of a Layer node's rows.
  */
 
-export type Fam = 'layer' | 'graphic' | 'playlist' | 'how' | 'input' | 'math' | 'text' | 'cond' | 'time' | 'event' | 'trigger' | 'action' | 'var' | 'mine';
+export type Fam = 'wbtn' | 'wvar' | 'wel' | 'layer' | 'graphic' | 'playlist' | 'how' | 'input' | 'math' | 'text' | 'cond' | 'time' | 'event' | 'trigger' | 'action' | 'var' | 'mine';
 
 export const FAMS: { id: Fam; label: string }[] = [
+  // The Builder: the widget's own.
+  { id: 'wbtn', label: 'Widget buttons' },
+  { id: 'wvar', label: 'Widget variables' },
+  { id: 'wel', label: 'Animated elements' },
   { id: 'layer', label: 'Layers' },
   { id: 'graphic', label: 'Templates' },
   { id: 'playlist', label: 'Playlists' },
@@ -206,9 +213,35 @@ const calc = (key: string, fam: Fam, label: string, icon: LucideIcon, expr: stri
 /** A Layer node for `l`. */
 export const layerNode = (l: Layer, x: number, y: number, want?: { type: PortType; side: 'in' | 'out' }): LogicNode => ({ ...base(x, y), type: 'layer', layer: l.id, rows: startRows(l, want) });
 
+/** An entry's label: names (layers, graphics, the widget's buttons…) as they are, the rest in the interface's language. */
+export const entryLabel = (e: Pick<Entry, 'key' | 'label'>) => (/^(layer|tpl|pl|wbtn|wvar|wel):/.test(e.key) ? e.label : t(e.label));
+
 /** The palette, for this template. */
 export function entries(tpl: Template): Entry[] {
-  return isProjectLogic(tpl) ? projectEntries(tpl) : templateEntries(tpl);
+  return isProjectLogic(tpl) ? projectEntries(tpl) : tpl.builder ? builderEntries(tpl) : templateEntries(tpl);
+}
+
+/** What the Logic of a widget (Builder) cannot use: the air of a graphic, other graphics, its own variables. */
+const NOT_IN_WIDGET = new Set(['onAir', 'continue', 'out', 'resume', 'nextRow', 'take', 'resumePlaylist', 'stopAuto', 'widget', 'setVar', 'var']);
+
+/** The default change of a widget variable, for its kind. */
+export const wvarOp = (kind: string | undefined) => (kind === 'list' ? 'next' : kind === 'bool' ? 'toggle' : kind === 'text' ? 'set' : 'add');
+
+/** The Builder's Logic: the widget's buttons, variables and Temps first, then what a graphic's Logic offers. */
+function builderEntries(tpl: Template): Entry[] {
+  const b = tpl.builder!;
+  const buttons = b.controls.map(
+    (c): Entry => ({ key: `wbtn:${c.id}`, fam: 'wbtn', label: c.row ? `${c.row} · ${c.label}` : c.label, icon: MousePointerClick, note: t('Button'), make: (_t, x, y) => ({ ...base(x, y), type: 'when', on: 'control', name: c.id }) }),
+  );
+  const vars: Entry[] = [
+    ...b.vars.map((v): Entry => ({ key: `wvar:${v.name}`, fam: 'wvar', label: v.name, icon: Variable, note: t('Variable'), make: (_t, x, y) => ({ ...base(x, y), type: 'wvar', var: v.name, op: wvarOp(v.kind), value: '1' }) })),
+    { key: 'wreset', fam: 'wvar', label: 'Back to the start (all)', icon: RotateCcw, make: (_t, x, y) => ({ ...base(x, y), type: 'wvar', var: '', op: 'reset', value: '' }) },
+    { key: 'wundo', fam: 'wvar', label: 'Undo', icon: Undo2, make: (_t, x, y) => ({ ...base(x, y), type: 'wundo' }) },
+  ];
+  const els = tpl.layers.filter(timedLayer).map(
+    (l): Entry => ({ key: `wel:${l.id}`, fam: 'wel', label: l.name, icon: LAYER_ICONS[l.type] ?? Timer, note: t('Element'), make: (_t, x, y) => ({ ...base(x, y), type: 'widget', layer: l.id, control: 'toggle' }) }),
+  );
+  return [...buttons, ...vars, ...els, ...templateEntries(tpl).filter((e) => e.fam !== 'graphic' && !NOT_IN_WIDGET.has(e.key))];
 }
 
 /** What a graphic's own Logic cannot do in the project's: its layers, its events, its pauses, its widgets. */
@@ -334,6 +367,9 @@ export function kindOf(n: LogicNode, tpl: Template): { fam: Fam; label: string; 
     return { fam: 'layer', label: l?.name ?? t('Missing layer'), icon: (l && LAYER_ICONS[l.type]) ?? Square };
   }
   if (n.type === 'event' || n.type === 'when') return { fam: 'event', label: t('When'), icon: Zap };
+  if (n.type === 'wvar') return { fam: 'wvar', label: t('Widget variable'), icon: Variable };
+  if (n.type === 'wundo') return { fam: 'wvar', label: t('Undo'), icon: Undo2 };
+  if (n.type === 'widget' && tpl.builder) return { fam: 'wel', label: t('Animated element'), icon: Timer };
   if (n.type === 'check') return { fam: 'cond', label: t('If'), icon: GitBranch };
   if (n.type === 'how') return { fam: 'how', label: t('How'), icon: MoveRight };
   if (n.type === 'expr') {

@@ -671,8 +671,8 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
             )}
           {template?.builder ? <BuilderCrumb /> : <FormatBar project={project} />}
           <div className="spacer" />
-          {template && !template.builder && (
-            <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen('template')} title={t('Events, triggers, actions, variables')}>
+          {template && (
+            <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen('template')} title={template.builder ? t('What its buttons do') : t('Events, triggers, actions, variables')}>
               <Link2 size={13} /> {t('Logic')}
             </button>
           )}

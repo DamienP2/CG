@@ -3,9 +3,10 @@
 // its On air card) and, in the template, its options.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ArrowLeftRight, Check, ChevronsRight, Flag, Minus, Pause, Play, Plus, Puzzle, RefreshCw, RotateCcw, SkipBack, SkipForward, Square, Timer, Trophy, Undo2, X, Zap, type LucideIcon } from 'lucide-react';
-import { act as builtAct, regenerate, startValue, varKey, type BuiltState } from '../engine/built';
+import { regenerate, startValue, varKey, type Forward } from '../engine/built';
+import { placedLogic } from '../engine/widgetLogic';
 import type { BuiltControl, Layer, WidgetDef, WidgetOption } from '../engine/types';
-import { useApp } from '../store';
+import { api, useApp } from '../store';
 import { findLayer, useDesigner } from '../designer/designerStore';
 import { openBuilderPage } from '../designer/builder';
 import { useDefOf } from '../widgetLibrary';
@@ -65,8 +66,9 @@ function byRow(list: BuiltControl[]): [string, BuiltControl[]][] {
 }
 
 /**
- * The control centre of a built widget. On air its controls go to the server (built::act); in the
- * Operator's preview they set the take's start values; in the Designer they try them on its values.
+ * The control centre of a built widget. On air its controls go to the server (its Logic runs with the
+ * template's); in the Operator's preview they set the take's start values; in the Designer they try
+ * them on its values — both through the same Logic, run once by the server (/api/widgets/press).
  */
 function BuiltCentre(p: OperatorProps) {
   const lib = useDefOf(p.layer);
@@ -80,29 +82,30 @@ function BuiltCentre(p: OperatorProps) {
 function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorProps & { def: WidgetDef; builder?: boolean }) {
   const mode = useCentreMode();
   const toast = useApp((s) => s.toast);
-  const st = useRef<BuiltState | undefined>(undefined);
+  // The widgets' states (Undo) between presses off air.
+  const states = useRef<Record<string, unknown>>({});
   const designer = mode === 'designer';
   const sb = layer.settingBindings ?? {};
   // What the Operator gets: every control, but those the Designer chooses (exposed in the template).
   const given = (c: BuiltControl) => !c.choose || designer || !!sb[controlPath(c.id)];
-  const run = (c: BuiltControl, typed?: string): string | void => {
+  const run = (c: BuiltControl, typed?: string): void => {
     if (item) return void act(c.id, typed !== undefined ? { value: typed } : undefined);
-    try {
-      const r = builtAct(def, layer, data, st.current, c.id, typed);
-      st.current = r.state;
-      if (designer) {
-        // In the Builder: its variables are the template's fields, its elements its layers.
-        const own = (k: string, pre: string) => (builder && k.startsWith(pre) ? k.slice(pre.length) : k);
-        const set = Object.fromEntries(Object.entries(r.set).map(([k, v]) => [own(k, varKey(layer.id, '')), v]));
-        useDesigner.setState((s) => ({ previewData: { ...s.previewData, ...set } }));
-        // Its Temps are tried too.
-        for (const f of r.forward) void useDesigner.getState().actWidget(own(f.layer, `${layer.id}/`), f.op, f.args);
-      } else setData?.(r.set);
-    } catch (e) {
-      const m = (e as Error).message;
-      toast(m, 'error');
-      return m;
-    }
+    // The Designer tries the widget as it is now; the Operator as its template placed it.
+    const logic = designer ? placedLogic(def, layer) : (layer.widget?.logic ?? placedLogic(def, layer));
+    if (!logic) return;
+    api<{ set: Record<string, string>; states: Record<string, unknown>; forward: Forward[] }>('POST', '/api/widgets/press', { logic, widget: layer.id, control: c.id, value: typed ?? '', data, states: states.current })
+      .then((r) => {
+        states.current = r.states;
+        if (designer) {
+          // In the Builder: its variables are the template's fields, its elements its layers.
+          const own = (k: string, pre: string) => (builder && k.startsWith(pre) ? k.slice(pre.length) : k);
+          const set = Object.fromEntries(Object.entries(r.set).map(([k, v]) => [own(k, varKey(layer.id, '')), v]));
+          useDesigner.setState((s) => ({ previewData: { ...s.previewData, ...set } }));
+          // Its Temps are tried too.
+          for (const f of r.forward) void useDesigner.getState().actWidget(own(f.layer, `${layer.id}/`), f.op, f.args);
+        } else setData?.(r.set);
+      })
+      .catch((e: Error) => toast(e.message, 'error'));
   };
   const ask = (c: BuiltControl) => (item && c.confirm ? t('{name} is on air: {action}?', { name: layer.name, action: c.label.toLowerCase() }) : undefined);
   const value = (name: string) => data[varKey(layer.id, name)] ?? startValue(def, layer, name);

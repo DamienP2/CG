@@ -91,7 +91,9 @@ export function portsOf(n: LogicNode): { ins: Port[]; outs: Port[] } {
     case 'once':
       return { ins: [run, { id: 'reset', label: 'Reset', type: 'flow' }], outs: [next] };
     case 'setVar':
+    case 'wvar':
       return { ins: [run, { id: 'value', label: 'Value', type: 'any' }], outs: [next] };
+    case 'wundo':
     case 'how':
     case 'animate':
     case 'playSound':

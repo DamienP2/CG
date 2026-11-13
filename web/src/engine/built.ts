@@ -3,11 +3,15 @@
 //
 // In a template a built widget is a folder (Layer.widget) holding the elements
 // generated from its definition (`generate`): both renderers draw them as any
-// layer. Its variables are values of the graphic under `varKey`; its controls
-// change them (`act`, mirror of crates/cg-core/src/built.rs, which runs them
-// on air) and drive the Temps among its elements.
+// layer. Its variables are values of the graphic under `varKey`; its buttons
+// change them and drive the Temps among its elements through its Logic
+// (engine/widgetLogic.ts), which the server runs (crates/cg-core/src/built.rs).
 import { parseSetting, formatSetting, readPath, writePath } from './settings';
-import type { Data, Layer, Prop, WidgetDef } from './types';
+import type { Data, Layer, Prop, WidgetDef, WidgetInstance } from './types';
+import { placedLogic } from './widgetLogic';
+
+/** The instance without its placed Logic (made again from the definition). */
+const withoutLogic = ({ logic: _, ...w }: WidgetInstance): WidgetInstance => w;
 
 /** The data key of the variable `name` of the widget placed as `widget` (its layer id). Mirror of built::var_key. */
 export function varKey(widget: string, name: string): string {
@@ -29,118 +33,17 @@ export function startData(def: WidgetDef, layer: Layer): Data {
 
 // -------------------------------------------------------------- controls --
 
-/** What a control asks a Temps of the widget (its own action). */
+/** What a press asks an element of the widget (a Temps started…): /api/widgets/press. */
 export interface Forward {
   layer: string;
   op: string;
   args?: unknown;
 }
 
-/** Its operator state: the values before each control (Undo). */
-export interface BuiltState {
-  hist?: Record<string, string>[];
-}
-
-const UNDO_STEPS = 50;
 const num = (s: string | undefined) => {
   const x = parseFloat((s ?? '').trim().replace(',', '.'));
   return Number.isFinite(x) ? x : undefined;
 };
-/** Whole numbers without decimals (mirror of built::fmt_num). */
-const fmtNum = (x: number) => (Math.abs(x - Math.round(x)) < 1e-9 ? String(Math.round(x)) : String(parseFloat(x.toFixed(4))));
-const truthy = (s: string) => ['true', '1', 'yes', 'on'].includes(s.trim().toLowerCase());
-
-/**
- * Runs the control `control` of the widget placed as `layer` on the values of the graphic (mirror of
- * built::act): the values it changes, its new state, what goes to its Temps. Throws a message to show.
- */
-export function act(def: WidgetDef, layer: Layer, data: Data, state: BuiltState | undefined, control: string, typed?: string): { set: Data; state: BuiltState; forward: Forward[] } {
-  const c = def.controls.find((x) => x.id === control);
-  if (!c) throw new Error(`${def.name}: no control “${control}”`);
-  const hist = [...(state?.hist ?? [])];
-  const now: Data = {};
-  const before: Record<string, string> = {};
-  const current = (v: string) => now[varKey(layer.id, v)] ?? data[varKey(layer.id, v)] ?? startValue(def, layer, v);
-  const set = (v: string, value: string) => {
-    const k = varKey(layer.id, v);
-    if (!(k in before)) before[k] = current(v);
-    now[k] = value;
-  };
-  const valueOf = (raw: string | undefined) => {
-    if ((raw ?? '').trim() !== '$value') return raw ?? '';
-    if (!typed?.trim()) throw new Error('a value is needed');
-    return typed;
-  };
-  const forward: Forward[] = [];
-  for (const a of c.actions) {
-    const name = (a.var ?? '').trim();
-    const known = () => {
-      const v = def.vars.find((x) => x.name === name);
-      if (!v) throw new Error(`${def.name}: no variable “${name}”`);
-      return v;
-    };
-    switch (a.op) {
-      case 'add': {
-        known();
-        const by = valueOf(a.value);
-        const n = num(by);
-        if (n === undefined) throw new Error(`“${by}” is not a number`);
-        set(name, fmtNum((num(current(name)) ?? 0) + n));
-        break;
-      }
-      case 'set':
-        known();
-        set(name, valueOf(a.value));
-        break;
-      case 'toggle':
-        known();
-        set(name, String(!truthy(current(name))));
-        break;
-      case 'next':
-      case 'prev':
-      case 'cycle': {
-        const v = known();
-        const cur = current(name);
-        const back = a.op === 'prev';
-        if (!v.list?.length) set(name, fmtNum((num(cur) ?? 0) + (back ? -1 : 1)));
-        else {
-          const len = v.list.length;
-          const at = v.list.indexOf(cur);
-          const to = a.op === 'cycle' ? (((at + 1) % len) + len) % len : back ? Math.max(0, at - 1) : Math.min(len - 1, at + 1);
-          set(name, v.list[to]);
-        }
-        break;
-      }
-      case 'reset':
-        for (const v of name ? [known().name] : def.vars.map((x) => x.name)) set(v, startValue(def, layer, v));
-        break;
-      case 'undo': {
-        const last = hist.pop();
-        if (!last) throw new Error('nothing to undo');
-        return { set: last, state: { hist }, forward: [] };
-      }
-      case 'timer': {
-        if (!a.layer) throw new Error(`${def.name}: which Temps?`);
-        const op = (a.value ?? '').trim();
-        let args: unknown;
-        if (op === 'adjust') {
-          const s = valueOf(a.arg);
-          if (num(s) === undefined) throw new Error(`“${s}” is not a number of seconds`);
-          args = { seconds: num(s) };
-        } else if (op === 'set') args = { value: valueOf(a.arg) };
-        forward.push({ layer: elementId(layer.id, a.layer), op, args });
-        break;
-      }
-      default:
-        throw new Error(`${def.name}: unknown action “${(a as { op: string }).op}”`);
-    }
-  }
-  if (Object.keys(before).length) {
-    hist.push(before);
-    if (hist.length > UNDO_STEPS) hist.shift();
-  }
-  return { set: now, state: { hist }, forward };
-}
 
 // ------------------------------------------------------------ generation --
 
@@ -178,6 +81,7 @@ function withVarKeys<T>(l: T, widget: string, names: string[]): T {
  */
 export function generate(def: WidgetDef, group: Layer): Layer[] {
   const W = group.id;
+  const logic = placedLogic(def, group);
   const id = (x: string) => elementId(W, x);
   const names = def.vars.map((v) => v.name);
   const byId = new Map(def.layers.map((l) => [l.id, l]));
@@ -221,7 +125,7 @@ export function generate(def: WidgetDef, group: Layer): Layer[] {
     ...group,
     type: 'group',
     props: { ...group.props, width: def.width, height: def.height },
-    widget: { ...group.widget!, snap: { id: def.id, name: def.name, vars: def.vars, controls: def.controls }, rev: def.rev ?? 0 },
+    widget: { ...withoutLogic(group.widget!), snap: { id: def.id, name: def.name, vars: def.vars, controls: def.controls }, rev: def.rev ?? 0, ...(logic ? { logic } : {}) },
   } as Layer;
   for (const l of kids(null)) place(l, W);
   // Its options: the template's value (else the default) on each target; an exposed one bound.

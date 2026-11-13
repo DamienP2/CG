@@ -22,6 +22,14 @@ export const sourceOf = (logic: Logic, id: string): LogicNode | undefined => {
 /** The moments a When can watch, for its source (none: the graphic's, or the channel's). */
 export function momentsOf(src: LogicNode | undefined, tpl: Template): Opt[] {
   const proj = isProjectLogic(tpl);
+  // The Logic of a widget (Builder): its buttons first.
+  if (!src && tpl.builder)
+    return [
+      { value: 'control', label: 'A button is pressed' },
+      { value: 'start', label: 'The graphic is taken' },
+      { value: 'trigger', label: 'A trigger is received' },
+      { value: 'every', label: 'Every N seconds' },
+    ];
   if (!src) {
     return [
       ...(proj ? [{ value: 'start', label: 'The project is loaded' }] : [{ value: 'start', label: 'The graphic is taken' }, { value: 'continue', label: 'Continue (F2) is pressed' }]),
