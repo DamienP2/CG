@@ -26,11 +26,32 @@ fn file(s: &Shared) -> std::path::PathBuf {
     s.data_dir.join("widgets.json")
 }
 
-/// The shared widgets: the pre-built ones until the first change.
+/// The shared widgets: the pre-built ones until the first change; a pre-built
+/// one shipped since is added (once: a removed one is remembered).
 pub async fn load(s: &Shared) -> Vec<Def> {
-    match tokio::fs::read(file(s)).await {
+    let prebuilt: Vec<Def> = serde_json::from_str(PREBUILT).unwrap_or_default();
+    let Ok(b) = tokio::fs::read(file(s)).await else {
+        return prebuilt;
+    };
+    let mut defs: Vec<Def> = serde_json::from_slice(&b).unwrap_or_default();
+    let seen = removed(s).await;
+    for d in prebuilt {
+        if !defs.iter().any(|x| x.id == d.id) && !seen.contains(&d.id) {
+            defs.push(d);
+        }
+    }
+    defs
+}
+
+fn removed_file(s: &Shared) -> std::path::PathBuf {
+    s.data_dir.join("widgets-removed.json")
+}
+
+/// The pre-built widgets removed here (not given back at the next start).
+async fn removed(s: &Shared) -> Vec<String> {
+    match tokio::fs::read(removed_file(s)).await {
         Ok(b) => serde_json::from_slice(&b).unwrap_or_default(),
-        Err(_) => serde_json::from_str(PREBUILT).unwrap_or_default(),
+        Err(_) => Vec::new(),
     }
 }
 
@@ -118,6 +139,15 @@ pub async fn delete(
         return Err(not_found("widget"));
     }
     save(&s, &defs).await?;
+    let prebuilt: Vec<Def> = serde_json::from_str(PREBUILT).unwrap_or_default();
+    if prebuilt.iter().any(|d| d.id == wid) {
+        let mut gone = removed(&s).await;
+        gone.push(wid);
+        let bytes = serde_json::to_vec(&gone).map_err(internal)?;
+        tokio::fs::write(removed_file(&s), bytes)
+            .await
+            .map_err(internal)?;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -256,8 +286,19 @@ mod tests {
     #[test]
     fn the_prebuilt_widgets_read() {
         let defs: Vec<Def> = serde_json::from_str(PREBUILT).unwrap();
-        assert!(defs
-            .iter()
-            .any(|d| d.id == "scoreboard" && !d.controls.is_empty()));
+        for id in [
+            "scoreboard",
+            "ticker",
+            "credits",
+            "socialbadge",
+            "socialwall",
+        ] {
+            assert!(defs.iter().any(|d| d.id == id), "{id}");
+        }
+        // Their elements read as layers (lists, rolls, per-row rules).
+        for d in &defs {
+            let layers = d.rest.get("layers").cloned().unwrap_or_default();
+            let _: Vec<cg_core::Layer> = serde_json::from_value(layers).unwrap();
+        }
     }
 }

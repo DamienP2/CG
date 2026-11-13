@@ -1119,8 +1119,8 @@ type MenuItem = {
   soon?: boolean;
 };
 
-/** The + menu: the base widgets (drawn by the engine), then the pre-built ones not yet made with the Builder. */
-const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Video; patch?: Record<string, unknown>; action?: 'video' | 'lottie'; hint?: string; preset?: string; built?: boolean }[] = [
+/** The + menu: the base widgets (drawn by the engine); the pre-built ones are widgets of the Library (made with the Builder). */
+const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Video; patch?: Record<string, unknown>; action?: 'video' | 'lottie'; hint?: string; preset?: string }[] = [
   { type: 'counter', label: 'Counter' },
   { widget: 'time', label: 'Time' },
   { widget: 'clock', label: 'Clock' },
@@ -1131,18 +1131,14 @@ const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Vi
   { type: 'chart', label: 'Chart' },
   { type: 'table', label: 'Table' },
   { type: 'web', label: 'Iframe', soon: Code, hint: 'A web page or your HTML code (HTML5 outputs)' },
-  { type: 'socialWall', label: 'Social wall', built: true },
-  { type: 'socialBadge', label: 'Social badge', built: true },
-  { type: 'credits', label: 'Credits', built: true },
-  { type: 'ticker', label: 'Ticker', built: true },
 ];
-type Menu = MenuItem & { action?: 'video' | 'lottie'; built?: boolean };
+type Menu = MenuItem & { action?: 'video' | 'lottie' };
 const menu = (): Menu[] =>
   MENU.map((m) => {
     // A widget by its id (a type drawn by two widgets: the Clock and the Time) comes with its own settings.
     const w = m.widget ? WIDGET_LIST.find((x) => x.id === m.widget) : m.type ? WIDGET_LIST.find((x) => x.type === m.type) : undefined;
     const patch = m.widget && w ? (w.create() as Record<string, unknown>) : m.patch;
-    return { label: m.label, icon: m.soon && !w ? m.soon : (w?.icon ?? m.soon ?? Square), type: w?.type, patch, hint: m.hint, preset: m.preset, action: m.action, soon: !w && !m.action && !m.preset, built: m.built };
+    return { label: m.label, icon: m.soon && !w ? m.soon : (w?.icon ?? m.soon ?? Square), type: w?.type, patch, hint: m.hint, preset: m.preset, action: m.action, soon: !w && !m.action && !m.preset };
   });
 
 const NO_WIDGETS: never[] = [];
@@ -1219,28 +1215,26 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
           <div className="add-sect">
             <div className="add-mh">{t('Elements')}</div>
             <div className="add-grid">
-              {menu()
-                .filter((it) => !it.built)
-                .map((it) => (
-                  <button key={it.label} disabled={it.soon} title={it.soon ? t('Coming soon') : it.hint && t(it.hint)} onClick={() => pick(it)}>
-                    <span className="add-icon">
-                      <it.icon size={15} />
-                    </span>
-                    {tc('widget', it.label)}
-                    {it.soon && <em>{t('soon')}</em>}
-                  </button>
-                ))}
+              {menu().map((it) => (
+                <button key={it.label} disabled={it.soon} title={it.soon ? t('Coming soon') : it.hint && t(it.hint)} onClick={() => pick(it)}>
+                  <span className="add-icon">
+                    <it.icon size={15} />
+                  </span>
+                  {tc('widget', it.label)}
+                  {it.soon && <em>{t('soon')}</em>}
+                </button>
+              ))}
             </div>
           </div>
           {/* Widgets go in templates (not in a widget being built). */}
           {!builder &&
             (
               [
-                [t('Widgets of the project'), mine, []],
-                [t('Shared widgets'), shared, menu().filter((it) => it.built)],
+                [t('Widgets of the project'), mine],
+                [t('Shared widgets'), shared],
               ] as const
-            ).map(([title, list, older]) =>
-              list.length || older.length ? (
+            ).map(([title, list]) =>
+              list.length ? (
                 <div key={title} className="add-sect">
                   <div className="add-mh">{title}</div>
                   <div className="add-grid">
@@ -1255,15 +1249,6 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
                         </button>
                       );
                     })}
-                    {/* Not yet made with the Builder. */}
-                    {older.map((it) => (
-                      <button key={it.label} onClick={() => pick(it)}>
-                        <span className="add-icon">
-                          <it.icon size={15} />
-                        </span>
-                        {tc('widget', it.label)}
-                      </button>
-                    ))}
                   </div>
                 </div>
               ) : null,

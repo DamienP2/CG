@@ -977,5 +977,1116 @@
   ],
   "width": 1240,
   "rev": 1
+ },
+ {
+  "id": "ticker",
+  "name": "Ticker",
+  "icon": "zap",
+  "width": 1920,
+  "height": 64,
+  "rev": 1,
+  "vars": [
+   {
+    "name": "titre",
+    "kind": "text",
+    "initial": "INFO",
+    "keep": true
+   },
+   {
+    "name": "infos",
+    "kind": "rows",
+    "keep": true,
+    "columns": [
+     {
+      "name": "texte",
+      "kind": "text"
+     },
+     {
+      "name": "catégorie",
+      "kind": "choice",
+      "choices": [
+       "Politique",
+       "Sport",
+       "Économie",
+       "Société",
+       "Culture",
+       "Monde"
+      ]
+     }
+    ],
+    "initial": "[{\"texte\": \"Sommet européen à Bruxelles : accord trouvé sur le budget\", \"catégorie\": \"Politique\"}, {\"texte\": \"Ligue des champions : le PSG qualifié pour les quarts\", \"catégorie\": \"Sport\"}, {\"texte\": \"Bourse : le CAC 40 termine en hausse de 0,8 %\", \"catégorie\": \"Économie\"}, {\"texte\": \"Météo : vigilance orange aux orages sur 12 départements\", \"catégorie\": \"\"}]"
+   }
+  ],
+  "layers": [
+   {
+    "id": "fond",
+    "name": "Fond",
+    "type": "rect",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 1920,
+     "height": 64,
+     "fill": [
+      0.043137254901960784,
+      0.06274509803921569,
+      0.12549019607843137,
+      0.94
+     ]
+    }
+   },
+   {
+    "id": "bloc",
+    "name": "Bloc du titre",
+    "type": "rect",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 220,
+     "height": 64,
+     "fill": [
+      0.8823529411764706,
+      0.11372549019607843,
+      0.2823529411764706,
+      1.0
+     ]
+    }
+   },
+   {
+    "id": "titre",
+    "name": "Titre",
+    "type": "text",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{titre}}",
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 800,
+    "align": "center",
+    "verticalAlign": "middle",
+    "uppercase": true,
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 220,
+     "height": 64,
+     "fontSize": 32,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "id": "infos",
+    "name": "Infos",
+    "type": "group",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "clip": true,
+    "props": {
+     "x": 236,
+     "y": 0,
+     "width": 1684,
+     "height": 64
+    },
+    "list": {
+     "key": "infos",
+     "layout": "row",
+     "gap": 40
+    },
+    "roll": {
+     "mode": "continuous",
+     "dir": "left",
+     "by": "speed",
+     "speed": 140,
+     "duration": 30,
+     "pause": 4,
+     "fade": 60
+    }
+   },
+   {
+    "id": "sep",
+    "name": "Séparateur",
+    "type": "text",
+    "parent": "infos",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "■",
+    "fontFamily": "Inter",
+    "fontWeight": 600,
+    "align": "center",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 24,
+     "height": 64,
+     "fontSize": 14,
+     "fill": [
+      0.8823529411764706,
+      0.11372549019607843,
+      0.2823529411764706,
+      1.0
+     ]
+    },
+    "overflow": "visible"
+   },
+   {
+    "id": "cat",
+    "name": "Catégorie",
+    "type": "rect",
+    "parent": "infos",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "x": 36,
+     "y": 17,
+     "width": 128,
+     "height": 30,
+     "fill": [
+      0.1450980392156863,
+      0.38823529411764707,
+      0.9215686274509803,
+      1.0
+     ],
+     "cornerRadius": 4
+    },
+    "inList": {
+     "when": {
+      "col": "catégorie",
+      "test": "filled"
+     },
+     "colors": [
+      {
+       "prop": "fill",
+       "col": "catégorie",
+       "map": {
+        "Politique": "#2563eb",
+        "Sport": "#16a34a",
+        "Économie": "#d97706",
+        "Société": "#9333ea",
+        "Culture": "#db2777",
+        "Monde": "#0891b2"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "cat_txt",
+    "name": "Texte de la catégorie",
+    "type": "text",
+    "parent": "infos",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{catégorie}}",
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "align": "center",
+    "verticalAlign": "middle",
+    "uppercase": true,
+    "props": {
+     "x": 36,
+     "y": 17,
+     "width": 128,
+     "height": 30,
+     "fontSize": 15,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ]
+    },
+    "inList": {
+     "when": {
+      "col": "catégorie",
+      "test": "filled"
+     }
+    }
+   },
+   {
+    "id": "texte",
+    "name": "Texte",
+    "type": "text",
+    "parent": "infos",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{texte}}",
+    "fontFamily": "Inter",
+    "fontWeight": 600,
+    "align": "left",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "props": {
+     "x": 180,
+     "y": 0,
+     "width": 900,
+     "height": 64,
+     "fontSize": 27,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ]
+    },
+    "overflow": "visible"
+   }
+  ],
+  "options": [
+   {
+    "id": "accent",
+    "name": "Couleur du titre",
+    "group": "Style",
+    "kind": "color",
+    "default": "#e11d48",
+    "targets": [
+     {
+      "layer": "bloc",
+      "path": "props.fill"
+     },
+     {
+      "layer": "sep",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "fond",
+    "name": "Fond",
+    "group": "Style",
+    "kind": "color",
+    "default": "#0b1020f0",
+    "targets": [
+     {
+      "layer": "fond",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "vitesse",
+    "name": "Vitesse",
+    "group": "Défilement",
+    "kind": "number",
+    "default": 140,
+    "targets": [
+     {
+      "layer": "infos",
+      "path": "roll.speed"
+     }
+    ]
+   }
+  ],
+  "controls": [
+   {
+    "id": "lire",
+    "label": "Lire / Pause",
+    "icon": "play",
+    "key": "P",
+    "main": true,
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "toggle",
+      "layer": "infos"
+     }
+    ]
+   },
+   {
+    "id": "recommencer",
+    "label": "Recommencer",
+    "icon": "reset",
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "restart",
+      "layer": "infos"
+     }
+    ]
+   },
+   {
+    "id": "liste",
+    "label": "Infos",
+    "kind": "list",
+    "list": "infos",
+    "actions": []
+   }
+  ]
+ },
+ {
+  "id": "credits",
+  "name": "Générique",
+  "icon": "continue",
+  "width": 1920,
+  "height": 1080,
+  "rev": 1,
+  "vars": [
+   {
+    "name": "lignes",
+    "kind": "rows",
+    "keep": true,
+    "columns": [
+     {
+      "name": "type",
+      "kind": "choice",
+      "choices": [
+       "Titre",
+       "Nom",
+       "Logo",
+       "Espace"
+      ]
+     },
+     {
+      "name": "texte",
+      "kind": "text"
+     },
+     {
+      "name": "rôle",
+      "kind": "text"
+     },
+     {
+      "name": "image",
+      "kind": "image"
+     }
+    ],
+    "initial": "[{\"type\": \"Titre\", \"texte\": \"Réalisation\", \"rôle\": \"\", \"image\": \"\"}, {\"type\": \"Nom\", \"texte\": \"Claire Martin\", \"rôle\": \"Réalisatrice\", \"image\": \"\"}, {\"type\": \"Nom\", \"texte\": \"Paul Diaz\", \"rôle\": \"Image\", \"image\": \"\"}, {\"type\": \"Espace\", \"texte\": \"\", \"rôle\": \"\", \"image\": \"\"}, {\"type\": \"Titre\", \"texte\": \"Musique originale\", \"rôle\": \"\", \"image\": \"\"}, {\"type\": \"Nom\", \"texte\": \"Nils Leclerc\", \"rôle\": \"Composée par\", \"image\": \"\"}]"
+   }
+  ],
+  "layers": [
+   {
+    "id": "lignes",
+    "name": "Lignes",
+    "type": "group",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "clip": true,
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 1920,
+     "height": 1080
+    },
+    "list": {
+     "key": "lignes",
+     "layout": "column",
+     "gap": 14
+    },
+    "roll": {
+     "mode": "continuous",
+     "dir": "up",
+     "by": "duration",
+     "speed": 120,
+     "duration": 30,
+     "pause": 4,
+     "fade": 140
+    }
+   },
+   {
+    "id": "titre",
+    "name": "Titre",
+    "type": "text",
+    "parent": "lignes",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{texte}}",
+    "fontFamily": "Inter",
+    "fontWeight": 800,
+    "align": "center",
+    "verticalAlign": "bottom",
+    "uppercase": true,
+    "props": {
+     "x": 360,
+     "y": 0,
+     "width": 1200,
+     "height": 60,
+     "fontSize": 30,
+     "fill": [
+      0.5607843137254902,
+      0.6392156862745098,
+      1.0,
+      1.0
+     ]
+    },
+    "inList": {
+     "when": {
+      "col": "type",
+      "test": "is",
+      "value": "Titre"
+     }
+    }
+   },
+   {
+    "id": "role",
+    "name": "Rôle",
+    "type": "text",
+    "parent": "lignes",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{rôle}}",
+    "fontFamily": "Inter",
+    "fontWeight": 500,
+    "align": "right",
+    "verticalAlign": "middle",
+    "uppercase": true,
+    "props": {
+     "x": 360,
+     "y": 0,
+     "width": 580,
+     "height": 46,
+     "fontSize": 22,
+     "fill": [
+      0.7803921568627451,
+      0.796078431372549,
+      0.8784313725490196,
+      1.0
+     ]
+    },
+    "inList": {
+     "when": {
+      "col": "type",
+      "test": "is",
+      "value": "Nom"
+     }
+    }
+   },
+   {
+    "id": "nom",
+    "name": "Nom",
+    "type": "text",
+    "parent": "lignes",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{texte}}",
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "align": "left",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "props": {
+     "x": 980,
+     "y": 0,
+     "width": 580,
+     "height": 46,
+     "fontSize": 30,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ]
+    },
+    "inList": {
+     "when": {
+      "col": "type",
+      "test": "is",
+      "value": "Nom"
+     }
+    }
+   },
+   {
+    "id": "logo",
+    "name": "Logo",
+    "type": "image",
+    "parent": "lignes",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "src": "{{image}}",
+    "fit": "contain",
+    "props": {
+     "x": 810,
+     "y": 0,
+     "width": 300,
+     "height": 120
+    },
+    "inList": {
+     "when": {
+      "col": "type",
+      "test": "is",
+      "value": "Logo"
+     }
+    }
+   },
+   {
+    "id": "espace",
+    "name": "Espace",
+    "type": "rect",
+    "parent": "lignes",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "x": 360,
+     "y": 0,
+     "width": 1200,
+     "height": 56,
+     "fill": [
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "inList": {
+     "when": {
+      "col": "type",
+      "test": "is",
+      "value": "Espace"
+     }
+    }
+   }
+  ],
+  "options": [
+   {
+    "id": "accent",
+    "name": "Couleur des titres",
+    "group": "Style",
+    "kind": "color",
+    "default": "#8fa3ff",
+    "targets": [
+     {
+      "layer": "titre",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "duree",
+    "name": "Durée",
+    "group": "Défilement",
+    "kind": "number",
+    "default": 30,
+    "targets": [
+     {
+      "layer": "lignes",
+      "path": "roll.duration"
+     }
+    ]
+   }
+  ],
+  "controls": [
+   {
+    "id": "lire",
+    "label": "Lire / Pause",
+    "icon": "play",
+    "key": "P",
+    "main": true,
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "toggle",
+      "layer": "lignes"
+     }
+    ]
+   },
+   {
+    "id": "recommencer",
+    "label": "Recommencer",
+    "icon": "reset",
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "restart",
+      "layer": "lignes"
+     }
+    ]
+   },
+   {
+    "id": "liste",
+    "label": "Lignes",
+    "kind": "list",
+    "list": "lignes",
+    "actions": []
+   }
+  ]
+ },
+ {
+  "id": "socialbadge",
+  "name": "Badge social",
+  "icon": "flag",
+  "width": 760,
+  "height": 210,
+  "rev": 1,
+  "vars": [
+   {
+    "name": "auteur",
+    "kind": "text",
+    "initial": "Marie Dupont",
+    "keep": true
+   },
+   {
+    "name": "pseudo",
+    "kind": "text",
+    "initial": "@mariedupont",
+    "keep": true
+   },
+   {
+    "name": "message",
+    "kind": "text",
+    "initial": "Quelle soirée ! Merci à toute l’équipe 🎉",
+    "keep": true
+   },
+   {
+    "name": "avatar",
+    "kind": "text",
+    "initial": "",
+    "keep": true
+   },
+   {
+    "name": "reseau",
+    "kind": "text",
+    "initial": "Instagram",
+    "keep": true
+   }
+  ],
+  "layers": [
+   {
+    "id": "carte",
+    "name": "Carte",
+    "type": "rect",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 760,
+     "height": 210,
+     "fill": [
+      1.0,
+      1.0,
+      1.0,
+      0.96
+     ],
+     "cornerRadius": 20
+    }
+   },
+   {
+    "id": "photo",
+    "name": "Avatar",
+    "type": "image",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "src": "{{avatar}}",
+    "fit": "cover",
+    "props": {
+     "x": 24,
+     "y": 24,
+     "width": 72,
+     "height": 72
+    }
+   },
+   {
+    "id": "auteur",
+    "name": "Auteur",
+    "type": "text",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{auteur}}",
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "align": "left",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "props": {
+     "x": 112,
+     "y": 22,
+     "width": 480,
+     "height": 38,
+     "fontSize": 28,
+     "fill": [
+      0.08235294117647059,
+      0.10196078431372549,
+      0.1803921568627451,
+      1.0
+     ]
+    }
+   },
+   {
+    "id": "pseudo",
+    "name": "Pseudo",
+    "type": "text",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{pseudo}}",
+    "fontFamily": "Inter",
+    "fontWeight": 500,
+    "align": "left",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "props": {
+     "x": 112,
+     "y": 60,
+     "width": 480,
+     "height": 30,
+     "fontSize": 20,
+     "fill": [
+      0.4196078431372549,
+      0.4470588235294118,
+      0.5647058823529412,
+      1.0
+     ]
+    }
+   },
+   {
+    "id": "reseau",
+    "name": "Réseau",
+    "type": "text",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{reseau}}",
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "align": "right",
+    "verticalAlign": "middle",
+    "uppercase": true,
+    "props": {
+     "x": 560,
+     "y": 24,
+     "width": 176,
+     "height": 30,
+     "fontSize": 18,
+     "fill": [
+      0.8823529411764706,
+      0.11372549019607843,
+      0.2823529411764706,
+      1.0
+     ]
+    }
+   },
+   {
+    "id": "message",
+    "name": "Message",
+    "type": "text",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{message}}",
+    "fontFamily": "Inter",
+    "fontWeight": 500,
+    "align": "left",
+    "verticalAlign": "top",
+    "uppercase": false,
+    "props": {
+     "x": 24,
+     "y": 112,
+     "width": 712,
+     "height": 80,
+     "fontSize": 26,
+     "fill": [
+      0.08235294117647059,
+      0.10196078431372549,
+      0.1803921568627451,
+      1.0
+     ]
+    },
+    "wrap": true
+   }
+  ],
+  "options": [
+   {
+    "id": "carte",
+    "name": "Couleur de la carte",
+    "group": "Style",
+    "kind": "color",
+    "default": "#fffffff5",
+    "targets": [
+     {
+      "layer": "carte",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "accent",
+    "name": "Couleur du réseau",
+    "group": "Style",
+    "kind": "color",
+    "default": "#e11d48",
+    "targets": [
+     {
+      "layer": "reseau",
+      "path": "props.fill"
+     }
+    ]
+   }
+  ],
+  "controls": []
+ },
+ {
+  "id": "socialwall",
+  "name": "Mur social",
+  "icon": "puzzle",
+  "width": 1600,
+  "height": 800,
+  "rev": 1,
+  "vars": [
+   {
+    "name": "posts",
+    "kind": "rows",
+    "keep": true,
+    "columns": [
+     {
+      "name": "auteur",
+      "kind": "text"
+     },
+     {
+      "name": "message",
+      "kind": "text"
+     },
+     {
+      "name": "avatar",
+      "kind": "image"
+     }
+    ],
+    "initial": "[{\"auteur\": \"Marie Dupont\", \"message\": \"Quelle soirée ! Merci à toute l’équipe 🎉\", \"avatar\": \"\"}, {\"auteur\": \"Karim B.\", \"message\": \"Le direct le plus suivi de l’année, bravo.\", \"avatar\": \"\"}, {\"auteur\": \"Léa M.\", \"message\": \"On en veut encore ! Vivement la semaine prochaine.\", \"avatar\": \"\"}, {\"auteur\": \"Tom R.\", \"message\": \"Superbe plateau ce soir.\", \"avatar\": \"\"}, {\"auteur\": \"Sophie L.\", \"message\": \"Je regarde depuis Montréal 🇨🇦\", \"avatar\": \"\"}, {\"auteur\": \"Hugo P.\", \"message\": \"La séquence musicale était incroyable.\", \"avatar\": \"\"}]"
+   }
+  ],
+  "layers": [
+   {
+    "id": "mur",
+    "name": "Mur",
+    "type": "group",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "clip": true,
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 1600,
+     "height": 800
+    },
+    "list": {
+     "key": "posts",
+     "layout": "grid",
+     "cols": 3,
+     "gap": 24
+    },
+    "roll": {
+     "mode": "one",
+     "dir": "up",
+     "by": "speed",
+     "speed": 120,
+     "duration": 30,
+     "pause": 6,
+     "fade": 0
+    }
+   },
+   {
+    "id": "carte",
+    "name": "Carte",
+    "type": "rect",
+    "parent": "mur",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 517,
+     "height": 244,
+     "fill": [
+      1.0,
+      1.0,
+      1.0,
+      0.95
+     ],
+     "cornerRadius": 16
+    }
+   },
+   {
+    "id": "photo",
+    "name": "Avatar",
+    "type": "image",
+    "parent": "mur",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "src": "{{avatar}}",
+    "fit": "cover",
+    "props": {
+     "x": 20,
+     "y": 20,
+     "width": 56,
+     "height": 56
+    }
+   },
+   {
+    "id": "auteur",
+    "name": "Auteur",
+    "type": "text",
+    "parent": "mur",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{auteur}}",
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "align": "left",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "props": {
+     "x": 92,
+     "y": 20,
+     "width": 400,
+     "height": 56,
+     "fontSize": 24,
+     "fill": [
+      0.08235294117647059,
+      0.10196078431372549,
+      0.1803921568627451,
+      1.0
+     ]
+    }
+   },
+   {
+    "id": "message",
+    "name": "Message",
+    "type": "text",
+    "parent": "mur",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{message}}",
+    "fontFamily": "Inter",
+    "fontWeight": 500,
+    "align": "left",
+    "verticalAlign": "top",
+    "uppercase": false,
+    "props": {
+     "x": 20,
+     "y": 92,
+     "width": 477,
+     "height": 132,
+     "fontSize": 24,
+     "fill": [
+      0.08235294117647059,
+      0.10196078431372549,
+      0.1803921568627451,
+      1.0
+     ]
+    },
+    "wrap": true
+   }
+  ],
+  "options": [
+   {
+    "id": "carte",
+    "name": "Couleur des cartes",
+    "group": "Style",
+    "kind": "color",
+    "default": "#fffffff2",
+    "targets": [
+     {
+      "layer": "carte",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "pause",
+    "name": "Pause",
+    "group": "Défilement",
+    "kind": "number",
+    "default": 6,
+    "targets": [
+     {
+      "layer": "mur",
+      "path": "roll.pause"
+     }
+    ]
+   }
+  ],
+  "controls": [
+   {
+    "id": "lire",
+    "label": "Lire / Pause",
+    "icon": "play",
+    "key": "P",
+    "main": true,
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "toggle",
+      "layer": "mur"
+     }
+    ]
+   },
+   {
+    "id": "liste",
+    "label": "Posts",
+    "kind": "list",
+    "list": "posts",
+    "actions": []
+   }
+  ]
  }
 ]
