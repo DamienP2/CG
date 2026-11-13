@@ -1,4 +1,4 @@
-import { openBuilder } from './builder';
+import { openBuilderPage } from './builder';
 import { repeatPreview } from '../engine/built';
 import { useTableEditor } from '../widgets/table-editor-store';
 import { TrackContext } from '../engine/tracking';
@@ -694,7 +694,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     const l = id && st.template ? findLayer(st.template, id) : undefined;
     if (l?.type === 'table' && !l.locked) useTableEditor.getState().open(l.id);
     // A built widget: the Builder.
-    if (l?.widget) openBuilder(l.widget.def);
+    if (l?.widget) void openBuilderPage(l.widget.def, { fromTemplate: useDesigner.getState().template?.id });
   };
 
   // Program, fill or key, for the whole stage (canvas toolbar).

@@ -350,14 +350,19 @@ pub fn act(
 /// The values of the template's built widgets kept after the graphic has been
 /// on air (variables marked to keep), by data key: what its rundown item
 /// keeps for the next take.
+/// The definition of the widget placed as `l`: the one it was made from
+/// (its snapshot), else the project's.
+pub fn def_of<'a>(defs: &'a [Def], l: &'a Layer) -> Option<&'a Def> {
+    let w = l.widget.as_ref()?;
+    w.snap
+        .as_deref()
+        .or_else(|| defs.iter().find(|d| d.id == w.def))
+}
+
 pub fn kept(defs: &[Def], layers: &[Layer], data: &Data) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for l in layers {
-        let Some(def) = l
-            .widget
-            .as_ref()
-            .and_then(|w| defs.iter().find(|d| d.id == w.def))
-        else {
+        let Some(def) = def_of(defs, l) else {
             continue;
         };
         for v in def.vars.iter().filter(|v| v.keep) {
@@ -375,11 +380,7 @@ pub fn kept(defs: &[Def], layers: &[Layer], data: &Data) -> BTreeMap<String, Str
 pub fn not_kept(defs: &[Def], layers: &[Layer]) -> Vec<String> {
     let mut out = Vec::new();
     for l in layers {
-        let Some(def) = l
-            .widget
-            .as_ref()
-            .and_then(|w| defs.iter().find(|d| d.id == w.def))
-        else {
+        let Some(def) = def_of(defs, l) else {
             continue;
         };
         out.extend(

@@ -7,7 +7,8 @@ import { act as builtAct, regenerate, startValue, varKey, type BuiltState } from
 import type { BuiltControl, Layer, WidgetDef, WidgetOption } from '../engine/types';
 import { useApp } from '../store';
 import { findLayer, useDesigner } from '../designer/designerStore';
-import { openBuilder } from '../designer/builder';
+import { openBuilderPage } from '../designer/builder';
+import { useDefOf } from '../widgetLibrary';
 import { t } from '../i18n';
 import { Bound, CentreModeContext, ColorPick, defineWidget, Msg, Num, Row, Section, Seg, setPath, Text, Toggle, useCentreMode, type OperatorProps } from './kit';
 import { Centre, SetInput, type Line2Item } from './centre';
@@ -35,10 +36,11 @@ export const BUILT_ICONS: Record<string, LucideIcon> = {
   puzzle: Puzzle,
 };
 
-/** The definition of the widget placed as `layer` (in the open project). */
-export function useWidgetDef(layer: Layer | undefined): WidgetDef | undefined {
-  return useApp((s) => (layer?.widget ? s.project?.widgets?.find((d) => d.id === layer.widget!.def) : undefined));
-}
+/** What playing a placed widget needs, from its snapshot (as on air): its definition without elements. */
+const fromSnap = (layer: Layer): WidgetDef | undefined => {
+  const s = layer.widget?.snap;
+  return s ? { width: 0, height: 0, layers: [], options: [], ...s } : undefined;
+};
 
 /** The exposure path of a control the Designer chooses to give the Operator. */
 export const controlPath = (id: string) => `widget.controls.${id}`;
@@ -67,7 +69,10 @@ function byRow(list: BuiltControl[]): [string, BuiltControl[]][] {
  * Operator's preview they set the take's start values; in the Designer they try them on its values.
  */
 function BuiltCentre(p: OperatorProps) {
-  const def = useWidgetDef(p.layer);
+  const lib = useDefOf(p.layer);
+  const mode = useCentreMode();
+  // The Designer tries the widget as it is now; the Operator plays it as its template was made.
+  const def = mode === 'designer' ? (lib ?? fromSnap(p.layer)) : (fromSnap(p.layer) ?? lib);
   return def ? <CentreOf {...p} def={def} /> : null;
 }
 
@@ -174,8 +179,9 @@ function OptionRow({ o }: { o: WidgetOption }) {
 
 /** In a template: Edit the widget (the Builder), then its options as this template sets them. */
 function BuiltInspector({ layer, data }: { layer: Layer; data: Record<string, string> }) {
-  const def = useWidgetDef(layer);
+  const def = useDefOf(layer);
   const update = useDesigner((s) => s.update);
+  const tplId = useDesigner((s) => s.template?.id);
   // An option exposed or no longer: its elements are bound to the Operator's value (or not).
   const exposure = JSON.stringify(Object.keys(layer.settingBindings ?? {}).filter((k) => k.startsWith('widget.options.')));
   const was = useRef(exposure);
@@ -204,7 +210,7 @@ function BuiltInspector({ layer, data }: { layer: Layer; data: Record<string, st
   return (
     <>
       <div className="wk-wbar">
-        <button className="btn small" onClick={() => openBuilder(def.id)}>
+        <button className="btn small" onClick={() => void openBuilderPage(def.id, { fromTemplate: tplId })}>
           <Puzzle size={13} /> {t('Edit the widget')}
         </button>
       </div>

@@ -22188,3 +22188,40 @@ textarea.tx-grow {
 .bl-act-args > .bl-val {
   flex: 0 0 64px;
 }
+/* Library › Widgets: a card per widget, drawn as placed; its actions on hover. */
+.wlib-grid {
+  grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
+}
+.wlib-thumb {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--text-3);
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel-3) 0% 50%) 50% / 16px 16px;
+}
+.wlib-act {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.wlib-card:hover .wlib-act,
+.wlib-card:focus-within .wlib-act {
+  opacity: 1;
+}
+.wlib-act .icon-btn {
+  width: 26px;
+  height: 26px;
+}
+.bl-fixed {
+  color: var(--text-2);
+  font-size: 12px;
+}

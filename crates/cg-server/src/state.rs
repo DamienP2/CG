@@ -556,7 +556,7 @@ impl AppState {
         let training = crate::learn::projects(&self.data_dir);
         let lib = self.library.read().await;
         lib.list()
-            .filter(|p| !training.contains(&p.id))
+            .filter(|p| !training.contains(&p.id) && p.id != crate::widgets::HOST)
             .map(|p| lib.summary(p))
             .collect()
     }

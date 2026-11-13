@@ -216,8 +216,13 @@ export function generate(def: WidgetDef, group: Layer): Layer[] {
     }
     for (const k of kids(l.id)) place(k, g.id, copy ? { ...copy } : undefined);
   };
-  // Its folder: the instance, sized to the widget's frame.
-  const folder: Layer = { ...group, type: 'group', props: { ...group.props, width: def.width, height: def.height } } as Layer;
+  // Its folder: the instance, sized to the widget's frame, with what playing it needs (on air without the library).
+  const folder: Layer = {
+    ...group,
+    type: 'group',
+    props: { ...group.props, width: def.width, height: def.height },
+    widget: { ...group.widget!, snap: { id: def.id, name: def.name, vars: def.vars, controls: def.controls }, rev: def.rev ?? 0 },
+  } as Layer;
   for (const l of kids(null)) place(l, W);
   // Its options: the template's value (else the default) on each target; an exposed one bound.
   const exposed = folder.settingBindings ?? {};

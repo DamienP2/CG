@@ -4,6 +4,7 @@ import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { HOST_PROJECT } from './widgetLibrary';
 import { Output } from './output/Output';
 import { t, tc, useLang } from './i18n';
 import { Login } from './pages/Login';
@@ -206,7 +207,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   const summary = projects.find((p) => p.id === projectId);
   // A training project is in no list (crate::learn).
   const training = useLearn((s) => s.project) === projectId;
-  const known = !!summary || training || !connected || !projects.length;
+  const known = !!summary || training || projectId === HOST_PROJECT || !connected || !projects.length;
 
   // The Designer sees the project's settings waiting for Publish, the Operator the published ones.
   useEffect(() => {
@@ -223,6 +224,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
 
   // Pages a role cannot see.
   const allowed = (s: ProjectPage) => (s === 'operator' || s === 'social' || s === 'media' ? can.operate(user) : can.design(user));
+  // The project shared widgets are built in (from the main Library): no tabs of its own.
+  const host = projectId === HOST_PROJECT;
   useEffect(() => {
     if (!allowed(sub)) navigate(projectPath(projectId, can.design(user) ? 'designer' : 'operator'), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,17 +248,17 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
 
   const tab = (s: ProjectPage, icon: React.ReactNode, label: string) =>
     allowed(s) && (
-      <button className={sub === s ? 'on' : ''} title={label} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
+      <button className={sub === s || (s === 'media' && sub === 'builder') ? 'on' : ''} title={label} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
         {icon} <span className="tab-label">{label}</span>
       </button>
     );
   const ready = project && project.id === projectId;
-  const projectName = summary?.name ?? project?.name ?? '…';
+  const projectName = host ? t('Shared widgets') : (summary?.name ?? project?.name ?? '…');
 
   let page: React.ReactNode;
   if (!known) page = <div className="loading">{t('This project does not exist or you cannot access it.')}</div>;
   else if (!ready) page = <div className="loading">{t('Opening the project…')}</div>;
-  else if (sub === 'designer') page = <Designer key={project.id} />;
+  else if (sub === 'designer' || sub === 'builder') page = <Designer key={project.id} builder={sub === 'builder' ? (route.channelId ?? undefined) : undefined} />;
   else if (sub === 'social') page = <Social key={projectId} projectId={projectId} />;
   else if (sub === 'data') page = <DataPage key={projectId} projectId={projectId} />;
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
@@ -272,16 +275,18 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
         <Brand />
         <span className="topbar-sep" aria-hidden />
         <span className="project-title" title={summary?.description ? `${projectName}\n${summary.description}` : projectName}>
-          <small>{t('Project')}</small>
+          <small>{host ? t('Library') : t('Project')}</small>
           <span>{projectName}</span>
         </span>
-        <div className="tabs project-tabs">
-          {tab('designer', <PenTool size={14} />, t('Designer'))}
-          {tab('operator', <Radio size={14} />, t('Operator'))}
-          {tab('social', <MessagesSquare size={14} />, t('Social'))}
-          {tab('data', <Database size={14} />, t('Data'))}
-          {tab('media', <LibraryIcon size={14} />, t('Library'))}
-        </div>
+        {!host && (
+          <div className="tabs project-tabs">
+            {tab('designer', <PenTool size={14} />, t('Designer'))}
+            {tab('operator', <Radio size={14} />, t('Operator'))}
+            {tab('social', <MessagesSquare size={14} />, t('Social'))}
+            {tab('data', <Database size={14} />, t('Data'))}
+            {tab('media', <LibraryIcon size={14} />, t('Library'))}
+          </div>
+        )}
         <div className="spacer" />
         {/* Filled by the page (the Designer's undo, redo and history). */}
         <div id="topbar-slot" className="topbar-slot" />

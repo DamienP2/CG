@@ -1,5 +1,5 @@
 /** Minimal history router. */
-export type ProjectPage = 'designer' | 'operator' | 'social' | 'data' | 'media';
+export type ProjectPage = 'designer' | 'operator' | 'social' | 'data' | 'media' | 'builder';
 
 export type Route =
   | { page: 'projects' }
@@ -18,6 +18,7 @@ export type Route =
       page: 'project';
       projectId: string;
       sub: ProjectPage;
+      /** The operated channel; on the Builder page, the widget. */
       channelId: string | null;
     }
   // Pre-0.10 links, resolved to the project pages.
@@ -28,7 +29,7 @@ export type Route =
   /** `path`: all after /output/ (an HTML5 output's address, in parts); else a channel and its rendition (older links). */
   | { page: 'output'; channelId: string | null; rendition: string | null; path: string };
 
-const SUBS: ProjectPage[] = ['designer', 'operator', 'social', 'data', 'media'];
+const SUBS: ProjectPage[] = ['designer', 'operator', 'social', 'data', 'media', 'builder'];
 
 /** The sections of the System page. */
 export const SYSTEM_SECTIONS = ['performance', 'health', 'asrun', 'users', 'stations', 'keys', 'security', 'hardware', 'network', 'time', 'mos', 'api', 'general', 'updates', 'maintenance'] as const;

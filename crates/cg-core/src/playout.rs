@@ -2076,11 +2076,8 @@ impl ChannelState {
                 let fps = project.frame_rate.as_f64().max(1.0);
                 // A widget built with the Builder: its control changes its
                 // variables (values of the graphic) and tells its Temps.
-                if let Some(w) = &l.widget {
-                    let def = project
-                        .widgets
-                        .iter()
-                        .find(|d| d.id == w.def)
+                if l.widget.is_some() {
+                    let def = crate::built::def_of(&project.widgets, l)
                         .ok_or_else(|| PlayoutError::UnknownWidget(target.clone()))?;
                     let mut st = item
                         .widgets

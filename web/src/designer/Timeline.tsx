@@ -60,8 +60,8 @@ import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { t, tc, tn } from '../i18n';
 import { useApp } from '../store';
 import { BUILT_ICONS } from '../widgets/built';
-import { PREBUILT } from '../widgets/prebuilt';
-import { addWidget, newWidget } from './builder';
+import { addWidget } from './builder';
+import { useWidgets } from '../widgetLibrary';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
 const PROP_ROWS: {
@@ -1129,10 +1129,10 @@ const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Vi
   { type: 'qrCode', label: 'QR code' },
   { type: 'map', label: 'Map' },
   { type: 'chart', label: 'Chart' },
+  { type: 'table', label: 'Table' },
   { type: 'web', label: 'Iframe', soon: Code, hint: 'A web page or your HTML code (HTML5 outputs)' },
   { type: 'socialWall', label: 'Social wall', built: true },
   { type: 'socialBadge', label: 'Social badge', built: true },
-  { type: 'table', label: 'Table', built: true },
   { type: 'credits', label: 'Credits', built: true },
   { type: 'ticker', label: 'Ticker', built: true },
 ];
@@ -1151,6 +1151,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
   const [open, setOpen] = useState<{ left: number; bottom: number } | null>(null);
   const builder = useDesigner((s) => !!s.template?.builder);
   const mine = useApp((s) => s.project?.widgets) ?? NO_WIDGETS;
+  const shared = useWidgets((s) => s.shared);
   const width = useApp((s) => s.project?.width ?? 1920);
   const height = useApp((s) => s.project?.height ?? 1080);
   const size = { width, height };
@@ -1215,21 +1216,12 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
             top: 'auto',
           }}
         >
-          {(builder ? [[t('Base'), menu()] as const] : [[t('Base'), menu().filter((it) => !it.built)] as const, [t('Pre-built'), menu().filter((it) => it.built)] as const]).map(([title, list]) => (
-            <div key={title} className="add-sect">
-              <div className="add-mh">{title}</div>
-              <div className="add-grid">
-                {title === t('Pre-built') &&
-                  PREBUILT.map((p) => {
-                    const made = p.make();
-                    return (
-                      <button key={p.id} onClick={() => (setOpen(null), void addWidget(p.id, size))}>
-                        <span className="add-icon">{(() => { const I = BUILT_ICONS[made.icon ?? ''] ?? Puzzle; return <I size={15} />; })()}</span>
-                        {made.name}
-                      </button>
-                    );
-                  })}
-                {list.map((it) => (
+          <div className="add-sect">
+            <div className="add-mh">{t('Elements')}</div>
+            <div className="add-grid">
+              {menu()
+                .filter((it) => !it.built)
+                .map((it) => (
                   <button key={it.label} disabled={it.soon} title={it.soon ? t('Coming soon') : it.hint && t(it.hint)} onClick={() => pick(it)}>
                     <span className="add-icon">
                       <it.icon size={15} />
@@ -1238,33 +1230,44 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
                     {it.soon && <em>{t('soon')}</em>}
                   </button>
                 ))}
-              </div>
             </div>
-          ))}
-          {!builder && (
-            <div className="add-sect">
-              <div className="add-mh">{t('My widgets')}</div>
-              <div className="add-grid">
-                {mine.map((w) => {
-                  const I = BUILT_ICONS[w.icon ?? ''] ?? Puzzle;
-                  return (
-                    <button key={w.id} onClick={() => (setOpen(null), void addWidget(w.id, size))}>
-                      <span className="add-icon">
-                        <I size={15} />
-                      </span>
-                      {w.name}
-                    </button>
-                  );
-                })}
-                <button className="add-new" onClick={() => (setOpen(null), void newWidget())}>
-                  <span className="add-icon">
-                    <Plus size={15} />
-                  </span>
-                  {t('New widget')}
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
+          {/* Widgets go in templates (not in a widget being built). */}
+          {!builder &&
+            (
+              [
+                [t('Widgets of the project'), mine, []],
+                [t('Shared widgets'), shared, menu().filter((it) => it.built)],
+              ] as const
+            ).map(([title, list, older]) =>
+              list.length || older.length ? (
+                <div key={title} className="add-sect">
+                  <div className="add-mh">{title}</div>
+                  <div className="add-grid">
+                    {list.map((w) => {
+                      const I = BUILT_ICONS[w.icon ?? ''] ?? Puzzle;
+                      return (
+                        <button key={w.id} onClick={() => (setOpen(null), void addWidget(w.id, size))}>
+                          <span className="add-icon">
+                            <I size={15} />
+                          </span>
+                          {w.name}
+                        </button>
+                      );
+                    })}
+                    {/* Not yet made with the Builder. */}
+                    {older.map((it) => (
+                      <button key={it.label} onClick={() => pick(it)}>
+                        <span className="add-icon">
+                          <it.icon size={15} />
+                        </span>
+                        {tc('widget', it.label)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null,
+            )}
         </div>
       )}
     </div>

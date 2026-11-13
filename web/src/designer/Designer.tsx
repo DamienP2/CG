@@ -32,7 +32,9 @@ import { friendlyError } from '../ui/serverError';
 import { t, tn } from '../i18n';
 import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
-import { defOf } from './builder';
+import { leaveBuilder, loadBuilder, refreshStale, saveBuilt } from './builder';
+import { useWidgets } from '../widgetLibrary';
+import { navigate, projectPath } from '../router';
 import { BuilderCrumb, BuilderLeft, BuilderRight } from './BuilderPanels';
 
 function usePlayback(fps: number) {
@@ -97,8 +99,7 @@ function useAutosave() {
     pending.current.clear();
     for (const p of list) {
       // The Builder's template is a widget.
-      const def = defOf(p.template);
-      if (def) await useApp.getState().saveWidget(def, p.project);
+      if (p.template.builder) await saveBuilt(p.template);
       else await saveTemplate(p.template, p.project);
     }
     setState('saved');
@@ -477,7 +478,7 @@ function TemplateList({ project }: { project: Project }) {
 const MIN_LEFT = 320;
 
 // Memoised: the page around it follows the channels on air; the Designer does not show them.
-export const Designer = memo(function Designer() {
+export const Designer = memo(function Designer({ builder: builderId }: { /** The Builder page: the widget open. */ builder?: string }) {
   const project = useApp((s) => s.project);
   // Not the playhead: the Designer is not drawn again on each frame of the playback (the stage and the timeline follow it).
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner(
@@ -541,6 +542,31 @@ export const Designer = memo(function Designer() {
       if (!same || !template || !all.some((t) => t.id === template.id)) load(all.length === 1 ? all[0] : null);
     }
   }, [project, template, load]);
+
+  // The shared widgets (the + menu, the Builder); templates made from an older version of their
+  // widgets made again (once per opening of a project).
+  const widgetsLoaded = useWidgets((s) => s.loaded);
+  useEffect(() => {
+    if (!widgetsLoaded) void useWidgets.getState().load();
+  }, [widgetsLoaded]);
+  const staleFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!project || !widgetsLoaded || staleFor.current === project.id || builderId) return;
+    staleFor.current = project.id;
+    void refreshStale();
+  }, [project, widgetsLoaded, builderId]);
+  // The Builder page: its widget open. Left another way than its back button: saved, the Designer back on the templates.
+  useEffect(() => {
+    if (!project || !widgetsLoaded) return;
+    const st = useDesigner.getState();
+    if (builderId) {
+      if (st.builder?.defId === builderId) return;
+      if (!loadBuilder(builderId)) {
+        useApp.getState().toast(t('This widget no longer exists.'), 'error');
+        navigate(`${projectPath(project.id, 'media')}#widgets`, true);
+      }
+    } else if (st.builder) void leaveBuilder();
+  }, [builderId, project?.id, widgetsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The empty template of a new project, removed by the server at a publish: if it was the open one,
   // the Designer opens another (an open template that is still there keeps its selection).
@@ -637,8 +663,9 @@ export const Designer = memo(function Designer() {
                 <button className="top-tool" title={t('Redo (Ctrl+Shift+Z)')} disabled={!future.length} onClick={redo}>
                   <Redo2 size={15} />
                 </button>
-                <ProjectHistory project={project} readOnly={lock.state.status === 'held'} />
-                <TopPublish project={project} saving={saveState === 'pending'} readOnly={lock.state.status === 'held'} />
+                {/* The Builder edits a widget: the project's history and Publish are the Designer's. */}
+                {!template?.builder && <ProjectHistory project={project} readOnly={lock.state.status === 'held'} />}
+                {!template?.builder && <TopPublish project={project} saving={saveState === 'pending'} readOnly={lock.state.status === 'held'} />}
               </>,
               topSlot,
             )}

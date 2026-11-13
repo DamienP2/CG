@@ -11,9 +11,11 @@ import type { BuiltControl, CtlAction, Layer, Prop, Template, WidgetOption, Widg
 import { t } from '../i18n';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Dropdown } from '../ui/Dropdown';
+import { useApp } from '../store';
+import { shareWidget } from '../widgetLibrary';
 import { BUILT_ICONS, BuiltTry } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
-import { closeBuilder, defOf, varFields } from './builder';
+import { closeBuilder, defOf, openedFromTemplate, varFields } from './builder';
 import { findLayer, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 
@@ -34,6 +36,8 @@ const VAR_ICONS = { number: Hash, text: Type, list: List, bool: ToggleLeft };
 export function BuilderLeft() {
   const tpl = useDesigner((s) => s.template);
   const [open, setOpen] = useState<string | null>(null);
+  const defId = tpl?.builder?.id;
+  const own = useApp((s) => !!defId && !!s.project?.widgets?.some((d) => d.id === defId));
   if (!tpl?.builder) return null;
   const b = tpl.builder;
   const add = () => {
@@ -57,16 +61,21 @@ export function BuilderLeft() {
             <span className="prop-label">{t('Icon')}</span>
             <Dropdown value={b.icon ?? 'puzzle'} options={ICON_OPTIONS()} onChange={(v) => edit((d) => void (d.icon = v))} />
           </div>
+          {/* The project's own, or every project's (a project's widget can be shared). */}
           <div className="bl-row">
-            <span className="prop-label">{t('Kept in')}</span>
-            <div className="segmented">
-              <button type="button" className={b.shared ? '' : 'on'} onClick={() => edit((d) => void delete d.shared)}>
-                {t('Kept in: project')}
-              </button>
-              <button type="button" className={b.shared ? 'on' : ''} onClick={() => edit((d) => void (d.shared = true))}>
-                {t('Kept in: shared')}
-              </button>
-            </div>
+            <span className="prop-label">{t('Available in')}</span>
+            {own ? (
+              <div className="segmented">
+                <button type="button" className="on">
+                  {t('This project')}
+                </button>
+                <button type="button" onClick={() => void shareWidget(b.id)}>
+                  {t('Every project')}
+                </button>
+              </div>
+            ) : (
+              <span className="bl-fixed">{t('Every project')}</span>
+            )}
           </div>
         </div>
       </section>
@@ -161,11 +170,11 @@ export function BuilderLeft() {
 /** Back to the template the widget is in, and its name. */
 export function BuilderCrumb() {
   const { builder, name } = useDesigner(useShallow((s) => ({ builder: s.builder, name: s.template?.name ?? '' })));
-  const back = useDesigner((s) => s.builder?.back);
+  const fromTemplate = openedFromTemplate();
   return (
     <div className="format-bar bl-crumb">
-      <button title={t('Back to the template')} onClick={() => void closeBuilder()}>
-        <ArrowLeft size={14} /> {back ? t('Template') : t('Templates')}
+      <button title={fromTemplate ? t('Back to the template') : t('Back to the widgets')} onClick={() => void closeBuilder()}>
+        <ArrowLeft size={14} /> {fromTemplate ? t('Template') : t('Widgets')}
       </button>
       <ChevronRight size={14} className="bl-sep" />
       <button className="on" title={builder?.defId}>

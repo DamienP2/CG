@@ -5395,6 +5395,129 @@
      }
     }
    }
+  },
+  "/api/widgets": {
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "The shared widgets",
+    "description": "Widgets built with the Builder that every project shares (the pre-built ones first), and how many projects use each.\n\n**Rights:** everyone.",
+    "responses": {
+     "200": {
+      "description": "`{ widgets, uses }`",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/widgets/host": {
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "The project the Builder of shared widgets opens in",
+    "description": "Made at first use; in no list.\n\n**Rights:** admin, designer (every project).",
+    "responses": {
+     "200": {
+      "description": "`{ id }`",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/widgets/{wid}": {
+   "parameters": [
+    {
+     "name": "wid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Widget id"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Save a shared widget",
+    "description": "Its elements, variables, options and controls.\n\n**Rights:** admin, designer (every project).",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Remove a shared widget",
+    "description": "Only when no project uses it.\n\n**Rights:** admin, designer (every project).",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/widgets/{wid}/share": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "wid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Widget id"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Share a project's widget with every project",
+    "description": "It moves to the shared widgets; the templates using it keep it.\n\n**Rights:** admin, designer (every project).",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
   }
  },
  "components": {

@@ -909,8 +909,8 @@ export interface WidgetDef {
   vars: WidgetVar[];
   options: WidgetOption[];
   controls: BuiltControl[];
-  /** Also in the shared Library (the other projects can add it). */
-  shared?: boolean;
+  /** Its version: each save adds one (templates made from an older one are made again). */
+  rev?: number;
 }
 
 export interface WidgetVar {
@@ -980,6 +980,10 @@ export interface WidgetInstance {
   vars: Record<string, string>;
   /** Its options as the template sets them (option id → value). */
   options?: Record<string, unknown>;
+  /** What playing it needs of its definition, as it was when its elements were made (model::WidgetInstance::snap). */
+  snap?: { id: string; name: string; vars: WidgetVar[]; controls: BuiltControl[] };
+  /** The version of its definition its elements were made from. */
+  rev?: number;
 }
 
 /** A Repeater (Builder): its content drawn `count` times, side by side. */

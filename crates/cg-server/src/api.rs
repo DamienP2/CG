@@ -199,6 +199,16 @@ pub fn router() -> Router<Shared> {
             "/api/projects/{id}/logic-flows",
             put(crate::logicflows::put_project),
         )
+        .route("/api/widgets", get(crate::widgets::list))
+        .route("/api/widgets/host", post(crate::widgets::host))
+        .route(
+            "/api/widgets/{wid}",
+            put(crate::widgets::put).delete(crate::widgets::delete),
+        )
+        .route(
+            "/api/projects/{id}/widgets/{wid}/share",
+            post(crate::widgets::share),
+        )
         .route("/api/fonts", get(list_fonts))
         .route("/api/fonts/file/{family}/{weight}", get(font_file))
         .route(

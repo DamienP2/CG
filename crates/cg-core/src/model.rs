@@ -867,6 +867,11 @@ pub struct WidgetInstance {
     /// Its options as the template sets them (option id → value).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub options: BTreeMap<String, serde_json::Value>,
+    /// What playing it needs of its definition (variables, controls), as it
+    /// was when its elements were made: a template on air does not depend
+    /// on the library (shared widgets, edits waiting for Publish).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snap: Option<Box<crate::built::Def>>,
 }
 
 /// A copy made by a Repeater: drawn in full while the number in the value

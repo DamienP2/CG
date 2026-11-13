@@ -1,0 +1,981 @@
+[
+ {
+  "id": "scoreboard",
+  "name": "Tableau des scores",
+  "vars": [
+   {
+    "name": "score_1",
+    "initial": "0",
+    "keep": true,
+    "kind": "number"
+   },
+   {
+    "name": "score_2",
+    "initial": "0",
+    "keep": true,
+    "kind": "number"
+   },
+   {
+    "name": "fautes_1",
+    "initial": "0",
+    "keep": true,
+    "kind": "number"
+   },
+   {
+    "name": "fautes_2",
+    "initial": "0",
+    "keep": true,
+    "kind": "number"
+   },
+   {
+    "name": "periode",
+    "initial": "Q1",
+    "list": [
+     "Q1",
+     "Q2",
+     "Q3",
+     "Q4",
+     "Prol."
+    ],
+    "keep": true,
+    "kind": "list"
+   }
+  ],
+  "controls": [
+   {
+    "id": "lire",
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "toggle",
+      "layer": "chrono"
+     }
+    ],
+    "icon": "play",
+    "key": "P",
+    "label": "Lire / Pause",
+    "main": true
+   },
+   {
+    "id": "annuler",
+    "actions": [
+     {
+      "op": "undo",
+      "var": "",
+      "value": ""
+     }
+    ],
+    "icon": "undo",
+    "key": "Z",
+    "label": "Annuler"
+   },
+   {
+    "id": "precedente",
+    "actions": [
+     {
+      "op": "prev",
+      "var": "periode",
+      "value": ""
+     }
+    ],
+    "icon": "prev",
+    "label": "Période précédente"
+   },
+   {
+    "id": "suivante",
+    "actions": [
+     {
+      "op": "next",
+      "var": "periode",
+      "value": ""
+     },
+     {
+      "op": "reset",
+      "var": "fautes_1",
+      "value": ""
+     },
+     {
+      "op": "reset",
+      "var": "fautes_2",
+      "value": ""
+     },
+     {
+      "op": "timer",
+      "var": "",
+      "value": "reset",
+      "layer": "chrono"
+     }
+    ],
+    "icon": "next",
+    "label": "Période suivante"
+   },
+   {
+    "id": "zero",
+    "actions": [
+     {
+      "op": "reset",
+      "var": "",
+      "value": ""
+     },
+     {
+      "op": "timer",
+      "var": "",
+      "value": "reset",
+      "layer": "chrono"
+     },
+     {
+      "op": "timer",
+      "var": "",
+      "value": "reset",
+      "layer": "tirs"
+     }
+    ],
+    "confirm": true,
+    "icon": "reset",
+    "label": "Réinitialiser le match",
+    "tone": "red"
+   },
+   {
+    "id": "moins1",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_1",
+      "value": "-1"
+     }
+    ],
+    "label": "−1",
+    "place": "row",
+    "row": "PAR"
+   },
+   {
+    "id": "p3_1",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_1",
+      "value": "3"
+     }
+    ],
+    "key": "Q",
+    "label": "+3",
+    "place": "row",
+    "row": "PAR"
+   },
+   {
+    "id": "p2_1",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_1",
+      "value": "2"
+     }
+    ],
+    "label": "+2",
+    "place": "row",
+    "row": "PAR"
+   },
+   {
+    "id": "p1_1",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_1",
+      "value": "1"
+     }
+    ],
+    "label": "+1",
+    "place": "row",
+    "row": "PAR"
+   },
+   {
+    "id": "moins2",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_2",
+      "value": "-1"
+     }
+    ],
+    "label": "−1",
+    "place": "row",
+    "row": "MON"
+   },
+   {
+    "id": "p3_2",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_2",
+      "value": "3"
+     }
+    ],
+    "key": "M",
+    "label": "+3",
+    "place": "row",
+    "row": "MON"
+   },
+   {
+    "id": "p2_2",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_2",
+      "value": "2"
+     }
+    ],
+    "label": "+2",
+    "place": "row",
+    "row": "MON"
+   },
+   {
+    "id": "p1_2",
+    "actions": [
+     {
+      "op": "add",
+      "var": "score_2",
+      "value": "1"
+     }
+    ],
+    "label": "+1",
+    "place": "row",
+    "row": "MON"
+   },
+   {
+    "id": "chrono",
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "set",
+      "layer": "chrono",
+      "arg": "$value"
+     }
+    ],
+    "choose": true,
+    "kind": "field",
+    "label": "Chrono",
+    "place": "settings",
+    "row": "Chrono"
+   },
+   {
+    "id": "faute1",
+    "actions": [
+     {
+      "op": "add",
+      "var": "fautes_1",
+      "value": "1"
+     }
+    ],
+    "choose": true,
+    "label": "PAR",
+    "place": "settings",
+    "row": "Fautes"
+   },
+   {
+    "id": "faute2",
+    "actions": [
+     {
+      "op": "add",
+      "var": "fautes_2",
+      "value": "1"
+     }
+    ],
+    "choose": true,
+    "label": "MON",
+    "place": "settings",
+    "row": "Fautes"
+   },
+   {
+    "id": "tirs24",
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "restart",
+      "layer": "tirs"
+     }
+    ],
+    "choose": true,
+    "label": "24",
+    "place": "settings",
+    "row": "Chrono des tirs"
+   },
+   {
+    "id": "tirs14",
+    "actions": [
+     {
+      "op": "timer",
+      "var": "",
+      "value": "set",
+      "layer": "tirs",
+      "arg": "0:14"
+     },
+     {
+      "op": "timer",
+      "var": "",
+      "value": "start",
+      "layer": "tirs"
+     }
+    ],
+    "choose": true,
+    "label": "14",
+    "place": "settings",
+    "row": "Chrono des tirs"
+   }
+  ],
+  "height": 100,
+  "icon": "trophy",
+  "layers": [
+   {
+    "id": "fond",
+    "name": "Fond",
+    "type": "rect",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "width": 1240,
+     "height": 100,
+     "x": 0,
+     "y": 0,
+     "fill": [
+      0.0392156862745098,
+      0.0392156862745098,
+      0.054901960784313725,
+      0.96
+     ]
+    }
+   },
+   {
+    "id": "eq1",
+    "name": "Équipe 1",
+    "type": "group",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "clip": false,
+    "props": {
+     "x": 0,
+     "y": 0,
+     "width": 450,
+     "height": 100
+    }
+   },
+   {
+    "id": "couleur1",
+    "name": "Couleur 1",
+    "type": "rect",
+    "parent": "eq1",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "width": 450,
+     "height": 100,
+     "x": 0,
+     "y": 0,
+     "fill": [
+      0.10588235294117648,
+      0.1843137254901961,
+      0.4509803921568627,
+      1
+     ]
+    }
+   },
+   {
+    "id": "liseré1",
+    "name": "Liseré 1",
+    "type": "rect",
+    "parent": "eq1",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "width": 450,
+     "height": 6,
+     "x": 0,
+     "y": 94,
+     "fill": [
+      1,
+      0.41568627450980394,
+      0.07450980392156863,
+      1
+     ]
+    }
+   },
+   {
+    "id": "nom1",
+    "name": "Nom 1",
+    "type": "text",
+    "parent": "eq1",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "PARIS",
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 800,
+    "align": "left",
+    "verticalAlign": "middle",
+    "props": {
+     "x": 28,
+     "y": 6,
+     "width": 280,
+     "height": 76,
+     "fontSize": 56,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "id": "score1",
+    "name": "Score 1",
+    "type": "counter",
+    "parent": "eq1",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "from": "0",
+    "to": "{{score_1}}",
+    "duration": 2,
+    "decimals": 0,
+    "prefix": "",
+    "suffix": "",
+    "grouping": false,
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 800,
+    "align": "right",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "tabular": true,
+    "transition": "roll",
+    "props": {
+     "width": 124,
+     "height": 80,
+     "fontSize": 70,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "x": 300,
+     "y": 4
+    }
+   },
+   {
+    "id": "fautes1",
+    "name": "Fautes 1",
+    "type": "group",
+    "parent": "eq1",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "clip": false,
+    "repeat": {
+     "count": 5,
+     "lit": "fautes_1",
+     "layout": "row",
+     "gap": 7,
+     "off": 0.22
+    },
+    "props": {
+     "x": 30,
+     "y": 80,
+     "width": 90,
+     "height": 10
+    }
+   },
+   {
+    "id": "pastille1",
+    "name": "Pastille",
+    "type": "ellipse",
+    "parent": "fautes1",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "lockRatio": true,
+    "strokeStyle": {
+     "position": "inside"
+    },
+    "props": {
+     "width": 10,
+     "height": 10,
+     "x": 0,
+     "y": 0,
+     "fill": [
+      1,
+      0.41568627450980394,
+      0.07450980392156863,
+      1
+     ],
+     "strokeWidth": 0
+    }
+   },
+   {
+    "id": "eq2",
+    "name": "Équipe 2",
+    "type": "group",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "clip": false,
+    "props": {
+     "x": 450,
+     "y": 0,
+     "width": 450,
+     "height": 100
+    }
+   },
+   {
+    "id": "couleur2",
+    "name": "Couleur 2",
+    "type": "rect",
+    "parent": "eq2",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "width": 450,
+     "height": 100,
+     "x": 0,
+     "y": 0,
+     "fill": [
+      0.7843137254901961,
+      0.06274509803921569,
+      0.1803921568627451,
+      1
+     ]
+    }
+   },
+   {
+    "id": "liseré2",
+    "name": "Liseré 2",
+    "type": "rect",
+    "parent": "eq2",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "props": {
+     "width": 450,
+     "height": 6,
+     "x": 0,
+     "y": 94,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "id": "nom2",
+    "name": "Nom 2",
+    "type": "text",
+    "parent": "eq2",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "MONACO",
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 800,
+    "align": "left",
+    "verticalAlign": "middle",
+    "props": {
+     "x": 28,
+     "y": 6,
+     "width": 280,
+     "height": 76,
+     "fontSize": 56,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "id": "score2",
+    "name": "Score 2",
+    "type": "counter",
+    "parent": "eq2",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "from": "0",
+    "to": "{{score_2}}",
+    "duration": 2,
+    "decimals": 0,
+    "prefix": "",
+    "suffix": "",
+    "grouping": false,
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 800,
+    "align": "right",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "tabular": true,
+    "transition": "roll",
+    "props": {
+     "width": 124,
+     "height": 80,
+     "fontSize": 70,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "x": 300,
+     "y": 4
+    }
+   },
+   {
+    "id": "fautes2",
+    "name": "Fautes 2",
+    "type": "group",
+    "parent": "eq2",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "clip": false,
+    "repeat": {
+     "count": 5,
+     "lit": "fautes_2",
+     "layout": "row",
+     "gap": 7,
+     "off": 0.22
+    },
+    "props": {
+     "x": 30,
+     "y": 80,
+     "width": 90,
+     "height": 10
+    }
+   },
+   {
+    "id": "pastille2",
+    "name": "Pastille",
+    "type": "ellipse",
+    "parent": "fautes2",
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "lockRatio": true,
+    "strokeStyle": {
+     "position": "inside"
+    },
+    "props": {
+     "width": 10,
+     "height": 10,
+     "x": 0,
+     "y": 0,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "strokeWidth": 0
+    }
+   },
+   {
+    "id": "periode",
+    "name": "Période",
+    "type": "text",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "text": "{{periode}}",
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 700,
+    "align": "center",
+    "verticalAlign": "middle",
+    "props": {
+     "x": 905,
+     "y": 10,
+     "width": 80,
+     "height": 80,
+     "fontSize": 46,
+     "fill": [
+      1,
+      0.41568627450980394,
+      0.07450980392156863,
+      1
+     ]
+    }
+   },
+   {
+    "id": "chrono",
+    "name": "Chrono",
+    "type": "clock",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "mode": "timer",
+    "format": "mm:ss",
+    "timezone": "",
+    "target": "",
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 700,
+    "align": "center",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "timerMode": "countdown",
+    "cdDuration": 600000,
+    "manualStart": true,
+    "startMode": "auto",
+    "steps": [
+     {
+      "on": true,
+      "at": 60,
+      "color": "#f59e0b",
+      "bg": "",
+      "blink": false
+     },
+     {
+      "on": true,
+      "at": 10,
+      "color": "#ff3b5c",
+      "bg": "",
+      "blink": true
+     }
+    ],
+    "props": {
+     "width": 160,
+     "height": 100,
+     "fontSize": 64,
+     "fill": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "x": 985,
+     "y": 0
+    }
+   },
+   {
+    "id": "tirs",
+    "name": "Chrono des tirs",
+    "type": "clock",
+    "parent": null,
+    "visible": true,
+    "locked": false,
+    "tracks": {},
+    "bindings": {},
+    "mode": "timer",
+    "format": "ss",
+    "timezone": "",
+    "target": "",
+    "fontFamily": "Barlow Condensed",
+    "fontWeight": 700,
+    "align": "center",
+    "verticalAlign": "middle",
+    "uppercase": false,
+    "timerMode": "countdown",
+    "cdDuration": 24000,
+    "manualStart": true,
+    "startMode": "auto",
+    "steps": [
+     {
+      "on": true,
+      "at": 60,
+      "color": "#f59e0b",
+      "bg": "",
+      "blink": false
+     },
+     {
+      "on": true,
+      "at": 10,
+      "color": "#ff3b5c",
+      "bg": "",
+      "blink": true
+     }
+    ],
+    "props": {
+     "width": 80,
+     "height": 80,
+     "fontSize": 48,
+     "fill": [
+      1,
+      0.8235294117647058,
+      0,
+      1
+     ],
+     "x": 1150,
+     "y": 10
+    }
+   }
+  ],
+  "options": [
+   {
+    "id": "nom1",
+    "name": "Nom",
+    "group": "Équipe 1",
+    "kind": "text",
+    "default": "PARIS",
+    "targets": [
+     {
+      "layer": "nom1",
+      "path": "text"
+     }
+    ]
+   },
+   {
+    "id": "couleur1",
+    "name": "Couleur",
+    "group": "Équipe 1",
+    "kind": "color",
+    "default": "#1b2f73",
+    "targets": [
+     {
+      "layer": "couleur1",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "liseré1",
+    "name": "Accent",
+    "group": "Équipe 1",
+    "kind": "color",
+    "default": "#ff6a13",
+    "targets": [
+     {
+      "layer": "liseré1",
+      "path": "props.fill"
+     },
+     {
+      "layer": "pastille1",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "nom2",
+    "name": "Nom",
+    "group": "Équipe 2",
+    "kind": "text",
+    "default": "MONACO",
+    "targets": [
+     {
+      "layer": "nom2",
+      "path": "text"
+     }
+    ]
+   },
+   {
+    "id": "couleur2",
+    "name": "Couleur",
+    "group": "Équipe 2",
+    "kind": "color",
+    "default": "#c8102e",
+    "targets": [
+     {
+      "layer": "couleur2",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "liseré2",
+    "name": "Accent",
+    "group": "Équipe 2",
+    "kind": "color",
+    "default": "#ffffff",
+    "targets": [
+     {
+      "layer": "liseré2",
+      "path": "props.fill"
+     },
+     {
+      "layer": "pastille2",
+      "path": "props.fill"
+     }
+    ]
+   },
+   {
+    "id": "police",
+    "name": "Police",
+    "group": "Style",
+    "kind": "font",
+    "default": "Barlow Condensed",
+    "targets": [
+     {
+      "layer": "nom1",
+      "path": "fontFamily"
+     },
+     {
+      "layer": "nom2",
+      "path": "fontFamily"
+     },
+     {
+      "layer": "score1",
+      "path": "fontFamily"
+     },
+     {
+      "layer": "score2",
+      "path": "fontFamily"
+     },
+     {
+      "layer": "periode",
+      "path": "fontFamily"
+     },
+     {
+      "layer": "chrono",
+      "path": "fontFamily"
+     },
+     {
+      "layer": "tirs",
+      "path": "fontFamily"
+     }
+    ]
+   },
+   {
+    "id": "fond",
+    "name": "Fond",
+    "group": "Style",
+    "kind": "color",
+    "default": "#0a0a0e",
+    "targets": [
+     {
+      "layer": "fond",
+      "path": "props.fill"
+     }
+    ]
+   }
+  ],
+  "width": 1240,
+  "rev": 1
+ }
+]

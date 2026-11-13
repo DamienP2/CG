@@ -54,6 +54,7 @@ mod update;
 mod web;
 mod webimages;
 mod webproxy;
+mod widgets;
 
 use std::collections::BTreeMap;
 use std::future::Future;
