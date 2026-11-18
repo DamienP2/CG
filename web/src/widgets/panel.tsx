@@ -117,7 +117,13 @@ export function ControlView({ c, def, value, run, setRows, onAir, inert }: Omit<
       return (
         <>
           {label}
-          {inert ? <span className="wp-input">{cur || c.placeholder || ''}</span> : <SetInput placeholder={c.placeholder || cur || ''} title={c.label} width={0} onSet={(v) => void go(v)} />}
+          {inert ? (
+            <span className="wp-input">{cur || c.placeholder || ''}</span>
+          ) : (
+            <div className="wp-field">
+              <SetInput placeholder={c.placeholder || cur || ''} title={c.label} onSet={(v) => void go(v)} />
+            </div>
+          )}
         </>
       );
     case 'list': {

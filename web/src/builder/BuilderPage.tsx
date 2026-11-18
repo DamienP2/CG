@@ -10,18 +10,20 @@ import { useBuilderUi } from '../designer/builderUi';
 import { useDesigner } from '../designer/designerStore';
 import { PanelBuilder } from './PanelBuilder';
 import { DataSpace } from './DataSpace';
+import { TrySpace } from './TrySpace';
 import { draftOf, getVersion, HOST_PROJECT, listVersions, shareWidget, useWidgets, type WidgetVersion } from '../widgetLibrary';
 import { BUILT_ICONS } from '../widgets/built';
 
 const Designer = lazy(() => import('../designer/Designer').then((m) => ({ default: m.Designer })));
 const LogicEditor = lazy(() => import('../designer/LogicEditor').then((m) => ({ default: m.LogicEditor })));
 
-type Space = 'graphics' | 'panel' | 'logic' | 'data';
+type Space = 'graphics' | 'panel' | 'logic' | 'data' | 'try';
 const SPACES: [Space, string][] = [
   ['graphics', 'Graphics'],
   ['panel', 'Panel'],
   ['logic', 'Logic'],
   ['data', 'Data'],
+  ['try', 'Try it'],
 ];
 
 export function BuilderPage({ widgetId }: { widgetId: string }) {
@@ -111,6 +113,11 @@ export function BuilderPage({ widgetId }: { widgetId: string }) {
         {ready && space === 'panel' && (
           <div className="wb-space on">
             <PanelBuilder />
+          </div>
+        )}
+        {ready && space === 'try' && (
+          <div className="wb-space on">
+            <TrySpace />
           </div>
         )}
         {ready && space === 'data' && (

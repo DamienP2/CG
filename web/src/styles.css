@@ -22873,9 +22873,20 @@ textarea.tx-grow {
 .wp-cell.k-list {
   justify-content: flex-start;
 }
-.wp-cell .set-input,
-.wp-cell input[type='text'] {
-  width: 100%;
+.wp-field {
+  display: flex;
+  gap: 4px;
+}
+.wp-field .cc-fld {
+  flex: 1;
+  width: auto !important;
+  min-width: 0;
+  height: 28px;
+}
+.wp-field .cc-sq {
+  height: 28px;
+  width: 28px;
+  flex: none;
 }
 .wp-none {
   color: var(--text-3);
@@ -23279,4 +23290,133 @@ textarea.tx-grow {
   grid-template-columns: 1fr 1.4fr;
   gap: 8px;
   align-items: center;
+}
+/* The Widget Builder's Essayer: Preview and Programme, what happens, the panel. */
+.ty {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  background: var(--bg);
+}
+.ty-main {
+  overflow: auto;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ty-mons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.ty-mon {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--line-2);
+  background: #000;
+}
+.ty-mon.pvw {
+  border-color: rgba(34, 197, 94, 0.55);
+}
+.ty-mon.pgm {
+  border-color: rgba(255, 59, 92, 0.6);
+}
+.ty-mon > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--panel);
+}
+.ty-mon.pvw > header {
+  color: var(--pvw);
+}
+.ty-mon.pgm > header {
+  color: var(--live);
+}
+.ty-mon .grow,
+.ty-log .grow,
+.ty-side .grow {
+  flex: 1;
+}
+.ty-st {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-3);
+}
+.ty-pic {
+  position: relative;
+  background: radial-gradient(120% 80% at 50% 110%, #5b4128 0%, #2a2f45 45%, #141826 100%);
+}
+.ty-log {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.ty-log > header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+.ty-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  max-height: 200px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: var(--fs-11);
+  color: var(--text-3);
+}
+.ty-lines b {
+  font-weight: 600;
+}
+.ty-lines b.air {
+  color: var(--live);
+}
+.ty-lines b.pvw {
+  color: var(--pvw);
+}
+.ty-side {
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ty-side > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.ty-take {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: 0;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--live-btn);
+  color: #fff;
+}
+.ty-take.out {
+  background: var(--panel-3);
+  color: var(--text);
+  border: 1px solid var(--line-2);
+}
+.ty-panel {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 14px;
 }
