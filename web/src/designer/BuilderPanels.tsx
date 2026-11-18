@@ -2,8 +2,7 @@
 // its variables, in the toolbar the way back to the template, on the right Element / Options /
 // Controls.
 import { useState } from 'react';
-import { ArrowLeft, Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, Rows3, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
-import { useShallow } from 'zustand/react/shallow';
+import { Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, Rows3, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
 import { setOption } from '../engine/built';
 import { DEFAULTS, newId, propValue } from '../engine/evaluate';
 import { readPath, writePath } from '../engine/settings';
@@ -12,12 +11,10 @@ import { t, tn } from '../i18n';
 import { controlSteps } from '../engine/widgetLogic';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Dropdown } from '../ui/Dropdown';
-import { useApp } from '../store';
-import { shareWidget } from '../widgetLibrary';
 import { BUILT_ICONS, BuiltTry } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
 import { RowsVarBody, rowsJson, rowsSummary } from './rowsVar';
-import { closeBuilder, defOf, openControlLogic, openedFromTemplate, varFields } from './builder';
+import { defOf, openControlLogic, varFields } from './builder';
 import { findLayer, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 
@@ -38,8 +35,6 @@ const VAR_ICONS = { number: Hash, text: Type, list: List, bool: ToggleLeft, rows
 export function BuilderLeft() {
   const tpl = useDesigner((s) => s.template);
   const [open, setOpen] = useState<string | null>(null);
-  const defId = tpl?.builder?.id;
-  const own = useApp((s) => !!defId && !!s.project?.widgets?.some((d) => d.id === defId));
   if (!tpl?.builder) return null;
   const b = tpl.builder;
   const add = () => {
@@ -58,26 +53,9 @@ export function BuilderLeft() {
           <span>{t('Widget')}</span>
         </header>
         <div className="pjp-body">
-          <input className="bl-name" value={tpl.name} onChange={(e) => update((d) => void (d.name = e.target.value), 'builder-name')} />
           <div className="bl-row">
             <span className="prop-label">{t('Icon')}</span>
             <Dropdown value={b.icon ?? 'puzzle'} options={ICON_OPTIONS()} onChange={(v) => edit((d) => void (d.icon = v))} />
-          </div>
-          {/* The project's own, or every project's (a project's widget can be shared). */}
-          <div className="bl-row">
-            <span className="prop-label">{t('Available in')}</span>
-            {own ? (
-              <div className="segmented">
-                <button type="button" className="on">
-                  {t('This project')}
-                </button>
-                <button type="button" onClick={() => void shareWidget(b.id)}>
-                  {t('Every project')}
-                </button>
-              </div>
-            ) : (
-              <span className="bl-fixed">{t('Every project')}</span>
-            )}
           </div>
         </div>
       </section>
@@ -180,24 +158,6 @@ export function BuilderLeft() {
   );
 }
 
-// --------------------------------------------------------------- toolbar --
-
-/** Back to the template the widget is in, and its name. */
-export function BuilderCrumb() {
-  const { builder, name } = useDesigner(useShallow((s) => ({ builder: s.builder, name: s.template?.name ?? '' })));
-  const fromTemplate = openedFromTemplate();
-  return (
-    <div className="format-bar bl-crumb">
-      <button title={fromTemplate ? t('Back to the template') : t('Back to the widgets')} onClick={() => void closeBuilder()}>
-        <ArrowLeft size={14} /> {fromTemplate ? t('Template') : t('Widgets')}
-      </button>
-      <ChevronRight size={14} className="bl-sep" />
-      <button className="on" title={builder?.defId}>
-        {BUILT_ICONS.puzzle && <BUILT_ICONS.puzzle size={14} />} {name}
-      </button>
-    </div>
-  );
-}
 
 // ----------------------------------------------------------------- right --
 
@@ -452,8 +412,8 @@ const ICON_NAMES: Record<string, string> = {
   puzzle: 'Puzzle',
 };
 
-/** The widget's controls: the Operator's buttons, rows and fields, and what each does. */
-function ControlsPane() {
+/** The widget's controls: the Operator's buttons, rows and fields, and what each does (the Panel space). */
+export function ControlsPane() {
   const tpl = useDesigner((s) => s.template)!;
   const b = tpl.builder!;
   const [sel, setSel] = useState<string | null>(b.controls[0]?.id ?? null);
@@ -620,7 +580,7 @@ function ControlsPane() {
 
 /** The right panel of the Builder: the element selected, the options, the controls. */
 export function BuilderRight() {
-  const [tab, setTab] = useState<'el' | 'opt' | 'ctl'>('el');
+  const [tab, setTab] = useState<'el' | 'opt'>('el');
   const tpl = useDesigner((s) => s.template);
   const selected = useDesigner((s) => s.selected);
   if (!tpl?.builder) return null;
@@ -631,7 +591,6 @@ export function BuilderRight() {
           [
             ['el', t('Element')],
             ['opt', t('Options')],
-            ['ctl', t('Controls of the widget')],
           ] as const
         ).map(([k, l]) => (
           <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
@@ -649,7 +608,7 @@ export function BuilderRight() {
         )
       ) : (
         <div className="inspector">
-          {tab === 'opt' ? <OptionsPane /> : <ControlsPane />}
+          <OptionsPane />
         </div>
       )}
     </>

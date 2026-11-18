@@ -14,8 +14,8 @@ import { useColors } from '../colors';
 import { LogicFlowsPanel } from './LogicFlowsPanel';
 import { LibraryGrid, useTemplateLibrary, type LibTemplate } from '../designer/templateLibrary';
 import { useLogicFlows } from '../logicFlows';
-import { useWidgetLists, WidgetsPanel } from './WidgetsPanel';
-import { newWidget } from '../designer/builder';
+import { navigate } from '../router';
+import { useWidgets } from '../widgetLibrary';
 
 type Kind = MediaFile['kind'];
 
@@ -144,8 +144,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (!families.length) void loadFonts();
   }, [families.length]);
-  // Opened on the widgets from the Builder's back button (#widgets).
-  const [kind, setKindRaw] = useState<Kind | 'all' | 'colors' | 'logic' | 'templates' | 'widgets'>(() => (location.hash === '#widgets' ? 'widgets' : 'all'));
+  const [kind, setKindRaw] = useState<Kind | 'all' | 'colors' | 'logic' | 'templates'>('all');
   const [open, setOpen] = useState<string | null>(null);
   const setKind = (k: typeof kind) => (setKindRaw(k), setOpen(null));
   const tlib = useTemplateLibrary(projectId);
@@ -334,9 +333,12 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const colors = kind === 'colors';
   const logic = kind === 'logic';
   const tpls = kind === 'templates';
-  const wids = kind === 'widgets';
-  const widgetLists = useWidgetLists(projectId);
-  const widgetCount = widgetLists.shared.length + widgetLists.own.length;
+  // The widgets have their own page (the Widget Builder): the Library points there.
+  const widgetCount = useWidgets((s) => s.shared.length + (projectId ? (s.projects.find((p) => p.id === projectId)?.widgets.length ?? 0) : 0));
+  const widgetsLoaded = useWidgets((s) => s.loaded);
+  useEffect(() => {
+    if (!widgetsLoaded) void useWidgets.getState().load();
+  }, [widgetsLoaded]);
   const label = KINDS.find((k) => k.kind === kind)?.label ?? 'All files';
   const KindIcon = KINDS.find((k) => k.kind === kind)?.icon ?? LayoutGrid;
 
@@ -378,7 +380,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       <NavSection>{t('Templates')}</NavSection>
       <NavItem on={tpls} icon={<LayoutTemplate size={15} />} label={t('All templates')} count={tlib?.length ?? 0} onClick={() => setKind('templates')} />
       <NavSection>{t('Widgets')}</NavSection>
-      <NavItem on={wids} icon={<Puzzle size={15} />} label={t('All widgets')} count={widgetCount} onClick={() => setKind('widgets')} />
+      <NavItem on={false} icon={<Puzzle size={15} />} label={t('Widget Builder')} count={widgetCount} onClick={() => navigate(projectId ? `/widgets?project=${encodeURIComponent(projectId)}` : '/widgets')} />
       <NavSection>{t('Logic')}</NavSection>
       <NavItem on={logic} icon={<Link2 size={15} />} label={t('Flows of logic')} count={sharedFlows + projectFlows} onClick={() => setKind('logic')} />
       <div className="lib-nav-foot">
@@ -387,7 +389,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     </>
   );
 
-  const mediaView = !fonts && !colors && !logic && !tpls && !wids;
+  const mediaView = !fonts && !colors && !logic && !tpls;
   const emptyHere = files !== null && !q && !shown.length && !folderList.length;
 
   return (
@@ -435,8 +437,8 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       }
     >
       <PageHead
-        title={wids ? t('Widgets') : tpls ? t('Templates') : logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
-        sub={wids ? tn(widgetCount, '{n} widget', '{n} widgets') : tpls ? tn(tlib?.length ?? 0, '{n} template', '{n} templates') : logic ? tn(sharedFlows + projectFlows, '{n} flow', '{n} flows') : colors ? tn(colourCount, '{n} colour', '{n} colours') : fonts ? tn(families.length, '{n} font', '{n} fonts') : tn(ofKind.length, '{n} file', '{n} files')}
+        title={tpls ? t('Templates') : logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
+        sub={tpls ? tn(tlib?.length ?? 0, '{n} template', '{n} templates') : logic ? tn(sharedFlows + projectFlows, '{n} flow', '{n} flows') : colors ? tn(colourCount, '{n} colour', '{n} colours') : fonts ? tn(families.length, '{n} font', '{n} fonts') : tn(ofKind.length, '{n} file', '{n} files')}
       >
         {colors && canShared && (
           <button className="btn primary" onClick={addPalette}>
@@ -448,12 +450,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
             <FolderPlus size={14} /> {t('Folder')}
           </button>
         )}
-        {wids && (projectId ? canDelete : canShared) && (
-          <button className="btn primary" onClick={() => void newWidget(projectId ? 'project' : 'shared')}>
-            <Plus size={14} /> {t('New widget')}
-          </button>
-        )}
-        {!colors && !logic && !tpls && !wids && canUpload && (!fonts || canDelete) && (
+        {!colors && !logic && !tpls && canUpload && (!fonts || canDelete) && (
           <label className="btn primary">
             <Upload size={14} /> {fonts ? t('Add fonts') : t('Upload')}
             <input type="file" multiple hidden accept={fonts ? '.ttf,.otf,.woff,.woff2,.ttc' : undefined} onChange={(e) => e.target.files && void upload(e.target.files)} />
@@ -520,9 +517,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         </div>
       )}
 
-      {wids ? (
-        <WidgetsPanel projectId={projectId} canEdit={canDelete} canEditShared={canShared} />
-      ) : tpls ? (
+      {tpls ? (
         <TemplatesPanel list={tlib} projectId={projectId} />
       ) : logic ? (
         <LogicFlowsPanel projectId={projectId} canEdit={canDelete} />

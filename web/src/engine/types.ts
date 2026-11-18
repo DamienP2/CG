@@ -956,8 +956,45 @@ export interface WidgetDef {
   controls: BuiltControl[];
   /** What its buttons do (engine/widgetLogic.ts); older widgets: their controls' actions. */
   logic?: Logic;
-  /** Its version: each save adds one (templates made from an older one are made again). */
+  /** Its published version: each Publish adds one (templates made from an older one are made again). */
   rev?: number;
+  /** What it is for (the Widget Builder's gallery). */
+  description?: string;
+  /** Its family in the gallery. */
+  category?: WidgetCategory;
+  /** Its internal animations (played by its controls, its variables, its arrival). */
+  anims?: WidgetAnim[];
+  /** The data sources feeding its variables. */
+  sources?: WidgetSource[];
+  /** The Widget Builder's work in progress: the templates get it at « Publish the version ». */
+  draft?: WidgetDraft;
+  /** When it was last changed or published (Unix ms). */
+  at?: number;
+}
+
+/** The part of a widget the Widget Builder edits (its draft). */
+export type WidgetDraft = Omit<WidgetDef, 'id' | 'rev' | 'draft'>;
+
+export type WidgetCategory = 'sport' | 'info' | 'social' | 'election' | 'weather' | 'other';
+
+/** An internal animation of a widget: keyframes of its elements, started by a trigger. */
+export interface WidgetAnim {
+  id: string;
+  name: string;
+  /** What starts it. */
+  trigger: { on: 'arrival' } | { on: 'logic' } | { on: 'change' | 'increase' | 'decrease'; var: string } | { on: 'while'; var: string; test: 'lt' | 'le' | 'gt' | 'ge' | 'eq' | 'ne'; value: string };
+  /** Seconds. */
+  duration: number;
+  /** Keyframes by element (its id in the widget) and property, in seconds from its start. */
+  tracks: { layer: string; prop: 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'brightness'; keys: { t: number; v: number; easing?: Easing }[] }[];
+}
+
+/** A data source feeding variables of a widget. */
+export interface WidgetSource {
+  /** The source (shared or the project's). */
+  source: string;
+  /** A field of the source → a variable of the widget. */
+  map: { path: string; var: string; /** The Operator may take a value over (until he gives it back). */ manual?: boolean }[];
 }
 
 export interface WidgetVar {
@@ -995,7 +1032,18 @@ export interface BuiltControl {
   icon?: string;
   key?: string;
   /** list: the Operator edits the rows of the variable `list` (a « List of elements »). */
-  kind?: 'button' | 'field' | 'toggle' | 'list';
+  kind?: 'button' | 'field' | 'toggle' | 'list' | 'buttons' | 'number' | 'dropdown' | 'slider' | 'timer' | 'table' | 'title';
+  /** Its place in the Operator's panel (12 columns; rows of the panel). None: laid out from `place`. */
+  grid?: { x: number; y: number; w: number; h: number };
+  /** Shown to the Operator in Preview, on air, or both (default). */
+  visible?: 'both' | 'pvw' | 'air';
+  /** buttons: the buttons of the row (each gives its text as `$value`); dropdown: its choices. */
+  items?: string[];
+  /** number / slider: the range. */
+  min?: number;
+  max?: number;
+  /** The variable it shows and sets (dropdown, number, slider, timer, field). */
+  var?: string;
   /** list: its variable. */
   list?: string;
   /** Line 2 (its buttons), a row of buttons (`row`: its label, a team's short name…), or line 3 (settings rows). */

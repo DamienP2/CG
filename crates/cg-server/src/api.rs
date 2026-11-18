@@ -206,6 +206,11 @@ pub fn router() -> Router<Shared> {
         .route("/api/widgets", get(crate::widgets::list))
         .route("/api/widgets/host", post(crate::widgets::host))
         .route("/api/widgets/press", post(crate::widgets::press))
+        .route("/api/widgets/{wid}/versions", get(crate::widgets::versions))
+        .route(
+            "/api/widgets/{wid}/versions/{rev}",
+            get(crate::widgets::version),
+        )
         .route(
             "/api/widgets/{wid}",
             put(crate::widgets::put).delete(crate::widgets::delete),
@@ -2032,6 +2037,8 @@ async fn put_widget(
         return Err(bad("a widget needs a name"));
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let before = p.widgets.iter().find(|w| w.id == wid).cloned();
+    crate::widgets::keep_version(&s, before.as_ref(), &def, &me.username).await;
     match p.widgets.iter_mut().find(|w| w.id == wid) {
         Some(w) => *w = def,
         None => p.widgets.push(def),

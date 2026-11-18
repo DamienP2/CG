@@ -35,5 +35,6 @@ import { ux1 } from './ux1';
 import { ux2 } from './ux2';
 import { learn } from './learn';
 import { builder } from './builder';
+import { widgetBuilder } from './widgetBuilder';
 
-export const fr: Record<string, string> = { ...common, ...controls, ...ccA, ...ccB, ...ccC, ...ccD, ...home, ...importer, ...designer, ...data, ...dataRules, ...operator, ...operatorLocks, ...schedule, ...shortcuts, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC, ...asrun, ...buttons, ...socialSources, ...socialWidgets, ...social, ...ux3, ...ux1, ...ux2, ...learn, ...builder };
+export const fr: Record<string, string> = { ...common, ...controls, ...ccA, ...ccB, ...ccC, ...ccD, ...home, ...importer, ...designer, ...data, ...dataRules, ...operator, ...operatorLocks, ...schedule, ...shortcuts, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC, ...asrun, ...buttons, ...socialSources, ...socialWidgets, ...social, ...ux3, ...ux1, ...ux2, ...learn, ...builder, ...widgetBuilder };

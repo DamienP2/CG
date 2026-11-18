@@ -1,4 +1,4 @@
-import { ArrowRightToLine, Crosshair, MessagesSquare, Database, FolderOpen, Library as LibraryIcon, MonitorPlay, PenTool, Radio, Server, TriangleAlert } from 'lucide-react';
+import { ArrowRightToLine, Blocks, Crosshair, MessagesSquare, Database, FolderOpen, Library as LibraryIcon, MonitorPlay, PenTool, Radio, Server, TriangleAlert } from 'lucide-react';
 import { needsLook, useHealth, useHealthStore } from './perf/health';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
@@ -32,6 +32,8 @@ const ShortcutsScreen = lazy(() => import('./settings/Settings').then((m) => ({ 
 const SystemPage = lazy(() => import('./pages/SystemPage').then((m) => ({ default: m.SystemPage })));
 const LearnPage = lazy(() => import('./learn/LearnPage').then((m) => ({ default: m.LearnPage })));
 const Social = lazy(() => import('./social/Social').then((m) => ({ default: m.Social })));
+const WidgetGallery = lazy(() => import('./builder/WidgetGallery').then((m) => ({ default: m.WidgetGallery })));
+const BuilderPage = lazy(() => import('./builder/BuilderPage').then((m) => ({ default: m.BuilderPage })));
 
 const LAST_PROJECT = 'pulse.lastProject';
 const LAST_CHANNEL = 'pulse.lastChannel';
@@ -146,14 +148,11 @@ function Toasts({ quiet }: { quiet: boolean }) {
   );
 }
 
-/** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'tracking' | 'system' | 'shortcuts' | 'learn' }> }) {
+/** The main pages' tabs (the home pages, and the Widget Builder's editor). */
+function MainTabs({ current }: { current: Route['page'] }) {
   const user = useApp((s) => s.auth?.user);
-  useEffect(() => {
-    document.title = 'Strata Graphics';
-  }, []);
   const tab = (page: Route['page'], path: string, icon: React.ReactNode, label: string) => (
-    <button className={route.page === page ? 'on' : ''} aria-current={route.page === page ? 'page' : undefined} onClick={() => navigate(path)}>
+    <button className={current === page ? 'on' : ''} aria-current={current === page ? 'page' : undefined} onClick={() => navigate(path)}>
       {icon} <span className="tab-label">{label}</span>
     </button>
   );
@@ -162,19 +161,34 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
   const health = useHealthStore((x) => x.health);
   const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Output streams')), entry('inputs', '/inputs', <ArrowRightToLine size={14} />, t('Video inputs')), entry('tracking', '/tracking', <Crosshair size={14} />, tc('page', 'Camera tracking'))] : [];
   return (
+    <div className="tabs home-tabs ux1-home-tabs">
+      {tab('projects', '/projects', <FolderOpen size={14} />, t('Projects'))}
+      {can.design(user) && tab('widgets', '/widgets', <Blocks size={14} />, t('Widget Builder'))}
+      {tab('media', '/media', <LibraryIcon size={14} />, t('Library'))}
+      {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
+      <NavGroup icon={<Radio size={14} />} label={tc('menu', 'Broadcast')} entries={broadcast} current={current} />
+      <button className={current === 'system' ? 'on' : ''} aria-current={current === 'system' ? 'page' : undefined} onClick={() => navigate('/system')}>
+        <Server size={14} /> <span className="tab-label">{t('System')}</span>
+        {admin && needsLook(health) && <span className="nav-dot warn" />}
+      </button>
+    </div>
+  );
+}
+
+/** Projects, users and server settings. A project opens in its own browser tab. */
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'widgets' | 'data' | 'outputs' | 'inputs' | 'tracking' | 'system' | 'shortcuts' | 'learn' }> }) {
+  const user = useApp((s) => s.auth?.user);
+  useEffect(() => {
+    document.title = route.page === 'widgets' ? 'Widget Builder · Strata Graphics' : 'Strata Graphics';
+  }, [route.page]);
+  useEffect(() => {
+    if (route.page === 'widgets' && !can.design(user)) navigate('/projects', true);
+  }, [route.page, user]);
+  return (
     <>
       <nav className="topbar">
         <Brand />
-        <div className="tabs home-tabs ux1-home-tabs">
-          {tab('projects', '/projects', <FolderOpen size={14} />, t('Projects'))}
-          {tab('media', '/media', <LibraryIcon size={14} />, t('Library'))}
-          {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
-          <NavGroup icon={<Radio size={14} />} label={tc('menu', 'Broadcast')} entries={broadcast} current={route.page} />
-          <button className={route.page === 'system' ? 'on' : ''} aria-current={route.page === 'system' ? 'page' : undefined} onClick={() => navigate('/system')}>
-            <Server size={14} /> <span className="tab-label">{t('System')}</span>
-            {admin && needsLook(health) && <span className="nav-dot warn" />}
-          </button>
-        </div>
+        <MainTabs current={route.page} />
         <div className="spacer" />
         <TrainingBar />
         <StatusPill />
@@ -185,6 +199,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         <Suspense fallback={pageLoading()}>
           {route.page === 'projects' && <Projects />}
           {route.page === 'media' && <MediaLibrary />}
+          {route.page === 'widgets' && <WidgetGallery />}
           {route.page === 'data' && <DataPage />}
           {(route.page === 'outputs' || route.page === 'inputs' || route.page === 'tracking') && <Outputs mode={route.page} />}
           {route.page === 'system' && <SystemPage section={route.section} />}
@@ -248,7 +263,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
 
   const tab = (s: ProjectPage, icon: React.ReactNode, label: string) =>
     allowed(s) && (
-      <button className={sub === s || (s === 'media' && sub === 'builder') ? 'on' : ''} title={label} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
+      <button className={sub === s ? 'on' : ''} title={label} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
         {icon} <span className="tab-label">{label}</span>
       </button>
     );
@@ -258,7 +273,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   let page: React.ReactNode;
   if (!known) page = <div className="loading">{t('This project does not exist or you cannot access it.')}</div>;
   else if (!ready) page = <div className="loading">{t('Opening the project…')}</div>;
-  else if (sub === 'designer' || sub === 'builder') page = <Designer key={project.id} builder={sub === 'builder' ? (route.channelId ?? undefined) : undefined} />;
+  else if (sub === 'builder' && route.channelId) page = <BuilderPage key={`${project.id}/${route.channelId}`} widgetId={route.channelId} />;
+  else if (sub === 'designer' || sub === 'builder') page = <Designer key={project.id} />;
   else if (sub === 'social') page = <Social key={projectId} projectId={projectId} />;
   else if (sub === 'data') page = <DataPage key={projectId} projectId={projectId} />;
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
@@ -268,6 +284,26 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
     const driven = station === null || training ? (own[0]?.id ?? null) : operated && operated.projectId === projectId ? operated.id : null;
     page = <Operator key={driven ?? 'none'} channelId={driven} />;
   }
+
+  // The Widget Builder's editor: under the main tabs, as its gallery.
+  if (sub === 'builder')
+    return (
+      <>
+        <nav className="topbar">
+          <Brand />
+          <MainTabs current="widgets" />
+          <div className="spacer" />
+          <div id="topbar-slot" className="topbar-slot" />
+          <TrainingBar />
+          <StatusPill newTab />
+          <HelpButton />
+          <UserMenu />
+        </nav>
+        <div className="content">
+          <Suspense fallback={pageLoading()}>{page}</Suspense>
+        </div>
+      </>
+    );
 
   return (
     <>

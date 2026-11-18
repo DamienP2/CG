@@ -41,6 +41,7 @@ import {
   MoreHorizontal,
   Puzzle,
   Repeat2,
+  Blocks,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -61,7 +62,8 @@ import { t, tc, tn } from '../i18n';
 import { useApp } from '../store';
 import { BUILT_ICONS } from '../widgets/built';
 import { addWidget } from './builder';
-import { useWidgets } from '../widgetLibrary';
+import { neverPublished, useWidgets } from '../widgetLibrary';
+import { navigate } from '../router';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
 const PROP_ROWS: {
@@ -1234,11 +1236,12 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
                 [t('Shared widgets'), shared],
               ] as const
             ).map(([title, list]) =>
-              list.length ? (
+              // A widget never published has nothing to place yet.
+              list.some((w) => !neverPublished(w)) ? (
                 <div key={title} className="add-sect">
                   <div className="add-mh">{title}</div>
                   <div className="add-grid">
-                    {list.map((w) => {
+                    {list.filter((w) => !neverPublished(w)).map((w) => {
                       const I = BUILT_ICONS[w.icon ?? ''] ?? Puzzle;
                       return (
                         <button key={w.id} onClick={() => (setOpen(null), void addWidget(w.id, size))}>
@@ -1253,6 +1256,11 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
                 </div>
               ) : null,
             )}
+          {!builder && (
+            <button className="add-make-widget" onClick={() => (setOpen(null), navigate('/widgets'))}>
+              <Blocks size={14} /> {t('Make a widget in the Widget Builder')}
+            </button>
+          )}
         </div>
       )}
     </div>

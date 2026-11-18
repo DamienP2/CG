@@ -5441,7 +5441,7 @@
      "Projects"
     ],
     "summary": "The shared widgets",
-    "description": "Widgets built with the Builder that every project shares (the pre-built ones first), and how many projects use each.\n\n**Rights:** everyone.",
+    "description": "Widgets built with the Builder that every project shares (the pre-built ones first), and how many projects use each.\n\n**Rights:** everyone. Also `projects`: the widgets of each project the user sees, `[{ id, name, widgets, uses, canEdit }]`.",
     "responses": {
      "200": {
       "description": "`{ widgets, uses }`",
@@ -5765,6 +5765,85 @@
         }
        }
       }
+     }
+    }
+   }
+  },
+  "/api/widgets/{wid}/versions": {
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "The published versions of a widget",
+    "description": "The versions kept of a shared widget or a project's widget (the latest 30), the latest first: `[{ rev, at, by }]` (`at`: Unix milliseconds, 0 before versions were kept).",
+    "parameters": [
+     {
+      "name": "wid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The versions.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object"
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such widget."
+     }
+    }
+   }
+  },
+  "/api/widgets/{wid}/versions/{rev}": {
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "One published version of a widget",
+    "description": "`{ rev, at, by, def }`: the widget as it was published (reopened in the Widget Builder as its draft).",
+    "parameters": [
+     {
+      "name": "wid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "rev",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The version.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such widget or version."
      }
     }
    }

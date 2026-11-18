@@ -4,6 +4,8 @@ export type ProjectPage = 'designer' | 'operator' | 'social' | 'data' | 'media' 
 export type Route =
   | { page: 'projects' }
   | { page: 'media' }
+  /** The Widget Builder's gallery. */
+  | { page: 'widgets' }
   | { page: 'outputs' }
   | { page: 'inputs' }
   | { page: 'tracking' }
@@ -79,6 +81,8 @@ export function parseRoute(path = location.pathname): Route {
       return system('api');
     case 'media':
       return { page: 'media' };
+    case 'widgets':
+      return { page: 'widgets' };
     case 'outputs':
       return { page: 'outputs' };
     case 'inputs':

@@ -2,6 +2,8 @@
  {
   "id": "scoreboard",
   "name": "Tableau des scores",
+  "description": "Deux équipes, scores, fautes, période, chrono de jeu et chrono des tirs.",
+  "category": "sport",
   "vars": [
    {
     "name": "score_1",
@@ -981,6 +983,8 @@
  {
   "id": "ticker",
   "name": "Ticker",
+  "description": "Les titres d’une liste défilent dans un bandeau, une ligne par élément.",
+  "category": "info",
   "icon": "zap",
   "width": 1920,
   "height": 64,
@@ -1347,6 +1351,8 @@
  {
   "id": "credits",
   "name": "Générique",
+  "description": "Rôles et noms qui montent, une liste par section.",
+  "category": "info",
   "icon": "continue",
   "width": 1920,
   "height": 1080,
@@ -1647,6 +1653,8 @@
  {
   "id": "socialbadge",
   "name": "Badge social",
+  "description": "Un message validé en modération, avec son auteur et son réseau.",
+  "category": "social",
   "icon": "flag",
   "width": 760,
   "height": 210,
@@ -1876,6 +1884,8 @@
  {
   "id": "socialwall",
   "name": "Mur social",
+  "description": "Une grille de messages validés qui se renouvellent.",
+  "category": "social",
   "icon": "puzzle",
   "width": 1600,
   "height": 800,

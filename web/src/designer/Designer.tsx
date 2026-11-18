@@ -34,8 +34,9 @@ import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
 import { leaveBuilder, loadBuilder, refreshStale, saveBuilt } from './builder';
 import { useWidgets } from '../widgetLibrary';
-import { navigate, projectPath } from '../router';
-import { BuilderCrumb, BuilderLeft, BuilderRight } from './BuilderPanels';
+import { navigate } from '../router';
+import { BuilderLeft, BuilderRight } from './BuilderPanels';
+import { useBuilderUi } from './builderUi';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -103,6 +104,7 @@ function useAutosave() {
       else await saveTemplate(p.template, p.project);
     }
     setState('saved');
+    useBuilderUi.setState({ saving: false });
   };
   useEffect(() => {
     if (!edits) return;
@@ -110,6 +112,7 @@ function useAutosave() {
     const project = designedProject ?? useApp.getState().projectId;
     if (!base || readOnly || !project) return;
     setState('pending');
+    if (base.builder) useBuilderUi.setState({ saving: true });
     pending.current.set(`${project}/${base.id}`, { project, template: base });
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush.current(), 500);
@@ -564,7 +567,7 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
       if (st.builder?.defId === builderId) return;
       if (!loadBuilder(builderId)) {
         useApp.getState().toast(t('This widget no longer exists.'), 'error');
-        navigate(`${projectPath(project.id, 'media')}#widgets`, true);
+        navigate('/widgets', true);
       }
     } else if (st.builder) void leaveBuilder();
   }, [builderId, project?.id, widgetsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -670,9 +673,10 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
               </>,
               topSlot,
             )}
-          {template?.builder ? <BuilderCrumb /> : <FormatBar project={project} />}
+          {!template?.builder && <FormatBar project={project} />}
           <div className="spacer" />
-          {template && (
+          {/* The Widget Builder has its Logic as a space of its own. */}
+          {template && !template.builder && (
             <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen('template')} title={template.builder ? t('What its buttons do') : t('Events, triggers, actions, variables')}>
               <Link2 size={13} /> {t('Logic')}
             </button>

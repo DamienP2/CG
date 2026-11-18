@@ -4,12 +4,15 @@
 
 use std::collections::BTreeMap;
 
+use std::path::PathBuf;
+
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use cg_core::built::Def;
 use cg_core::{FrameRate, Project};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::api::{bad, internal, not_found, require, visible_project, ApiResult};
 use crate::auth::CurrentUser;
@@ -34,6 +37,18 @@ pub async fn load(s: &Shared) -> Vec<Def> {
         return prebuilt;
     };
     let mut defs: Vec<Def> = serde_json::from_slice(&b).unwrap_or_default();
+    // A pre-built widget saved before it had a description and a category: they come from Strata.
+    for d in &mut defs {
+        if let Some(p) = prebuilt.iter().find(|p| p.id == d.id) {
+            for k in ["description", "category"] {
+                if !d.rest.contains_key(k) {
+                    if let Some(v) = p.rest.get(k) {
+                        d.rest.insert(k.into(), v.clone());
+                    }
+                }
+            }
+        }
+    }
     let seen = removed(s).await;
     for d in prebuilt {
         if !defs.iter().any(|x| x.id == d.id) && !seen.contains(&d.id) {
@@ -88,13 +103,200 @@ pub struct Listing {
     widgets: Vec<Def>,
     /// Widget id → the number of projects using it.
     uses: BTreeMap<String, usize>,
+    /// The widgets of each project the user sees (the Widget Builder's gallery).
+    projects: Vec<ProjectWidgets>,
 }
 
-pub async fn list(State(s): State<Shared>, CurrentUser(_me): CurrentUser) -> Json<Listing> {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWidgets {
+    id: String,
+    name: String,
+    widgets: Vec<Def>,
+    /// Widget id → the number of the project's templates using it.
+    uses: BTreeMap<String, usize>,
+    /// The user may change them.
+    can_edit: bool,
+}
+
+/// The widgets of the projects `me` sees (the host aside), with their templates using them.
+async fn project_widgets(s: &Shared, me: &crate::auth::User) -> Vec<ProjectWidgets> {
+    let lib = s.library.read().await;
+    lib.list()
+        .filter(|p| p.id != HOST && me.sees_project(&p.id) && !p.widgets.is_empty())
+        .map(|p| {
+            let mut uses: BTreeMap<String, usize> = BTreeMap::new();
+            for t in p.templates.iter().chain(&p.drafts) {
+                let mut ids: Vec<&str> = t
+                    .layers
+                    .iter()
+                    .filter_map(|l| l.widget.as_ref().map(|w| w.def.as_str()))
+                    .collect();
+                ids.sort_unstable();
+                ids.dedup();
+                for id in ids {
+                    *uses.entry(id.to_string()).or_default() += 1;
+                }
+            }
+            ProjectWidgets {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                widgets: p.widgets.clone(),
+                uses,
+                can_edit: me.can_design(&p.id),
+            }
+        })
+        .collect()
+}
+
+pub async fn list(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> Json<Listing> {
     Json(Listing {
         widgets: load(&s).await,
         uses: uses(&s).await,
+        projects: project_widgets(&s, &me).await,
     })
+}
+
+// ------------------------------------------------------------------ versions
+
+/// Versions kept per widget.
+const KEPT_VERSIONS: usize = 30;
+
+fn versions_dir(s: &Shared, wid: &str) -> Option<PathBuf> {
+    crate::library::valid_id(wid).then(|| s.data_dir.join("widget-versions").join(wid))
+}
+
+/// A widget's published version (each Publish adds one).
+pub fn rev_of(d: &Def) -> u64 {
+    d.rest.get("rev").and_then(Value::as_u64).unwrap_or(0)
+}
+
+/// A version kept: when, by whom, and the widget as published then.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Version {
+    rev: u64,
+    /// Unix milliseconds (0: before versions were kept).
+    at: i64,
+    by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    def: Option<Def>,
+}
+
+/// The widget as published (without the draft its Builder keeps).
+fn published(d: &Def) -> Def {
+    let mut d = d.clone();
+    d.rest.remove("draft");
+    d
+}
+
+/// A widget saved: when its version went up (a Publish), the new version is
+/// kept, and the one before too if it never was. The oldest go beyond [`KEPT_VERSIONS`].
+pub async fn keep_version(s: &Shared, before: Option<&Def>, after: &Def, by: &str) {
+    let rev = rev_of(after);
+    if rev == 0 || before.is_some_and(|b| rev_of(b) >= rev) {
+        return;
+    }
+    let Some(dir) = versions_dir(s, &after.id) else {
+        return;
+    };
+    if tokio::fs::create_dir_all(&dir).await.is_err() {
+        return;
+    }
+    let write = |d: &Def, at: i64, by: &str| {
+        let v = Version {
+            rev: rev_of(d),
+            at,
+            by: by.to_string(),
+            def: Some(published(d)),
+        };
+        (
+            dir.join(format!("{}.json", v.rev)),
+            serde_json::to_vec(&v).unwrap_or_default(),
+        )
+    };
+    if let Some(b) = before.filter(|b| rev_of(b) > 0) {
+        let (path, bytes) = write(b, 0, "");
+        if !path.exists() {
+            let _ = tokio::fs::write(path, bytes).await;
+        }
+    }
+    let (path, bytes) = write(after, crate::state::now_ms(), by);
+    let _ = tokio::fs::write(path, bytes).await;
+    // The oldest out.
+    let mut revs = kept_revs(&dir).await;
+    revs.sort_unstable_by_key(|r| std::cmp::Reverse(*r));
+    for r in revs.into_iter().skip(KEPT_VERSIONS) {
+        let _ = tokio::fs::remove_file(dir.join(format!("{r}.json"))).await;
+    }
+}
+
+async fn kept_revs(dir: &std::path::Path) -> Vec<u64> {
+    let mut out = Vec::new();
+    if let Ok(mut rd) = tokio::fs::read_dir(dir).await {
+        while let Ok(Some(e)) = rd.next_entry().await {
+            if let Some(r) = e
+                .file_name()
+                .to_str()
+                .and_then(|n| n.strip_suffix(".json"))
+                .and_then(|n| n.parse().ok())
+            {
+                out.push(r);
+            }
+        }
+    }
+    out
+}
+
+/// The user may see the widget `wid`'s versions: a shared one (designers), or one of a project they design.
+async fn may_see(s: &Shared, me: &crate::auth::User, wid: &str) -> ApiResult<()> {
+    if load(s).await.iter().any(|d| d.id == wid) {
+        return require(me.can_create_projects());
+    }
+    let lib = s.library.read().await;
+    let owner = lib.list().find(|p| p.widgets.iter().any(|w| w.id == wid));
+    match owner {
+        Some(p) => require(me.can_design(&p.id)),
+        None => Err(not_found("widget")),
+    }
+}
+
+/// The versions of a widget kept, the latest first (without their content).
+pub async fn versions(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(wid): Path<String>,
+) -> ApiResult<Json<Vec<Version>>> {
+    may_see(&s, &me, &wid).await?;
+    let Some(dir) = versions_dir(&s, &wid) else {
+        return Err(not_found("widget"));
+    };
+    let mut out = Vec::new();
+    for r in kept_revs(&dir).await {
+        let Ok(b) = tokio::fs::read(dir.join(format!("{r}.json"))).await else {
+            continue;
+        };
+        if let Ok(mut v) = serde_json::from_slice::<Version>(&b) {
+            v.def = None;
+            out.push(v);
+        }
+    }
+    out.sort_unstable_by_key(|v| std::cmp::Reverse(v.rev));
+    Ok(Json(out))
+}
+
+/// One kept version of a widget, with its content.
+pub async fn version(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((wid, rev)): Path<(String, u64)>,
+) -> ApiResult<Json<Version>> {
+    may_see(&s, &me, &wid).await?;
+    let dir = versions_dir(&s, &wid).ok_or_else(|| not_found("widget"))?;
+    let b = tokio::fs::read(dir.join(format!("{rev}.json")))
+        .await
+        .map_err(|_| not_found("version"))?;
+    Ok(Json(serde_json::from_slice(&b).map_err(internal)?))
 }
 
 /// Adds or replaces the shared widget `wid`.
@@ -113,6 +315,8 @@ pub async fn put(
     }
     let _edit = s.edits.lock().await;
     let mut defs = load(&s).await;
+    let before = defs.iter().find(|d| d.id == wid).cloned();
+    keep_version(&s, before.as_ref(), &def, &me.username).await;
     match defs.iter_mut().find(|d| d.id == wid) {
         Some(d) => *d = def,
         None => defs.push(def),

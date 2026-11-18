@@ -7,11 +7,10 @@ import { designTemplates } from '../engine/drafts';
 import { zoneArea } from '../engine/zones';
 import { newId } from '../engine/evaluate';
 import { actionsLogic, isControlWhen } from '../engine/widgetLogic';
-import { MARKER_MODEL, type Field, type Template, type WidgetDef } from '../engine/types';
-import { t } from '../i18n';
+import { MARKER_MODEL, type Field, type Template, type WidgetDef, type WidgetDraft } from '../engine/types';
 import { navigate, projectPath } from '../router';
 import { useApp } from '../store';
-import { findDef, HOST_PROJECT, hostProject, saveDef, useWidgets } from '../widgetLibrary';
+import { canon, draftOf, findDef, HOST_PROJECT, hostProject, neverPublished, projectOf, publishDef, saveDef, saveDraft, workingCopy, type WidgetHome } from '../widgetLibrary';
 import { useDesigner } from './designerStore';
 
 /** Ids of the Builder's templates. */
@@ -20,9 +19,10 @@ export const BUILDER_ID = 'widget:';
 /** The fields standing for the widget's variables (its texts show their start values). */
 export const varFields = (vars: WidgetDef['vars']): Field[] => vars.map((v) => ({ key: v.name, label: v.name, kind: v.kind === 'number' ? 'number' : 'text', default: v.initial }));
 
-/** The widget as a template the Designer edits. */
-export function builderTemplate(def: WidgetDef): Template {
-  const { layers, logic, ...rest } = structuredClone(def);
+/** The widget as a template the Designer edits (its draft, if any). */
+export function builderTemplate(stored: WidgetDef): Template {
+  const { layers, logic, draft: _draft, ...rest } = structuredClone(workingCopy(stored));
+  const def = { ...rest, layers } as WidgetDef;
   return {
     id: BUILDER_ID + def.id,
     name: def.name,
@@ -49,12 +49,33 @@ export function defOf(t: Template | null | undefined): WidgetDef | null {
   return { ...t.builder, name: t.name, layers: t.layers, logic: t.logic, width: Math.round(right) || t.builder.width, height: Math.round(bottom) || t.builder.height };
 }
 
-/** Saves the widget a Builder template stands for, where it is kept (its version up). */
+/**
+ * The widget has changes its templates have not received: its draft (`draft`, else the one kept)
+ * differs from what is published, both read as the Builder reads them (its frame, its Logic).
+ */
+export function unpublished(def: WidgetDef, draft: WidgetDraft | undefined = def.draft): boolean {
+  if (!(def.rev ?? 0)) return true;
+  if (!draft) return false;
+  const published = defOf(builderTemplate({ ...def, draft: undefined }));
+  return !!published && canon(draft) !== canon(draftOf(published));
+}
+
+/** Keeps the Builder's work as the widget's draft (its templates do not change until « Publish »). */
 export async function saveBuilt(t: Template): Promise<boolean> {
   const def = defOf(t);
-  if (!def) return false;
-  // Its version from the library (the Builder's copy keeps the one it opened with).
-  return saveDef({ ...def, rev: findDef(def.id)?.rev ?? def.rev });
+  const stored = def && findDef(def.id);
+  if (!def || !stored) return false;
+  return saveDraft(stored, draftOf(def));
+}
+
+/** Publishes what the Builder has made: the version goes up, the open project's templates get it at once. */
+export async function publishBuilt(t: Template): Promise<WidgetDef | null> {
+  const def = defOf(t);
+  const stored = def && findDef(def.id);
+  if (!def || !stored) return null;
+  const next = await publishDef({ ...stored, draft: draftOf(def) });
+  if (next && projectOf(next.id) === useApp.getState().projectId) await refreshTemplates(next);
+  return next;
 }
 
 /** Where the Builder goes back to: a template of the Designer, else the Library. */
@@ -122,21 +143,17 @@ export async function refreshStale() {
     let layers = tpl.layers;
     for (const f of tpl.layers.filter((l) => l.widget)) {
       const def = findDef(f.widget!.def);
-      if (def && (f.widget!.rev ?? 0) !== (def.rev ?? 0)) layers = regenerate(layers, f.id, def);
+      if (def && !neverPublished(def) && (f.widget!.rev ?? 0) !== (def.rev ?? 0)) layers = regenerate(layers, f.id, def);
     }
     if (layers !== tpl.layers) await app.saveTemplate({ ...tpl, layers });
   }
 }
 
-/** Leaves the Builder where it is: the widget saved, the project's templates refreshed, the Designer on its templates. */
+/** Leaves the Builder where it is: its draft kept (the templates get it at « Publish »), the Designer on its templates. */
 export async function leaveBuilder() {
   const base = useDesigner.getState().base;
   useDesigner.setState({ builder: null });
-  if (base?.builder) {
-    await saveBuilt(base);
-    const def = findDef(base.builder.id);
-    if (def) await refreshTemplates(def);
-  }
+  if (base?.builder) await saveBuilt(base);
   useDesigner.getState().load(null);
 }
 
@@ -151,24 +168,26 @@ export async function closeBuilder() {
   } catch {
     /* without storage */
   }
-  if (!pid || pid === HOST_PROJECT) {
-    useDesigner.getState().load(null);
-    return navigate('/media#widgets');
-  }
   const [fp, tpl] = from?.split(':') ?? [];
   const p = useApp.getState().project;
-  const back = fp === pid && tpl && p ? designTemplates(p).find((x) => x.id === tpl) : undefined;
+  const back = pid && pid !== HOST_PROJECT && fp === pid && tpl && p ? designTemplates(p).find((x) => x.id === tpl) : undefined;
   useDesigner.getState().load(back ?? null);
-  navigate(back ? projectPath(pid, 'designer') : `${projectPath(pid, 'media')}#widgets`);
+  // Back to the template it was opened from, else to the Widget Builder's gallery.
+  navigate(back && pid ? projectPath(pid, 'designer') : '/widgets');
 }
 
-/** A new empty widget, opened in the Builder: the project's own, else shared (from the main Library). */
-export async function newWidget(where: 'project' | 'shared') {
-  const n = where === 'shared' ? useWidgets.getState().shared.length : (useApp.getState().project?.widgets?.length ?? 0);
-  const def: WidgetDef = { id: newId(), name: t('Widget {n}', { n: n + 1 }), icon: 'puzzle', width: 600, height: 120, layers: [], vars: [], options: [], controls: [], rev: 0 };
-  if (!(await saveDef(def, where))) return;
+/** A new widget, opened in the Builder: empty (its size), or a copy of `from`. It is published only at « Publish ». */
+export async function newWidget(where: WidgetHome, opts: { name: string; width?: number; height?: number; from?: WidgetDef; category?: WidgetDef['category'] }) {
+  const base: WidgetDef = opts.from
+    ? { ...structuredClone(workingCopy(opts.from)), draft: undefined }
+    : { id: '', name: '', icon: 'puzzle', width: opts.width ?? 600, height: opts.height ?? 120, layers: [], vars: [], options: [], controls: [] };
+  const content = { ...draftOf(base), name: opts.name, ...(opts.category ? { category: opts.category } : {}) };
+  // Nothing published yet: its templates-to-be wait for « Publish the version ».
+  const def: WidgetDef = { id: newId(), name: opts.name, icon: content.icon, width: content.width, height: content.height, layers: [], vars: [], options: [], controls: [], rev: 0, draft: content, ...(opts.category ? { category: opts.category } : {}) };
+  if (!(await saveDef(def, where))) return null;
   if (where === 'shared') await openSharedBuilder(def.id);
-  else await openBuilderPage(def.id);
+  else await openBuilderPage(def.id, where === 'project' ? {} : { project: where.project });
+  return def;
 }
 
 /** Adds the widget `id` (the project's or a shared one) to the open template, in its zone. Its folder is selected. */
