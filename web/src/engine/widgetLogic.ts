@@ -114,6 +114,7 @@ export function placedLogic(def: WidgetDef, group: Layer): Logic | undefined {
         break;
       }
       case 'wundo':
+      case 'wanim':
         n.widget = W;
         break;
     }

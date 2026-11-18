@@ -65,6 +65,11 @@ pub enum Act {
     Wundo {
         widget: String,
     },
+    /// An internal animation of a built widget plays from its start.
+    Wanim {
+        widget: String,
+        anim: String,
+    },
 }
 
 /// The moment: the data the graphic shows (with what the server saw:
@@ -459,6 +464,13 @@ pub fn run(
             NodeKind::Wundo { widget } => act(
                 Act::Wundo {
                     widget: widget.clone(),
+                },
+                &mut queue,
+            ),
+            NodeKind::Wanim { widget, anim } => act(
+                Act::Wanim {
+                    widget: widget.clone(),
+                    anim: anim.clone(),
                 },
                 &mut queue,
             ),

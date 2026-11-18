@@ -494,6 +494,14 @@ pub enum NodeKind {
         #[serde(default)]
         widget: String,
     },
+    /// Plays an internal animation `anim` of a built widget (`widget`: the
+    /// widget placed), from its start ([`crate::built::anim_key`]).
+    Wanim {
+        #[serde(default)]
+        anim: String,
+        #[serde(default)]
+        widget: String,
+    },
 
     // ── Older graphs, made over by [`upgrade`] when a template loads ───
     LayerProp {
@@ -579,6 +587,7 @@ impl NodeKind {
                 | NodeKind::Widget { .. }
                 | NodeKind::Wvar { .. }
                 | NodeKind::Wundo { .. }
+                | NodeKind::Wanim { .. }
         )
     }
 }

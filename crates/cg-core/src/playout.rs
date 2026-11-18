@@ -2584,7 +2584,8 @@ impl ChannelState {
                 | Act::NextRow(_)
                 | Act::Widget { .. }
                 | Act::Wvar { .. }
-                | Act::Wundo { .. } => {}
+                | Act::Wundo { .. }
+                | Act::Wanim { .. } => {}
             }
         }
         for ask in asks {
@@ -2977,6 +2978,13 @@ impl ChannelState {
                             .entry(widget)
                             .or_insert(serde_json::Value::Null);
                         crate::built::undo(&mut item.data, st);
+                    }
+                    // From now (its time on air).
+                    Act::Wanim { widget, anim } => {
+                        item.data.insert(
+                            crate::built::anim_key(&widget, &anim),
+                            crate::built::secs_text(item.age / fps),
+                        );
                     }
                 }
             }

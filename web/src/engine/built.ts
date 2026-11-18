@@ -7,7 +7,7 @@
 // change them and drive the Temps among its elements through its Logic
 // (engine/widgetLogic.ts), which the server runs (crates/cg-core/src/built.rs).
 import { parseSetting, formatSetting, readPath, writePath } from './settings';
-import type { Data, Layer, Prop, WidgetDef, WidgetInstance } from './types';
+import type { Data, Field, Layer, Prop, WidgetDef, WidgetInstance } from './types';
 import { placedLogic } from './widgetLogic';
 
 /** The instance without its placed Logic (made again from the definition). */
@@ -127,7 +127,7 @@ export function generate(def: WidgetDef, group: Layer): Layer[] {
     ...group,
     type: 'group',
     props: { ...group.props, width: def.width, height: def.height },
-    widget: { ...withoutLogic(group.widget!), snap: { id: def.id, name: def.name, vars: def.vars, controls: def.controls, ...(def.anims?.length ? { anims: def.anims } : {}) }, rev: def.rev ?? 0, ...(logic ? { logic } : {}) },
+    widget: { ...withoutLogic(group.widget!), snap: { id: def.id, name: def.name, vars: def.vars, controls: def.controls, ...(def.anims?.length ? { anims: def.anims } : {}), ...(def.sources?.length ? { sources: def.sources } : {}) }, rev: def.rev ?? 0, ...(logic ? { logic } : {}) },
   } as Layer;
   for (const l of kids(null)) place(l, W);
   // Its options: the template's value (else the default) on each target; an exposed one bound.
@@ -227,4 +227,38 @@ export function insideWidget(layers: Layer[], l: Layer): boolean {
   const byId = new Map(layers.map((x) => [x.id, x]));
   for (let p = l.parent ? byId.get(l.parent) : undefined; p; p = p.parent ? byId.get(p.parent) : undefined) if (p.widget) return true;
   return false;
+}
+
+/**
+ * The template's fields its widgets' sources feed: each variable tied to a field of a source is a
+ * field of the template bound to it (the server keeps it up to date on air), with the source the
+ * template chose for the widget. Other fields stay as they are.
+ */
+export function withWidgetFields(fields: Field[], layers: Layer[]): Field[] {
+  const out = [...fields];
+  const want = new Map<string, Field>();
+  const prefixes: string[] = [];
+  for (const l of layers) {
+    const w = l.widget;
+    if (!w?.snap) continue;
+    prefixes.push(varKey(l.id, ''));
+    for (const s of w.snap.sources ?? []) {
+      const source = w.sources?.[s.source] || s.source;
+      for (const m of s.map) {
+        if (!m.var || !m.path) continue;
+        const v = w.snap.vars.find((x) => x.name === m.var);
+        const key = varKey(l.id, m.var);
+        want.set(key, { key, label: `${l.name} · ${m.var}`, kind: v?.kind === 'number' ? 'number' : 'text', default: w.vars?.[m.var] ?? v?.initial ?? '', binding: { source, path: m.path } });
+      }
+    }
+  }
+  for (let i = 0; i < out.length; i++) {
+    const f = out[i];
+    const fresh = want.get(f.key);
+    if (fresh) {
+      out[i] = { ...f, binding: fresh.binding };
+      want.delete(f.key);
+    } else if (f.binding && prefixes.some((p) => f.key.startsWith(p))) out[i] = { ...f, binding: null };
+  }
+  return [...out, ...want.values()];
 }

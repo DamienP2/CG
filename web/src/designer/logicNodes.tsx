@@ -40,6 +40,7 @@ import {
   ToggleLeft,
   Type,
   Variable,
+  Sparkles,
   WandSparkles,
   Waves,
   Zap,
@@ -237,10 +238,14 @@ function builderEntries(tpl: Template): Entry[] {
     { key: 'wreset', fam: 'wvar', label: 'Back to the start (all)', icon: RotateCcw, make: (_t, x, y) => ({ ...base(x, y), type: 'wvar', var: '', op: 'reset', value: '' }) },
     { key: 'wundo', fam: 'wvar', label: 'Undo', icon: Undo2, make: (_t, x, y) => ({ ...base(x, y), type: 'wundo' }) },
   ];
+  // Its internal animations: « Play » from their start.
+  const anims = (b.anims ?? []).map(
+    (a): Entry => ({ key: `wanim:${a.id}`, fam: 'wel', label: a.name, icon: Sparkles, note: t('Animation'), make: (_t, x, y) => ({ ...base(x, y), type: 'wanim', anim: a.id }) }),
+  );
   const els = tpl.layers.filter(timedLayer).map(
     (l): Entry => ({ key: `wel:${l.id}`, fam: 'wel', label: l.name, icon: LAYER_ICONS[l.type] ?? Timer, note: t('Element'), make: (_t, x, y) => ({ ...base(x, y), type: 'widget', layer: l.id, control: 'toggle' }) }),
   );
-  return [...buttons, ...vars, ...els, ...templateEntries(tpl).filter((e) => e.fam !== 'graphic' && !NOT_IN_WIDGET.has(e.key))];
+  return [...buttons, ...vars, ...anims, ...els, ...templateEntries(tpl).filter((e) => e.fam !== 'graphic' && !NOT_IN_WIDGET.has(e.key))];
 }
 
 /** What a graphic's own Logic cannot do in the project's: its layers, its events, its pauses, its widgets. */
@@ -368,6 +373,7 @@ export function kindOf(n: LogicNode, tpl: Template): { fam: Fam; label: string; 
   if (n.type === 'event' || n.type === 'when') return { fam: 'event', label: t('When'), icon: Zap };
   if (n.type === 'wvar') return { fam: 'wvar', label: t('Widget variable'), icon: Variable };
   if (n.type === 'wundo') return { fam: 'wvar', label: t('Undo'), icon: Undo2 };
+  if (n.type === 'wanim') return { fam: 'wel', label: t('Play an animation'), icon: Sparkles };
   if (n.type === 'widget' && tpl.builder) return { fam: 'wel', label: t('Animated element'), icon: Timer };
   if (n.type === 'check') return { fam: 'cond', label: t('If'), icon: GitBranch };
   if (n.type === 'how') return { fam: 'how', label: t('How'), icon: MoveRight };

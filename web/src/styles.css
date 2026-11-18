@@ -23129,3 +23129,154 @@ textarea.tx-grow {
   gap: 8px;
   font-size: var(--fs-12);
 }
+/* The Widget Builder's Données: sources, fields tied to variables, the last value received. */
+.ds {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  background: var(--bg);
+}
+.ds-src {
+  text-align: left;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  color: var(--text);
+}
+.ds-src.on {
+  border-color: var(--wb-data);
+  box-shadow: 0 0 0 2px rgba(251, 146, 60, 0.18);
+}
+.ds-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ds-ok {
+  font-size: var(--fs-11);
+  color: var(--pvw);
+}
+.ds-err {
+  font-size: var(--fs-11);
+  color: var(--live);
+}
+.ds-main {
+  overflow: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+.ds-head {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+.ds-head .grow {
+  flex: 1;
+}
+.ds-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.ds-head p {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  max-width: 70ch;
+}
+.ds-map {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.ds-map th:nth-child(1) {
+  width: 38%;
+}
+.ds-map th:nth-child(2) {
+  width: 32px;
+}
+.ds-map th:nth-child(3) {
+  width: 28%;
+}
+.ds-map th:nth-child(5) {
+  width: 40px;
+}
+.ds-map th {
+  text-align: left;
+  font-size: var(--fs-11);
+  color: var(--text-3);
+  font-weight: 500;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ds-map td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ds-map td input {
+  width: 100%;
+}
+.ds-arrow {
+  color: var(--text-3);
+  width: 24px;
+}
+.ds-val {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-void {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  text-align: center;
+  max-width: 44ch;
+}
+.ds-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ds-path {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: none;
+  border: 0;
+  color: var(--accent-2);
+  text-align: left;
+  font-size: var(--fs-12);
+}
+.ds-path:hover {
+  background: var(--panel-2);
+}
+.ds-path.on {
+  background: rgba(251, 146, 60, 0.12);
+  color: var(--wb-data);
+}
+.ds-path em {
+  font-style: normal;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+}
+.ds-choice {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 8px;
+  align-items: center;
+}

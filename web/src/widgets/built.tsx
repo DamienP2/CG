@@ -3,7 +3,7 @@
 // its On air card) and, in the template, its options.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ArrowLeftRight, Check, ChevronsRight, Flag, Minus, Pause, Play, Plus, Puzzle, RefreshCw, RotateCcw, SkipBack, SkipForward, Square, Timer, Trophy, Undo2, X, Zap, type LucideIcon } from 'lucide-react';
-import { regenerate, startValue, varKey, type Forward } from '../engine/built';
+import { regenerate, startValue, varKey, withWidgetFields, type Forward } from '../engine/built';
 import { placedLogic } from '../engine/widgetLogic';
 import { allRows, rowsJson, type Row as ListRow } from '../designer/rowsVar';
 import { ListEditor } from './builtList';
@@ -12,6 +12,8 @@ import { api, useApp } from '../store';
 import { findLayer, useDesigner } from '../designer/designerStore';
 import { openBuilderPage } from '../designer/builder';
 import { useDefOf } from '../widgetLibrary';
+import { useSources } from '../data/dataStore';
+import { Dropdown } from '../ui/Dropdown';
 import { t } from '../i18n';
 import { Bound, CentreModeContext, ColorPick, defineWidget, Msg, Num, Row, Section, Seg, setPath, Text, Toggle, useCentreMode, type OperatorProps } from './kit';
 import { Centre, SetInput, type Line2Item } from './centre';
@@ -82,7 +84,7 @@ function BuiltCentre(p: OperatorProps) {
 }
 
 /** The control centre of the widget `def` placed as `layer`. `builder`: tried in the Builder (its variables by their names, its elements by their ids). */
-function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorProps & { def: WidgetDef; builder?: boolean }) {
+function CentreOf({ def, layer, data, act, item, setData, builder, time }: OperatorProps & { def: WidgetDef; builder?: boolean }) {
   const mode = useCentreMode();
   const toast = useApp((s) => s.toast);
   // The widgets' states (Undo) between presses off air.
@@ -99,6 +101,8 @@ function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorPro
     api<{ set: Record<string, string>; states: Record<string, unknown>; forward: Forward[] }>('POST', '/api/widgets/press', { logic, widget: layer.id, control: c.id, value: typed ?? '', data, states: states.current })
       .then((r) => {
         states.current = r.states;
+        // An animation played off air starts now (the preview's time).
+        for (const [k, v] of Object.entries(r.set)) if (v === '$now') r.set[k] = String(Math.round((time?.ageSecs ?? 0) * 1000) / 1000);
         if (designer) {
           // In the Builder: its variables are the template's fields, its elements its layers.
           const own = (k: string, pre: string) => (builder && k.startsWith(pre) ? k.slice(pre.length) : k);
@@ -226,7 +230,10 @@ function BuiltInspector({ layer, data }: { layer: Layer; data: Record<string, st
   useEffect(() => {
     if (!def || was.current === exposure) return;
     was.current = exposure;
-    update((tpl) => void (tpl.layers = regenerate(tpl.layers, layer.id, def)));
+    update((tpl) => {
+      tpl.layers = regenerate(tpl.layers, layer.id, def);
+      tpl.fields = withWidgetFields(tpl.fields, tpl.layers);
+    });
   }, [exposure, def, layer.id, update]);
   if (!def) return <Msg level="warn">{t('This widget is no longer in the project.')}</Msg>;
   const set = (path: string, v: unknown, coalesce?: boolean) =>
@@ -236,6 +243,7 @@ function BuiltInspector({ layer, data }: { layer: Layer; data: Record<string, st
         if (!f) return;
         setPath(f, path, v);
         tpl.layers = regenerate(tpl.layers, layer.id, def);
+        tpl.fields = withWidgetFields(tpl.fields, tpl.layers);
       },
       coalesce ? `wopt-${layer.id}-${path}` : undefined,
     );
@@ -252,6 +260,13 @@ function BuiltInspector({ layer, data }: { layer: Layer; data: Record<string, st
           <Puzzle size={13} /> {t('Edit the widget')}
         </button>
       </div>
+      {!!def.sources?.length && (
+        <Section id="wsrc" title={t('Data')}>
+          {def.sources.map((s) => (
+            <SourceChoice key={s.source} layer={layer} source={s.source} onChange={(id) => set(`widget.sources.${s.source}`, id === s.source ? undefined : id)} />
+          ))}
+        </Section>
+      )}
       <Bound obj={layer} set={set} data={data}>
         {groups.map(([g, list]) => (
           <Section key={g} id={`wopt-${g}`} title={g || t('Options')}>
@@ -262,6 +277,20 @@ function BuiltInspector({ layer, data }: { layer: Layer; data: Record<string, st
         ))}
       </Bound>
     </>
+  );
+}
+
+/** The source a template reads for a source of its widget: the widget's, or another of the same shape. */
+function SourceChoice({ layer, source, onChange }: { layer: Layer; source: string; onChange: (id: string) => void }) {
+  const all = useSources();
+  const projectId = useApp((s) => s.projectId);
+  const usable = all.filter((s) => !s.project || s.project === projectId);
+  const cur = layer.widget?.sources?.[source] || source;
+  return (
+    <div className="ds-choice">
+      <span className="prop-label">{all.find((s) => s.id === source)?.name ?? source}</span>
+      <Dropdown value={cur} options={usable.map((s) => ({ value: s.id, label: s.id === source ? `${s.name} · ${t('the widget’s')}` : s.name }))} onChange={onChange} />
+    </div>
   );
 }
 

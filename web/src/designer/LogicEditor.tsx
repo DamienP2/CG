@@ -1677,6 +1677,10 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       }
       case 'wundo':
         return flowRows();
+      case 'wanim':
+        return flowRows(
+          <Dropdown value={n.anim} placeholder={t('Choose an animation')} options={(template.builder?.anims ?? []).map((a) => ({ value: a.id, label: a.name }))} onChange={(anim) => set({ anim } as Partial<LogicNode>)} />,
+        );
       case 'widget':
         if (template.builder)
           return flowRows(

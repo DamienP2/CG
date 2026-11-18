@@ -559,6 +559,10 @@ pub fn press(
                 let st = states.entry(widget).or_insert(Value::Null);
                 undo(&mut out, st);
             }
+            // Off air: the preview plays it from the moment it is pressed (the web's `$now`).
+            Act::Wanim { widget, anim } => {
+                out.insert(anim_key(&widget, &anim), "$now".into());
+            }
             Act::Widget {
                 layer,
                 control,
@@ -724,6 +728,11 @@ pub fn anim_key(widget: &str, anim: &str) -> String {
     var_key(widget, &format!("@{anim}"))
 }
 
+/// Seconds written in the data (an animation's start).
+pub fn secs_text(secs: f64) -> String {
+    fmt_num((secs * 10_000.0).round() / 10_000.0)
+}
+
 /// The data key holding a variable's value as last seen by its animations.
 fn seen_key(widget: &str, var: &str) -> String {
     var_key(widget, &format!("@seen_{var}"))
@@ -854,7 +863,7 @@ pub fn watch_anims(t: &crate::model::Template, data: &mut Data, secs: f64) {
                 _ => true,
             };
             if go {
-                data.insert(anim_key(w, &a.id), fmt_num(secs));
+                data.insert(anim_key(w, &a.id), secs_text(secs));
             }
         }
         for a in &list {

@@ -2,7 +2,7 @@
 // the Designer as a template (its elements are the template's layers, its variables its fields, the
 // rest of its definition in `builder`). Leaving it saves the widget and gives the templates of the
 // project using it their new elements (in their drafts); other projects' follow when they open.
-import { regenerate, placeWidget } from '../engine/built';
+import { regenerate, placeWidget, withWidgetFields } from '../engine/built';
 import { designTemplates } from '../engine/drafts';
 import { zoneArea } from '../engine/zones';
 import { newId } from '../engine/evaluate';
@@ -135,7 +135,7 @@ export async function refreshTemplates(def: WidgetDef) {
     if (!folders.length) continue;
     let layers = tpl.layers;
     for (const f of folders) layers = regenerate(layers, f.id, def);
-    await app.saveTemplate({ ...tpl, layers });
+    await app.saveTemplate({ ...tpl, layers, fields: withWidgetFields(tpl.fields, layers) });
   }
 }
 
@@ -153,7 +153,7 @@ export async function refreshStale() {
       const def = findDef(f.widget!.def);
       if (def && !neverPublished(def) && (f.widget!.rev ?? 0) !== (def.rev ?? 0)) layers = regenerate(layers, f.id, def);
     }
-    if (layers !== tpl.layers) await app.saveTemplate({ ...tpl, layers });
+    if (layers !== tpl.layers) await app.saveTemplate({ ...tpl, layers, fields: withWidgetFields(tpl.fields, layers) });
   }
 }
 
@@ -211,7 +211,10 @@ export async function addWidget(id: string, size: { width: number; height: numbe
   const x = Math.round(a.x * size.width + (a.width * size.width - def.width) / 2);
   const y = Math.round(a.y * size.height + (a.height * size.height - def.height) / 2);
   const layers = placeWidget(def, folder, Math.max(0, Math.min(size.width - def.width, x)), Math.max(0, Math.min(size.height - def.height, y)));
-  st.update((tpl) => void tpl.layers.push(...layers));
+  st.update((tpl) => {
+    tpl.layers.push(...layers);
+    tpl.fields = withWidgetFields(tpl.fields, tpl.layers);
+  });
   st.select([folder]);
 }
 

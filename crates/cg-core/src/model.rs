@@ -902,6 +902,10 @@ pub struct WidgetInstance {
     /// triggers): run with the template's on air.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logic: Option<crate::logic::Logic>,
+    /// The data sources this template reads instead of the widget's own
+    /// (its source id → the one used here): the same widget on another match.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sources: BTreeMap<String, String>,
 }
 
 /// A copy made by a Repeater: drawn in full while the number in the value

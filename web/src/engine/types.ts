@@ -496,6 +496,8 @@ export type LogicNodeKind =
   | { type: 'wvar'; var: string; op: string; value: string; list?: string[]; start?: string; all?: Record<string, string>; widget?: string }
   /** Puts back the widget's variables as before its last press. */
   | { type: 'wundo'; widget?: string }
+  /** Plays an internal animation of the widget (its id) from its start. */
+  | { type: 'wanim'; anim: string; widget?: string }
   /** Plays the playlist on: the row after the last one taken, on its outputs; its Auto goes on. */
   | { type: 'resumePlaylist'; playlist: string }
   /** The Auto of the playlist stops (its graphic on air stays). */
@@ -1090,11 +1092,13 @@ export interface WidgetInstance {
   /** Its options as the template sets them (option id → value). */
   options?: Record<string, unknown>;
   /** What playing it needs of its definition, as it was when its elements were made (model::WidgetInstance::snap). */
-  snap?: { id: string; name: string; vars: WidgetVar[]; controls: BuiltControl[]; anims?: WidgetAnim[] };
+  snap?: { id: string; name: string; vars: WidgetVar[]; controls: BuiltControl[]; anims?: WidgetAnim[]; sources?: WidgetSource[] };
   /** The version of its definition its elements were made from. */
   rev?: number;
   /** Its Logic as placed here (model::WidgetInstance::logic): run with the template's on air. */
   logic?: Logic;
+  /** The data sources this template reads instead of the widget's own (its source id → the one used here). */
+  sources?: Record<string, string>;
 }
 
 /** A Repeater (Builder): its content drawn `count` times, side by side. */
