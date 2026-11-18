@@ -77,7 +77,9 @@ export function controlSteps(logic: Logic, control: string): number {
  */
 export function placedLogic(def: WidgetDef, group: Layer): Logic | undefined {
   const src = logicOf(def);
-  if (!src.nodes.length) return undefined;
+  // A number, a choice, a switch, a slider, a field tied to a variable set it themselves (what the Operator gives: `$value`).
+  const direct = def.controls.filter((c) => c.var && DIRECT.has(c.kind ?? '') && def.vars.some((v) => v.name === c.var));
+  if (!src.nodes.length && !direct.length) return undefined;
   const W = group.id;
   const id = (x: string) => `${W}/${x}`;
   const isVar = (name: string) => def.vars.some((v) => v.name === name);
@@ -117,9 +119,21 @@ export function placedLogic(def: WidgetDef, group: Layer): Logic | undefined {
     }
     return n;
   });
+  const edges = src.edges.map((e) => ({ ...e, from: id(e.from), to: id(e.to) }));
+  direct.forEach((c, i) => {
+    const when = id(`__set-${c.id}`);
+    const set = id(`__setv-${c.id}`);
+    const y = -ROW_H * (i + 1);
+    nodes.push({ id: when, x: 0, y, type: 'triggerIn', name: controlTrigger(W, c.id) } as LogicNode);
+    nodes.push({ id: set, x: NODE_GAP, y, type: 'wvar', var: varKey(W, c.var!), op: 'set', value: '$value', start: startValue(def, group, c.var!), widget: W } as LogicNode);
+    edges.push({ from: when, to: set, port: 'run' });
+  });
   return {
     nodes,
-    edges: src.edges.map((e) => ({ ...e, from: id(e.from), to: id(e.to) })),
+    edges,
     frames: (src.frames ?? []).map((f) => ({ ...f, id: id(f.id) })),
   };
 }
+
+/** The kinds of control that set their variable themselves. */
+export const DIRECT = new Set(['number', 'dropdown', 'toggle', 'slider', 'field']);

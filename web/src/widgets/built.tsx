@@ -15,6 +15,7 @@ import { useDefOf } from '../widgetLibrary';
 import { t } from '../i18n';
 import { Bound, CentreModeContext, ColorPick, defineWidget, Msg, Num, Row, Section, Seg, setPath, Text, Toggle, useCentreMode, type OperatorProps } from './kit';
 import { Centre, SetInput, type Line2Item } from './centre';
+import { PanelView } from './panel';
 
 /** The icons a control can have (Builder › Controls). */
 export const BUILT_ICONS: Record<string, LucideIcon> = {
@@ -158,6 +159,21 @@ function CentreOf({ def, layer, data, act, item, setData, builder }: OperatorPro
       </Row>
     );
   });
+  // The Operator (preview, on air) and the Builder: the panel on its grid. The template's inspector
+  // keeps the lines, with what the Designer chooses to give the Operator.
+  if (mode !== 'designer' || builder) {
+    const where = mode === 'designer' ? 'all' : item || mode === 'air' ? 'air' : 'pvw';
+    return (
+      <div className={`cc ${mode} wp`}>
+        {mode === 'operator' && (
+          <div className="cc-l cc-l1">
+            <span className="cc-name">{layer.name}</span>
+          </div>
+        )}
+        <PanelView def={def} value={value} mode={where} given={given} run={(c, v) => run(c, v)} setRows={setRows} onAir={!!item} />
+      </div>
+    );
+  }
   return (
     <Centre name={layer.name} actions={actions} rows={rows.length ? rows : undefined} l3Air>
       {lists.length || settings.length ? (

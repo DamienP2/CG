@@ -501,7 +501,8 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
   const [logicOpen, setLogicOpen] = useState<'template' | 'project' | null>(null);
   // A marker set to « Logique » opens it.
   useEffect(() => {
-    const open = () => setLogicOpen('template');
+    // The Widget Builder has its Logic as a space of its own (designer/../builder/BuilderPage.tsx).
+    const open = () => !useDesigner.getState().template?.builder && setLogicOpen('template');
     window.addEventListener('strata:open-triggers', open);
     return () => window.removeEventListener('strata:open-triggers', open);
   }, []);

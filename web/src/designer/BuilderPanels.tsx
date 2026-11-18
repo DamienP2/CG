@@ -1,20 +1,18 @@
-// The Builder's panels (the widget being made, open in the Designer): on the left the widget and
-// its variables, in the toolbar the way back to the template, on the right Element / Options /
-// Controls.
+// The Widget Builder's Graphisme panels (the widget being made, open in the Designer): on the left
+// the widget (its icon, its size) and its variables, on the right its element and its options.
 import { useState } from 'react';
-import { Shrink, Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, Rows3, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
+import { Shrink, Braces, CaseSensitive, ChevronRight, Hash, Image, List, Palette, Plus, Rows3, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
 import { setOption } from '../engine/built';
 import { DEFAULTS, newId, propValue } from '../engine/evaluate';
 import { readPath, writePath } from '../engine/settings';
-import type { BuiltControl, Layer, Prop, Template, WidgetOption, WidgetVar } from '../engine/types';
-import { t, tn } from '../i18n';
-import { controlSteps } from '../engine/widgetLogic';
+import type { Layer, Prop, Template, WidgetOption, WidgetVar } from '../engine/types';
+import { t } from '../i18n';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Dropdown } from '../ui/Dropdown';
-import { BUILT_ICONS, BuiltTry } from '../widgets/built';
+import { BUILT_ICONS } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
 import { RowsVarBody, rowsJson, rowsSummary } from './rowsVar';
-import { contentFrame, defOf, openControlLogic, varFields } from './builder';
+import { contentFrame, varFields } from './builder';
 import { findLayer, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 
@@ -423,172 +421,6 @@ const ICON_NAMES: Record<string, string> = {
   trophy: 'Trophy',
   puzzle: 'Puzzle',
 };
-
-/** The widget's controls: the Operator's buttons, rows and fields, and what each does (the Panel space). */
-export function ControlsPane() {
-  const tpl = useDesigner((s) => s.template)!;
-  const b = tpl.builder!;
-  const [sel, setSel] = useState<string | null>(b.controls[0]?.id ?? null);
-  const c = b.controls.find((x) => x.id === sel);
-  const setCtl = (id: string, patch: Partial<BuiltControl>) => edit((d) => void (d.controls = d.controls.map((x) => (x.id === id ? { ...x, ...patch } : x))), `ctl-${id}`);
-  const logic = tpl.logic ?? { nodes: [], edges: [] };
-  const steps = (id: string) => controlSteps(logic, id);
-  const add = () => {
-    const id = newId();
-    edit((d) => void d.controls.push({ id, label: t('Button'), place: 'actions', actions: [] }));
-    setSel(id);
-  };
-  const place = (x: BuiltControl) => x.place ?? 'actions';
-  const groups: [string, BuiltControl[]][] = [
-    [t('Buttons'), b.controls.filter((x) => place(x) === 'actions' && x.kind !== 'list')],
-    [t('Rows of buttons'), b.controls.filter((x) => place(x) === 'row' && x.kind !== 'list')],
-    [t('Settings'), b.controls.filter((x) => place(x) === 'settings' && x.kind !== 'list')],
-    [t('Lists'), b.controls.filter((x) => x.kind === 'list')],
-  ];
-  const def = defOf(tpl);
-  return (
-    <>
-      {def && def.controls.length > 0 && <BuiltTry def={def} />}
-      {groups.map(([g, list]) =>
-        list.length ? (
-          <Section key={g} id={`bctl-${g}`} title={g}>
-            {list.map((x) => {
-              const Icon = x.icon ? BUILT_ICONS[x.icon] : undefined;
-              return (
-                <button key={x.id} className={`row wk-row bl-ctl ${sel === x.id ? 'sel' : ''}`} onClick={() => setSel(x.id)}>
-                  <span className="bl-ic">{Icon ? <Icon size={14} /> : <span className="cc-txt">{x.label}</span>}</span>
-                  <span className="prop-label">{x.row ? `${x.row} · ${x.label}` : x.label}</span>
-                  <span className="bl-act">{steps(x.id) ? tn(steps(x.id), '{n} action', '{n} actions') : '—'}</span>
-                  {x.key ? <kbd className="kc">{x.key}</kbd> : <span />}
-                </button>
-              );
-            })}
-          </Section>
-        ) : null,
-      )}
-      <div className="bl-addrow">
-        <button className="btn small" onClick={add}>
-          <Plus size={13} /> {t('Control')}
-        </button>
-      </div>
-      {c && (
-        <Section id="bctl-edit" title={`${t('Control')} · ${c.label}`}>
-          <div className="bl-form">
-            <label className="bl-row">
-              <span className="prop-label">{t('Label')}</span>
-              <input value={c.label} onChange={(e) => setCtl(c.id, { label: e.target.value })} />
-            </label>
-            <div className="bl-row">
-              <span className="prop-label">{t('Icon')}</span>
-              <Dropdown value={c.icon ?? ''} options={[{ value: '', label: t('Its label') }, ...ICON_OPTIONS()]} onChange={(v) => setCtl(c.id, { icon: v || undefined })} />
-            </div>
-            <label className="bl-row">
-              <span className="prop-label">{t('Key')}</span>
-              <input className="mono bl-key" value={c.key ?? ''} placeholder="—" maxLength={3} onChange={(e) => setCtl(c.id, { key: e.target.value.toUpperCase() || undefined })} />
-            </label>
-            <div className="bl-row">
-              <span className="prop-label">{t('Kind')}</span>
-              <div className="segmented">
-                {(
-                  [
-                    ['button', t('Button')],
-                    ['field', t('Field')],
-                    ['toggle', t('Switch')],
-                    ['list', t('List')],
-                  ] as const
-                ).map(([k, l]) => (
-                  <button
-                    key={k}
-                    type="button"
-                    className={(c.kind ?? 'button') === k ? 'on' : ''}
-                    onClick={() => setCtl(c.id, { kind: k === 'button' ? undefined : k, ...(k === 'list' && !c.list ? { list: b.vars.find((v) => v.kind === 'rows')?.name } : {}) })}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {c.kind === 'list' && (
-              <div className="bl-row">
-                <span className="prop-label">{t('List')}</span>
-                <Dropdown value={c.list ?? ''} placeholder={t('Choose a list')} options={b.vars.filter((v) => v.kind === 'rows').map((v) => ({ value: v.name, label: v.name }))} onChange={(list) => setCtl(c.id, { list })} />
-              </div>
-            )}
-            {c.kind !== 'list' && (
-            <>
-            <div className="bl-row">
-              <span className="prop-label">{t('Place')}</span>
-              <div className="segmented">
-                {(
-                  [
-                    ['actions', t('Buttons')],
-                    ['row', t('Row')],
-                    ['settings', t('Settings')],
-                  ] as const
-                ).map(([k, l]) => (
-                  <button key={k} type="button" className={place(c) === k ? 'on' : ''} onClick={() => setCtl(c.id, { place: k })}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {place(c) === 'actions' && (c.kind ?? 'button') === 'button' && (
-              <div className="bl-row">
-                <span className="prop-label">{t('Look')}</span>
-                <div className="segmented">
-                  {(
-                    [
-                      ['plain', t('Normal')],
-                      ['main', t('Main')],
-                      ['red', t('Danger')],
-                    ] as const
-                  ).map(([k, l]) => (
-                    <button key={k} type="button" className={(c.main ? 'main' : c.tone === 'red' ? 'red' : 'plain') === k ? 'on' : ''} onClick={() => setCtl(c.id, { main: k === 'main' || undefined, tone: k === 'red' ? 'red' : undefined })}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {place(c) !== 'actions' && (
-              <label className="bl-row">
-                <span className="prop-label">{t('Row')}</span>
-                <input value={c.row ?? ''} onChange={(e) => setCtl(c.id, { row: e.target.value })} />
-              </label>
-            )}
-            {/* What it does: its flow in the widget's Logic. */}
-            <div className="bl-row">
-              <span className="prop-label">{t('Logic')}</span>
-              <span className="bl-logic">
-                <button className="btn small" onClick={() => openControlLogic(c.id)}>
-                  <Link2 size={13} /> {t('Open its logic')}
-                </button>
-                {steps(c.id) > 0 && <em>{tn(steps(c.id), '{n} action', '{n} actions')}</em>}
-              </span>
-            </div>
-            </>
-            )}
-            <div className="bl-row">
-              <span className="prop-label">{t('Ask on air')}</span>
-              <button className={`wk-tog ${c.confirm ? 'on' : ''}`} onClick={() => setCtl(c.id, { confirm: !c.confirm || undefined })}>
-                <i />
-              </button>
-            </div>
-            <div className="bl-row">
-              <span className="prop-label">{t('The Designer chooses')}</span>
-              <button className={`wk-tog ${c.choose ? 'on' : ''}`} onClick={() => setCtl(c.id, { choose: !c.choose || undefined })}>
-                <i />
-              </button>
-            </div>
-            <button className="btn small ghost danger" onClick={() => edit((d) => void (d.controls = d.controls.filter((x) => x.id !== c.id)))}>
-              <Trash2 size={13} /> {t('Delete the control')}
-            </button>
-          </div>
-        </Section>
-      )}
-    </>
-  );
-}
 
 /** The right panel of the Builder: the element selected, the options, the controls. */
 export function BuilderRight() {

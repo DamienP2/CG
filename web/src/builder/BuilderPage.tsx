@@ -8,7 +8,7 @@ import { useApp } from '../store';
 import { closeBuilder, builderTemplate, defOf, openedFromTemplate, publishBuilt, unpublished } from '../designer/builder';
 import { useBuilderUi } from '../designer/builderUi';
 import { useDesigner } from '../designer/designerStore';
-import { ControlsPane } from '../designer/BuilderPanels';
+import { PanelBuilder } from './PanelBuilder';
 import { draftOf, getVersion, HOST_PROJECT, listVersions, shareWidget, useWidgets, type WidgetVersion } from '../widgetLibrary';
 import { BUILT_ICONS } from '../widgets/built';
 
@@ -40,6 +40,12 @@ export function BuilderPage({ widgetId }: { widgetId: string }) {
   const Icon = BUILT_ICONS[working?.icon ?? stored?.icon ?? ''] ?? Puzzle;
   const rev = stored?.rev ?? 0;
 
+  // « Open its Logic » (a component of the panel): the Logic space.
+  useEffect(() => {
+    const open = () => setSpace('logic');
+    window.addEventListener('strata:open-triggers', open);
+    return () => window.removeEventListener('strata:open-triggers', open);
+  }, []);
   useEffect(() => {
     if (stored) document.title = `${stored.name} · Widget Builder`;
   }, [stored?.name]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -101,13 +107,8 @@ export function BuilderPage({ widgetId }: { widgetId: string }) {
           </Suspense>
         </div>
         {ready && space === 'panel' && (
-          <div className="wb-space on wb-panel-space">
-            <div className="wb-panel-col">
-              <p className="wb-intro">{t('The buttons, fields and lists the Operator gets for this widget, and what each does.')}</p>
-              <div className="inspector">
-                <ControlsPane />
-              </div>
-            </div>
+          <div className="wb-space on">
+            <PanelBuilder />
           </div>
         )}
         {ready && space === 'logic' && (
