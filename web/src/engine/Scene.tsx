@@ -17,6 +17,7 @@ import type { Clock } from './expr';
 import { fitText, type Fitted } from './textFit';
 import { applyMotion } from './motion';
 import { expandLists, ROLL, rollClock } from './lists';
+import { applyAnims, hasAnims } from './widgetAnims';
 import { applyTrack, TemplateCamera, useTrackedCamera } from './tracking';
 import { useFonts } from './fonts';
 import { widgetOf } from '../widgets';
@@ -653,13 +654,15 @@ function SceneBody({ template, frame, data, interactive, clock, tweaks }: SceneP
   const hold = holdFrame(template);
   // Relations: resolve every layer, run the graph, keep the changed ones.
   const logic = useMemo(() => {
-    if (!template.logic?.nodes.length && !tweaks?.length) return NO_LOGIC;
+    if (!template.logic?.nodes.length && !tweaks?.length && !hasAnims(template)) return NO_LOGIC;
     const out = new Map<string, Resolved>();
     const values = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
     if (template.logic?.nodes.length) {
       keepingRatios(template.layers, values, () => applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText), clock));
       for (const id of targeted(template.logic)) if (values.has(id)) out.set(id, values.get(id)!);
     }
+    // Internal animations of its widgets playing now (their keyframes over the rest).
+    for (const id of applyAnims(values, template, frame, clock.secs, data, hold)) out.set(id, values.get(id)!);
     // Properties a Logic changed on air (« Animate a property »).
     for (const tw of tweaks ?? []) {
       const v = values.get(tw.layer);

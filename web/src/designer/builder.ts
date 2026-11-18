@@ -12,6 +12,7 @@ import { navigate, projectPath } from '../router';
 import { useApp } from '../store';
 import { canon, draftOf, findDef, HOST_PROJECT, hostProject, neverPublished, projectOf, publishDef, saveDef, saveDraft, workingCopy, type WidgetHome } from '../widgetLibrary';
 import { useDesigner } from './designerStore';
+import { committedAnims, drawnLayers } from './builderAnims';
 
 /** Ids of the Builder's templates. */
 export const BUILDER_ID = 'widget:';
@@ -42,8 +43,10 @@ export function builderTemplate(stored: WidgetDef): Template {
 /** The widget a Builder template stands for. */
 export function defOf(t: Template | null | undefined): WidgetDef | null {
   if (!t?.builder) return null;
-  // Its frame: the size the Builder gives it (the stage of its Graphisme).
-  return { ...t.builder, name: t.name, layers: t.layers, logic: t.logic, width: Math.max(1, Math.round(t.builder.width)), height: Math.max(1, Math.round(t.builder.height)) };
+  // Its frame: the size the Builder gives it (the stage of its Graphisme). Its elements without
+  // keyframes: its animations hold them (the one on the timeline as the layers have it).
+  const anims = committedAnims(t);
+  return { ...t.builder, ...(anims.length ? { anims } : {}), name: t.name, layers: drawnLayers(t.layers), logic: t.logic, width: Math.max(1, Math.round(t.builder.width)), height: Math.max(1, Math.round(t.builder.height)) };
 }
 
 /** The frame around the widget's elements (« Fit to the content »). */

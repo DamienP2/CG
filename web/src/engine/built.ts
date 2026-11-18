@@ -127,7 +127,7 @@ export function generate(def: WidgetDef, group: Layer): Layer[] {
     ...group,
     type: 'group',
     props: { ...group.props, width: def.width, height: def.height },
-    widget: { ...withoutLogic(group.widget!), snap: { id: def.id, name: def.name, vars: def.vars, controls: def.controls }, rev: def.rev ?? 0, ...(logic ? { logic } : {}) },
+    widget: { ...withoutLogic(group.widget!), snap: { id: def.id, name: def.name, vars: def.vars, controls: def.controls, ...(def.anims?.length ? { anims: def.anims } : {}) }, rev: def.rev ?? 0, ...(logic ? { logic } : {}) },
   } as Layer;
   for (const l of kids(null)) place(l, W);
   // Its options: the template's value (else the default) on each target; an exposed one bound.

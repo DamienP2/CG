@@ -38,6 +38,7 @@ import { navigate } from '../router';
 import { BuilderLeft, BuilderRight } from './BuilderPanels';
 import { useBuilderUi } from './builderUi';
 import { BuilderStageBar, previewPicture } from './BuilderStageBar';
+import { BuilderAnimBar } from './BuilderAnimBar';
 import { FormatPreview } from '../builder/FormatPreview';
 
 function usePlayback(fps: number) {
@@ -644,7 +645,7 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
 
   return (
     <div
-      className={`designer ${lock.state.status === 'held' ? 'locked' : ''} ${leftFull ? 'ux2-left-full' : ''} ${rightFull ? 'ux2-right-full' : ''}`}
+      className={`designer ${template?.builder ? 'builder-mode' : ''} ${lock.state.status === 'held' ? 'locked' : ''} ${leftFull ? 'ux2-left-full' : ''} ${rightFull ? 'ux2-right-full' : ''}`}
       style={{
         ['--left-w' as string]: `${left}px`,
         ['--right-w' as string]: `${layout.right}px`,
@@ -721,6 +722,7 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
         <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={140} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
         {/* Beside a full-height left panel, the layer column has its own width. */}
         {leftFull && <Splitter axis="x" className="ux2-tl-split" value={layersW} min={MIN_LEFT} max={520} reset={MIN_LEFT} onChange={(v) => setLayout('layers', v)} />}
+        {template?.builder && <BuilderAnimBar />}
         <Timeline fps={fps} leftW={layersW} onAdd={add} />
       </div>
       {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}

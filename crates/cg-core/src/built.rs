@@ -659,6 +659,218 @@ pub fn not_kept(defs: &[Def], layers: &[Layer]) -> Vec<String> {
     out
 }
 
+// ---------------------------------------------------------------- internal animations
+
+/// What starts an internal animation of a widget.
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
+#[serde(tag = "on", rename_all = "camelCase")]
+pub enum Trigger {
+    /// Its Logic (« Play an animation »), which writes its start.
+    #[default]
+    Logic,
+    /// The widget arrives on air.
+    Arrival,
+    /// A variable changes, goes up or goes down.
+    Change {
+        var: String,
+    },
+    Increase {
+        var: String,
+    },
+    Decrease {
+        var: String,
+    },
+    /// Over and over while a variable meets a test (`lt`, `le`, `gt`, `ge`, `eq`, `ne`).
+    While {
+        var: String,
+        test: String,
+        #[serde(default)]
+        value: String,
+    },
+}
+
+/// An internal animation of a widget: keyframes of its elements (their ids in
+/// the widget), at `fps`, `duration` frames long, started by its trigger.
+/// Mirror: `web/src/engine/widgetAnims.ts`.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Anim {
+    pub id: String,
+    #[serde(default)]
+    pub trigger: Trigger,
+    #[serde(default = "fifty")]
+    pub fps: f64,
+    #[serde(default)]
+    pub duration: f64,
+    #[serde(default)]
+    pub tracks: BTreeMap<String, BTreeMap<crate::model::Prop, Vec<crate::model::Keyframe>>>,
+}
+
+fn fifty() -> f64 {
+    50.0
+}
+
+/// The internal animations of a widget (its definition, or a placed widget's snapshot).
+pub fn anims(def: &Def) -> Vec<Anim> {
+    def.rest
+        .get("anims")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
+}
+
+/// The data key holding when the animation `anim` of the widget `widget`
+/// (its layer id) last started, in seconds of its graphic's time on air.
+pub fn anim_key(widget: &str, anim: &str) -> String {
+    var_key(widget, &format!("@{anim}"))
+}
+
+/// The data key holding a variable's value as last seen by its animations.
+fn seen_key(widget: &str, var: &str) -> String {
+    var_key(widget, &format!("@seen_{var}"))
+}
+
+fn test(v: &str, op: &str, value: &str) -> bool {
+    match (num(v), num(value)) {
+        (Some(a), Some(b)) => match op {
+            "lt" => a < b,
+            "le" => a <= b,
+            "gt" => a > b,
+            "ge" => a >= b,
+            "ne" => (a - b).abs() > 1e-9,
+            _ => (a - b).abs() <= 1e-9,
+        },
+        _ => match op {
+            "ne" => v.trim() != value.trim(),
+            "eq" => v.trim() == value.trim(),
+            _ => false,
+        },
+    }
+}
+
+/// The frame of `a` drawn at `secs` (the graphic's time on air), or none when it is not playing.
+fn anim_frame(a: &Anim, widget: &str, secs: f64, data: &Data) -> Option<f64> {
+    let len = a.duration.max(0.0);
+    if len <= 0.0 || a.tracks.is_empty() {
+        return None;
+    }
+    let start = match &a.trigger {
+        Trigger::Arrival => 0.0,
+        Trigger::While {
+            var,
+            test: op,
+            value,
+        } => {
+            let v = data
+                .get(&var_key(widget, var))
+                .map(String::as_str)
+                .unwrap_or("");
+            return test(v, op, value).then(|| (secs * a.fps).rem_euclid(len));
+        }
+        _ => data.get(&anim_key(widget, &a.id)).and_then(|s| num(s))?,
+    };
+    let f = (secs - start) * a.fps;
+    (f >= 0.0 && f <= len).then_some(f)
+}
+
+/// The widgets of `t` with internal animations: (their folder id, their animations).
+fn animated(t: &crate::model::Template) -> Vec<(&str, Vec<Anim>)> {
+    t.layers
+        .iter()
+        .filter_map(|l| {
+            let snap = l.widget.as_ref()?.snap.as_ref()?;
+            let a = anims(snap);
+            (!a.is_empty()).then_some((l.id.as_str(), a))
+        })
+        .collect()
+}
+
+/// An internal animation of a widget of `t` is playing at `secs`: its graphic moves.
+pub fn anims_running(t: &crate::model::Template, secs: f64, data: &Data) -> bool {
+    animated(t)
+        .iter()
+        .any(|(w, list)| list.iter().any(|a| anim_frame(a, w, secs, data).is_some()))
+}
+
+/// The values of the elements of `t`'s widgets their internal animations
+/// playing at `secs` set (over what the timeline and the Logic gave), as
+/// `apply_tweaks` does for « Animate a property ».
+pub fn apply_anims(
+    values: &mut crate::logic::Values,
+    t: &crate::model::Template,
+    frame: f64,
+    secs: f64,
+    data: &Data,
+) {
+    for (w, list) in animated(t) {
+        for a in &list {
+            let Some(f) = anim_frame(a, w, secs, data) else {
+                continue;
+            };
+            for (el, props) in &a.tracks {
+                let id = element_id(w, el);
+                let Some(l) = t.layers.iter().find(|l| l.id == id) else {
+                    continue;
+                };
+                let v = values.entry(id).or_insert_with(|| {
+                    crate::anim::resolve_layer(l, frame, data, t.hold_frame()).values
+                });
+                for (prop, keys) in props {
+                    if let Some(x) = crate::anim::sample_track(keys, f) {
+                        v.insert(*prop, x);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// On air, each tick: an animation started by a variable that changed, went
+/// up or went down starts now (`secs`). What each variable was is kept in
+/// `data` beside it.
+pub fn watch_anims(t: &crate::model::Template, data: &mut Data, secs: f64) {
+    for (w, list) in animated(t) {
+        let mut vars: Vec<&str> = Vec::new();
+        for a in &list {
+            let (var, start) = match &a.trigger {
+                Trigger::Change { var } => (var, true),
+                Trigger::Increase { var } | Trigger::Decrease { var } => (var, false),
+                _ => continue,
+            };
+            let _ = start;
+            let now = data.get(&var_key(w, var)).cloned().unwrap_or_default();
+            let Some(was) = data.get(&seen_key(w, var)).cloned() else {
+                continue;
+            };
+            if was == now {
+                continue;
+            }
+            let go = match &a.trigger {
+                Trigger::Increase { .. } => {
+                    matches!((num(&was), num(&now)), (Some(x), Some(y)) if y > x)
+                }
+                Trigger::Decrease { .. } => {
+                    matches!((num(&was), num(&now)), (Some(x), Some(y)) if y < x)
+                }
+                _ => true,
+            };
+            if go {
+                data.insert(anim_key(w, &a.id), fmt_num(secs));
+            }
+        }
+        for a in &list {
+            if let Trigger::Change { var } | Trigger::Increase { var } | Trigger::Decrease { var } =
+                &a.trigger
+            {
+                vars.push(var);
+            }
+        }
+        for var in vars {
+            let now = data.get(&var_key(w, var)).cloned().unwrap_or_default();
+            data.insert(seen_key(w, var), now);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -865,5 +1077,83 @@ mod tests {
             ("W/clock", "start")
         );
         assert!(press(&logic, "W", "nope", "", &data, &mut states).is_err());
+    }
+
+    /// A widget whose score pulses when it goes up, and whose shot clock blinks under 5.
+    fn animated_template() -> crate::model::Template {
+        serde_json::from_str(
+            r#"{
+            "id": "t", "name": "T", "duration": 50, "markers": [], "fields": [],
+            "layers": [
+                { "id": "W", "type": "group", "name": "W", "props": {}, "tracks": {}, "bindings": {},
+                  "widget": { "def": "d", "vars": {}, "snap": { "id": "d", "name": "D", "vars": [], "controls": [], "anims": [
+                    { "id": "pulse", "trigger": { "on": "increase", "var": "score" }, "fps": 50, "duration": 25,
+                      "tracks": { "score": { "opacity": [ { "frame": 0, "value": 0.0, "easing": { "type": "linear" } }, { "frame": 25, "value": 1.0, "easing": { "type": "linear" } } ] } } },
+                    { "id": "blink", "trigger": { "on": "while", "var": "shot", "test": "le", "value": "5" }, "fps": 50, "duration": 50,
+                      "tracks": { "shot": { "opacity": [ { "frame": 0, "value": 1.0, "easing": { "type": "linear" } }, { "frame": 25, "value": 0.0, "easing": { "type": "linear" } }, { "frame": 50, "value": 1.0, "easing": { "type": "linear" } } ] } } }
+                  ] } } },
+                { "id": "W/score", "parent": "W", "type": "rect", "name": "Score", "props": { "opacity": 1.0 }, "tracks": {}, "bindings": {} },
+                { "id": "W/shot", "parent": "W", "type": "rect", "name": "Shot", "props": { "opacity": 1.0 }, "tracks": {}, "bindings": {} }
+            ]
+        }"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn an_animation_starts_when_its_variable_goes_up() {
+        let t = animated_template();
+        let mut data = Data::new();
+        data.insert(var_key("W", "score"), "2".into());
+        // The first tick only sees the value.
+        watch_anims(&t, &mut data, 1.0);
+        assert!(!data.contains_key(&anim_key("W", "pulse")));
+        // Down: nothing; up: it starts now.
+        data.insert(var_key("W", "score"), "1".into());
+        watch_anims(&t, &mut data, 2.0);
+        assert!(!data.contains_key(&anim_key("W", "pulse")));
+        data.insert(var_key("W", "score"), "4".into());
+        watch_anims(&t, &mut data, 3.0);
+        assert_eq!(
+            data.get(&anim_key("W", "pulse")).map(String::as_str),
+            Some("3")
+        );
+        // Half way through (0.25 s of 0.5 s): its keyframes set the element's opacity.
+        let mut values = crate::logic::Values::new();
+        apply_anims(&mut values, &t, 50.0, 3.25, &data);
+        let v = values
+            .get("W/score")
+            .and_then(|v| v.get(&crate::model::Prop::Opacity))
+            .copied();
+        assert!(
+            matches!(v, Some(crate::model::Value::Number(x)) if (x - 0.5).abs() < 1e-6),
+            "{v:?}"
+        );
+        // Over: the element is as drawn.
+        let mut values = crate::logic::Values::new();
+        apply_anims(&mut values, &t, 50.0, 4.0, &data);
+        assert!(!values.contains_key("W/score"));
+        assert!(anims_running(&t, 3.1, &data));
+        assert!(!anims_running(&t, 4.0, &data));
+    }
+
+    #[test]
+    fn a_while_animation_loops_while_its_test_holds() {
+        let t = animated_template();
+        let mut data = Data::new();
+        data.insert(var_key("W", "shot"), "12".into());
+        let mut values = crate::logic::Values::new();
+        apply_anims(&mut values, &t, 50.0, 10.5, &data);
+        assert!(!values.contains_key("W/shot"));
+        data.insert(var_key("W", "shot"), "4".into());
+        apply_anims(&mut values, &t, 50.0, 10.5, &data);
+        let v = values
+            .get("W/shot")
+            .and_then(|v| v.get(&crate::model::Prop::Opacity))
+            .copied();
+        assert!(
+            matches!(v, Some(crate::model::Value::Number(x)) if x.abs() < 1e-6),
+            "{v:?}"
+        );
     }
 }

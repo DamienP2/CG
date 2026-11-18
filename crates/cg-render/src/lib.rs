@@ -969,6 +969,14 @@ impl Renderer {
                         if !a.item.tweaks.is_empty() {
                             cg_core::playout::apply_tweaks(&mut l, t, a.item, &a.data);
                         }
+                        // Internal animations of its widgets playing now.
+                        cg_core::built::apply_anims(
+                            &mut l,
+                            t,
+                            a.item.frame,
+                            a.item.age / fps,
+                            &a.data,
+                        );
                         a.logic.get_or_init(|| l)
                     }
                 };
@@ -1023,6 +1031,7 @@ impl Renderer {
                     || moved(a)
                     || !a.item.changes.is_empty()
                     || a.item.tweaks.iter().any(|t| !t.done())
+                    || cg_core::built::anims_running(a.template, a.item.age / fps, &a.data)
                 {
                     self.plan_step(cache::Motion::Moving);
                 } else {

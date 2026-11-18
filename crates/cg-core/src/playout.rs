@@ -2808,6 +2808,8 @@ impl ChannelState {
             // With the settings of the take (an exposed duration…), as the picture.
             let ts = t.with_settings(&shown_data(item));
             let t: &Template = &ts;
+            // Internal animations of its widgets started by a variable (a press, a source, its Logic).
+            crate::built::watch_anims(t, &mut item.data, item.age / fps);
             // One graph: the Logic (and the Triggers of a template not saved since).
             // …and the flows of its built widgets (their buttons, their variables).
             let merged;

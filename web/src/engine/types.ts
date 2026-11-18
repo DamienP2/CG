@@ -367,6 +367,8 @@ export interface Template {
   camera?: string;
   /** The Builder: this is a widget being made (its definition but its layers, which are the template's); never saved as a template. */
   builder?: Omit<WidgetDef, 'layers'>;
+  /** The Widget Builder: the internal animation whose keyframes the layers' tracks hold now (none: the drawing). */
+  builderAnim?: string;
 }
 
 /** Where a tracked camera looks (mirror of cg_core::tracking::CameraSample; OpenTrackIO: degrees, mm, m). */
@@ -977,16 +979,22 @@ export type WidgetDraft = Omit<WidgetDef, 'id' | 'rev' | 'draft'>;
 
 export type WidgetCategory = 'sport' | 'info' | 'social' | 'election' | 'weather' | 'other';
 
-/** An internal animation of a widget: keyframes of its elements, started by a trigger. */
+/** What starts an internal animation of a widget (crates/cg-core/src/built.rs `Trigger`). */
+export type AnimTrigger =
+  | { on: 'logic' }
+  | { on: 'arrival' }
+  | { on: 'change' | 'increase' | 'decrease'; var: string }
+  | { on: 'while'; var: string; test: 'lt' | 'le' | 'gt' | 'ge' | 'eq' | 'ne'; value: string };
+
+/** An internal animation of a widget: keyframes of its elements (their ids in the widget), at `fps`, `duration` frames long, started by its trigger. */
 export interface WidgetAnim {
   id: string;
   name: string;
-  /** What starts it. */
-  trigger: { on: 'arrival' } | { on: 'logic' } | { on: 'change' | 'increase' | 'decrease'; var: string } | { on: 'while'; var: string; test: 'lt' | 'le' | 'gt' | 'ge' | 'eq' | 'ne'; value: string };
-  /** Seconds. */
+  trigger: AnimTrigger;
+  fps: number;
+  /** Frames. */
   duration: number;
-  /** Keyframes by element (its id in the widget) and property, in seconds from its start. */
-  tracks: { layer: string; prop: 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'brightness'; keys: { t: number; v: number; easing?: Easing }[] }[];
+  tracks: Record<string, Partial<Record<Prop, Keyframe[]>>>;
 }
 
 /** A data source feeding variables of a widget. */
@@ -1082,7 +1090,7 @@ export interface WidgetInstance {
   /** Its options as the template sets them (option id → value). */
   options?: Record<string, unknown>;
   /** What playing it needs of its definition, as it was when its elements were made (model::WidgetInstance::snap). */
-  snap?: { id: string; name: string; vars: WidgetVar[]; controls: BuiltControl[] };
+  snap?: { id: string; name: string; vars: WidgetVar[]; controls: BuiltControl[]; anims?: WidgetAnim[] };
   /** The version of its definition its elements were made from. */
   rev?: number;
   /** Its Logic as placed here (model::WidgetInstance::logic): run with the template's on air. */
