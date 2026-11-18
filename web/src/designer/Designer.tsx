@@ -1,5 +1,5 @@
 import { BookmarkPlus, Copy, GripVertical, Link2, Plus, Redo2, RotateCcw, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown } from '../ui/Dropdown';
 import { newId, num, propValue } from '../engine/evaluate';
@@ -32,11 +32,13 @@ import { friendlyError } from '../ui/serverError';
 import { t, tn } from '../i18n';
 import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
-import { leaveBuilder, loadBuilder, refreshStale, saveBuilt } from './builder';
+import { defOf, leaveBuilder, loadBuilder, refreshStale, saveBuilt } from './builder';
 import { useWidgets } from '../widgetLibrary';
 import { navigate } from '../router';
 import { BuilderLeft, BuilderRight } from './BuilderPanels';
 import { useBuilderUi } from './builderUi';
+import { BuilderStageBar, previewPicture } from './BuilderStageBar';
+import { FormatPreview } from '../builder/FormatPreview';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -572,6 +574,11 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
     } else if (st.builder) void leaveBuilder();
   }, [builderId, project?.id, widgetsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The Widget Builder: « Voir dans » and where the widget sits in that picture.
+  const builderPreview = useBuilderUi((s) => s.preview);
+  const builderPlace = useBuilderUi((s) => s.place);
+  const builderDef = useMemo(() => (template?.builder && builderPreview !== 'none' ? defOf(template) : null), [template, builderPreview]);
+
   // The empty template of a new project, removed by the server at a publish: if it was the open one,
   // the Designer opens another (an open template that is still there keeps its selection).
   const starter = useRef<string | undefined>(undefined);
@@ -674,6 +681,7 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
               topSlot,
             )}
           {!template?.builder && <FormatBar project={project} />}
+          {template?.builder && <BuilderStageBar />}
           <div className="spacer" />
           {/* The Widget Builder has its Logic as a space of its own. */}
           {template && !template.builder && (
@@ -697,7 +705,12 @@ export const Designer = memo(function Designer({ builder: builderId }: { /** The
           <StageZoom />
         </div>
         <div className="stage-holder">
-          <Stage project={project} size={formatById(project, format)} showZones={showZones} background={background} bgInput={bgInput} />
+          {/* The Widget Builder: the widget at its own size, or seen in a picture. */}
+          {builderDef && builderPreview !== 'none' ? (
+            <FormatPreview def={builderDef} picture={previewPicture(project, builderPreview)} place={builderPlace} lang={project.language || 'fr'} />
+          ) : (
+            <Stage project={project} size={template?.builder ? { width: Math.max(1, template.builder.width), height: Math.max(1, template.builder.height) } : formatById(project, format)} showZones={showZones && !template?.builder} background={background} bgInput={bgInput} />
+          )}
         </div>
       </main>
       <aside className="panel right">

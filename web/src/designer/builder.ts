@@ -42,11 +42,16 @@ export function builderTemplate(stored: WidgetDef): Template {
 /** The widget a Builder template stands for. */
 export function defOf(t: Template | null | undefined): WidgetDef | null {
   if (!t?.builder) return null;
-  // Its frame: around its elements (the folder of the widget in a template).
+  // Its frame: the size the Builder gives it (the stage of its Graphisme).
+  return { ...t.builder, name: t.name, layers: t.layers, logic: t.logic, width: Math.max(1, Math.round(t.builder.width)), height: Math.max(1, Math.round(t.builder.height)) };
+}
+
+/** The frame around the widget's elements (« Fit to the content »). */
+export function contentFrame(t: Template): { width: number; height: number } {
   const tops = t.layers.filter((l) => !l.parent);
   const right = Math.max(0, ...tops.map((l) => Number(l.props.x ?? 0) + Number(l.props.width ?? 0)));
   const bottom = Math.max(0, ...tops.map((l) => Number(l.props.y ?? 0) + Number(l.props.height ?? 0)));
-  return { ...t.builder, name: t.name, layers: t.layers, logic: t.logic, width: Math.round(right) || t.builder.width, height: Math.round(bottom) || t.builder.height };
+  return { width: Math.round(right) || t.builder?.width || 600, height: Math.round(bottom) || t.builder?.height || 120 };
 }
 
 /**

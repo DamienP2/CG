@@ -2,7 +2,7 @@
 // its variables, in the toolbar the way back to the template, on the right Element / Options /
 // Controls.
 import { useState } from 'react';
-import { Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, Rows3, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
+import { Shrink, Braces, CaseSensitive, ChevronRight, Hash, Image, Link2, List, Palette, Plus, Rows3, SlidersHorizontal, ToggleLeft, Trash2, Type, X } from 'lucide-react';
 import { setOption } from '../engine/built';
 import { DEFAULTS, newId, propValue } from '../engine/evaluate';
 import { readPath, writePath } from '../engine/settings';
@@ -14,7 +14,7 @@ import { Dropdown } from '../ui/Dropdown';
 import { BUILT_ICONS, BuiltTry } from '../widgets/built';
 import { builderHooks, Section } from '../widgets/kit';
 import { RowsVarBody, rowsJson, rowsSummary } from './rowsVar';
-import { defOf, openControlLogic, varFields } from './builder';
+import { contentFrame, defOf, openControlLogic, varFields } from './builder';
 import { findLayer, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 
@@ -56,6 +56,18 @@ export function BuilderLeft() {
           <div className="bl-row">
             <span className="prop-label">{t('Icon')}</span>
             <Dropdown value={b.icon ?? 'puzzle'} options={ICON_OPTIONS()} onChange={(v) => edit((d) => void (d.icon = v))} />
+          </div>
+          {/* Its frame: the stage of the Graphisme, and its box in a template. */}
+          <div className="bl-row">
+            <span className="prop-label">{t('Size')}</span>
+            <div className="bl-size">
+              <input type="number" min={8} max={7680} aria-label={t('Width')} value={b.width} onChange={(e) => +e.target.value > 0 && edit((d) => void (d.width = Math.round(+e.target.value)), 'builder-size')} />
+              <span>×</span>
+              <input type="number" min={8} max={4320} aria-label={t('Height')} value={b.height} onChange={(e) => +e.target.value > 0 && edit((d) => void (d.height = Math.round(+e.target.value)), 'builder-size')} />
+              <button className="icon-btn ghost" title={t('Fit to the content')} onClick={() => edit((d, x) => void Object.assign(d, contentFrame(x)))}>
+                <Shrink size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </section>

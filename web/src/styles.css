@@ -22564,3 +22564,86 @@ textarea.tx-grow {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+/* The Widget Builder's Graphisme: its toolbar, the grid on the stage, « Voir dans ». */
+.bl-stagebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bl-stagebar .btn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-2);
+}
+.bl-sb-label {
+  color: var(--text-3);
+  font-size: var(--fs-12);
+  margin-left: 6px;
+}
+.bl-stagebar .dd-btn {
+  width: 150px;
+}
+.bl-grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, rgba(143, 163, 255, 0.14) 1px, transparent 1px), linear-gradient(to bottom, rgba(143, 163, 255, 0.14) 1px, transparent 1px);
+}
+.bl-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bl-size input {
+  width: 72px;
+}
+.bl-size span {
+  color: var(--text-3);
+}
+.wb-fmt {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px;
+}
+.wb-fmt-pic {
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  outline: 1px solid var(--line-2);
+  background: radial-gradient(120% 80% at 50% 110%, #5b4128 0%, #2a2f45 45%, #141826 100%);
+}
+.wb-fmt-safe {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+.wb-fmt-safe.title {
+  border-color: rgba(245, 165, 36, 0.45);
+}
+.wb-fmt-tag {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-family: var(--mono);
+  font-size: var(--fs-11);
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.wb-fmt-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+/* The widget's options: easy to see beside each property. */
+.pp-op.bl-opt.on,
+.wk-chip.op.bl-opt.on {
+  color: var(--accent-2);
+  background: var(--accent-soft);
+}

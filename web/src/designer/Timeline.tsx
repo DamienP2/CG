@@ -816,6 +816,8 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                 ))}
               </div>
               <div className="tl-marks">
+              {/* A widget has no IN / OUT: its template has them. */}
+              {!template.builder && (<>
               {/* IN: from the start to the hold (on air); OUT: from the hold to the end. */}
               <div className="tl-zone in" style={{ left: 0, width: (outF ?? template.duration) * zoom }}>
                 <small>{((outF ?? template.duration) / fps).toFixed(2)} s</small>IN
@@ -855,6 +857,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   </div>
                 );
               })}
+              </>)}
               </div>
             </div>
             <div
@@ -866,7 +869,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                 setTlMenu({ x: e.clientX, y: e.clientY, frame: Math.round(frameAt(e.clientX)), layerId: row?.dataset.layer });
               }}
             >
-              {outF !== undefined && (
+              {outF !== undefined && !template.builder && (
                 <div
                   className="out-zone"
                   style={{
@@ -875,7 +878,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   }}
                 />
               )}
-              {markers.map((m) => (
+              {!template.builder && markers.map((m) => (
                 <div key={m.id} className={`marker-line ${markerRole(template, m)}`} style={{ left: Math.min(m.frame, template.duration) * zoom }} />
               ))}
               {body}

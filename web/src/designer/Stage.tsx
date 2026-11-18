@@ -20,6 +20,7 @@ import { useZoneEdit, ZonesEditOverlay } from './ZoneEditor';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { widgetOf } from '../widgets';
 import { useBoundData } from '../data/dataStore';
+import { useBuilderUi, GRID } from './builderUi';
 import { snapTargets, StageGuides, stageViewStyle, useGuidesView, useProjectGuides } from './Guides';
 import { t, tn } from '../i18n';
 import { useLiveFrame } from '../engine/liveInputs';
@@ -258,8 +259,16 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   // looks (received, or moved by hand).
   const { sim, live } = useTrackPreview();
   const trackStage = useMemo(() => (sim || live ? { w: size.width, h: size.height, sim: sim ?? undefined } : null), [size.width, size.height, sim, live]);
-  const snapRef = useRef({ on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) });
-  snapRef.current = { on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) };
+  // The Widget Builder's grid: the elements snap to it too.
+  const builderGrid = useBuilderUi((s) => s.grid) && !!template?.builder;
+  const targets = () => {
+    const g = snapTargets(guides, project.width, project.height, view.safe);
+    if (!builderGrid) return g;
+    const steps = (n: number) => Array.from({ length: Math.floor(n / GRID) + 1 }, (_, i) => i * GRID);
+    return { x: [...g.x, ...steps(project.width)], y: [...g.y, ...steps(project.height)] };
+  };
+  const snapRef = useRef({ on: view.snap, targets: targets() });
+  snapRef.current = { on: view.snap || builderGrid, targets: targets() };
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -765,6 +774,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
               <i style={{ left: W, top: Math.max(0, vis.y0), width: Math.max(0, vis.x1 - W), height: Math.max(0, Math.min(H, vis.y1) - Math.max(0, vis.y0)) }} />
             </div>
             <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
+            {builderGrid && <div className="bl-grid" aria-hidden style={{ width: W, height: H, backgroundSize: `${GRID * scale}px ${GRID * scale}px` }} />}
             {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && !template.builder && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
             {view.frames && !zonesEdit && ghosts.map((b) => (
               <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />

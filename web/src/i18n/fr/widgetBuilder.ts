@@ -67,4 +67,11 @@ export const widgetBuilder: Record<string, string> = {
   'Score bug · 760 × 64': 'Score · 760 × 64',
   'Square · 600 × 600': 'Carré · 600 × 600',
   'Side panel · 560 × 900': 'Panneau latéral · 560 × 900',
+  'widget at {n} %': 'widget à {n} %',
+  'Seen only: choose « Widget size » to change it.': 'Aperçu seulement : choisissez « Taille du widget » pour le modifier.',
+  'Fit to the content': 'Ajuster au contenu',
+  'Show the 8 px grid; the elements snap to it': 'Afficher la grille de 8 px ; les éléments s’y aimantent',
+  'Seen in': 'Voir dans',
+  'Widget size': 'Taille du widget',
+  'Bottom centre': 'Bas centre',
 };
