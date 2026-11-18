@@ -40,7 +40,8 @@ pub async fn load(s: &Shared) -> Vec<Def> {
     // A pre-built widget saved before it had a description and a category: they come from Strata.
     for d in &mut defs {
         if let Some(p) = prebuilt.iter().find(|p| p.id == d.id) {
-            for k in ["description", "category"] {
+            // Its animations too, for one saved before it had any (none kept: `anims` is there).
+            for k in ["description", "category", "anims"] {
                 if !d.rest.contains_key(k) {
                     if let Some(v) = p.rest.get(k) {
                         d.rest.insert(k.into(), v.clone());
@@ -499,6 +500,9 @@ mod tests {
         ] {
             assert!(defs.iter().any(|d| d.id == id), "{id}");
         }
+        // The scoreboard's internal animations read (an arrival, two pulses, a period).
+        let score = defs.iter().find(|d| d.id == "scoreboard").unwrap();
+        assert_eq!(cg_core::built::anims(score).len(), 4);
         // Their elements read as layers (lists, rolls, per-row rules).
         for d in &defs {
             let layers = d.rest.get("layers").cloned().unwrap_or_default();

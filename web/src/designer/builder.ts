@@ -46,7 +46,7 @@ export function defOf(t: Template | null | undefined): WidgetDef | null {
   // Its frame: the size the Builder gives it (the stage of its Graphisme). Its elements without
   // keyframes: its animations hold them (the one on the timeline as the layers have it).
   const anims = committedAnims(t);
-  return { ...t.builder, ...(anims.length ? { anims } : {}), name: t.name, layers: drawnLayers(t.layers), logic: t.logic, width: Math.max(1, Math.round(t.builder.width)), height: Math.max(1, Math.round(t.builder.height)) };
+  return { ...t.builder, anims, name: t.name, layers: drawnLayers(t.layers), logic: t.logic, width: Math.max(1, Math.round(t.builder.width)), height: Math.max(1, Math.round(t.builder.height)) };
 }
 
 /** The frame around the widget's elements (« Fit to the content »). */

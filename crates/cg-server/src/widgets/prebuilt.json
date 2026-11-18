@@ -327,6 +327,312 @@
     "row": "Chrono des tirs"
    }
   ],
+  "anims": [
+   {
+    "id": "arrivee",
+    "name": "Arrivée",
+    "trigger": {
+     "on": "arrival"
+    },
+    "fps": 50,
+    "duration": 40,
+    "tracks": {
+     "eq1": {
+      "opacity": [
+       {
+        "frame": 0,
+        "value": 0,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 12,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ],
+      "x": [
+       {
+        "frame": 0,
+        "value": -30,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 15,
+        "value": 0,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ]
+     },
+     "eq2": {
+      "opacity": [
+       {
+        "frame": 6,
+        "value": 0,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 18,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ],
+      "x": [
+       {
+        "frame": 6,
+        "value": 420,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 21,
+        "value": 450,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ]
+     },
+     "periode": {
+      "opacity": [
+       {
+        "frame": 15,
+        "value": 0,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 30,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ]
+     },
+     "chrono": {
+      "opacity": [
+       {
+        "frame": 18,
+        "value": 0,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 32,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ]
+     },
+     "tirs": {
+      "opacity": [
+       {
+        "frame": 22,
+        "value": 0,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 36,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "panier1",
+    "name": "Panier · équipe 1",
+    "trigger": {
+     "on": "increase",
+     "var": "score_1"
+    },
+    "fps": 50,
+    "duration": 30,
+    "tracks": {
+     "score1": {
+      "scaleX": [
+       {
+        "frame": 0,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 6,
+        "value": 1.35,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 24,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ],
+      "scaleY": [
+       {
+        "frame": 0,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 6,
+        "value": 1.35,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 24,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "panier2",
+    "name": "Panier · équipe 2",
+    "trigger": {
+     "on": "increase",
+     "var": "score_2"
+    },
+    "fps": 50,
+    "duration": 30,
+    "tracks": {
+     "score2": {
+      "scaleX": [
+       {
+        "frame": 0,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 6,
+        "value": 1.35,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 24,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ],
+      "scaleY": [
+       {
+        "frame": 0,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 6,
+        "value": 1.35,
+        "easing": {
+         "type": "easeOut"
+        }
+       },
+       {
+        "frame": 24,
+        "value": 1,
+        "easing": {
+         "type": "easeOut"
+        }
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "periode",
+    "name": "Nouvelle période",
+    "trigger": {
+     "on": "change",
+     "var": "periode"
+    },
+    "fps": 50,
+    "duration": 30,
+    "tracks": {
+     "periode": {
+      "opacity": [
+       {
+        "frame": 0,
+        "value": 1,
+        "easing": {
+         "type": "linear"
+        }
+       },
+       {
+        "frame": 5,
+        "value": 0.2,
+        "easing": {
+         "type": "linear"
+        }
+       },
+       {
+        "frame": 12,
+        "value": 1,
+        "easing": {
+         "type": "linear"
+        }
+       },
+       {
+        "frame": 18,
+        "value": 0.2,
+        "easing": {
+         "type": "linear"
+        }
+       },
+       {
+        "frame": 30,
+        "value": 1,
+        "easing": {
+         "type": "linear"
+        }
+       }
+      ]
+     }
+    }
+   }
+  ],
   "height": 100,
   "icon": "trophy",
   "layers": [

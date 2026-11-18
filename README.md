@@ -47,6 +47,7 @@ Un seul exécutable par plateforme, un moteur de rendu en Rust, une interface we
 | Menu | Page | Rôle |
 | --- | --- | --- |
 | **Projets** | accueil | les émissions, leurs dossiers, les exemples, l'import et l'export |
+| **Widget Builder** | galerie des widgets | les widgets construits (partagés et ceux de chaque projet), leur création et leur éditeur |
 | **Ressources** | médias partagés | images, vidéos, sons et polices communs à tous les projets |
 | **Données** | sources partagées | connecteurs de données et connexions aux réseaux sociaux |
 | **Diffusion** | Flux vidéo · Matériel · MOS | chaînes, formats, destinations, entrées ; cartes SDI, ST 2110, synchro ; rédaction |
@@ -193,6 +194,24 @@ Un projet peut avoir plusieurs **formats** (16:9 d'antenne, 9:16 pour les résea
 - **Import** : After Effects (Bodymovin / LottieFiles `.json`, `.zip`, `.lottie` ; `.aep` avec ses fichiers collectés ; `.mogrt`), Photoshop (`.psd`) et SVG, avec le choix des calques et l'aperçu de l'animation. Voir [`docs/AFTER_EFFECTS.md`](docs/AFTER_EFFECTS.md).
 
 ---
+
+### 5.9 Widget Builder
+
+Un **widget** est un graphique vivant qu'on pose ensuite dans les modèles : un dessin et ses animations, un panneau de contrôle pour l'Opérateur, de la logique et des données. L'onglet **Widget Builder** de la barre principale en est la galerie : les widgets partagés et ceux de chaque projet, avec leur description, leur catégorie, leurs contrôles, animations et sources, où ils servent et quand ils ont changé (recherche, filtre par projet et par catégorie, tri). Un nouveau widget part d'une page vierge à la taille choisie, ou de la copie d'un autre.
+
+L'éditeur a cinq espaces :
+
+| Espace | Ce qu'on y fait |
+| --- | --- |
+| **Graphisme** | le widget dessiné **à sa taille** (grille de 8 px aimantée), *Voir dans* 16:9 ou 9:16 pour le voir dans l'image avec les zones de sécurité ; ses variables ; les propriétés **réglables dans le modèle** ; ses **animations internes** au-dessus de la timeline |
+| **Panneau** | le pupitre de l'Opérateur construit sur une **grille de 12 colonnes** : titre, bouton, rangée de boutons, nombre − / +, menu déroulant, interrupteur, curseur, champ, tableau ; chaque composant est visible en Preview, à l'antenne ou les deux, peut demander confirmation à l'antenne, et se relie à une variable ou à sa logique |
+| **Logique** | ce que fait chaque composant : changer une variable, lancer un chrono, **jouer une animation**… |
+| **Données** | des **sources** reliées aux variables (`home.score` → `score_1`) ; un modèle qui pose le widget peut lire une autre source de même forme |
+| **Essayer** | le widget joué comme dans l'Opérateur : préparé en **Preview**, puis **pris à l'antenne** sur le **Programme**, sans chaîne de sortie |
+
+- **Animations internes** : l'entrée et la sortie d'un widget sont celles de ses modèles ; ses animations à lui sont celles de sa vie (un score qui pulse, une période qui clignote). Chacune a ses keyframes et ce qui la lance : son arrivée à l'antenne, une variable qui change, augmente ou diminue, une boucle tant qu'une variable vérifie un test, ou sa logique (*Jouer une animation*).
+- **Brouillon et versions** : le travail s'enregistre au fur et à mesure comme brouillon ; les modèles ne reçoivent le widget qu'à **Publier la version n**. Chaque publication garde la version (les 30 dernières), et une ancienne peut être reprise comme brouillon.
+- Dans un modèle, le widget est un dossier : ses options s'y règlent, *Éditer le widget* rouvre le Builder ; à l'antenne il ne dépend plus de la bibliothèque.
 
 ## 6. Opérateur
 
